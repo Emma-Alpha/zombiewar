@@ -19,6 +19,7 @@ position = Vector3(0, 0.9, 0)
 shape = SubResource("CapsuleShape3D_player")
 
 [node name="VisualRoot" type="Node3D" parent="."]
+rotation_degrees = Vector3(0, 180, 0)
 
 [node name="Characters_Lis_SingleWeapon" parent="VisualRoot" instance=ExtResource("2_model")]
 
@@ -28,8 +29,7 @@ script = ExtResource("3_weapon")
 shots_per_second = 6.0
 damage = 25.0
 max_range = 80.0
-aim_plane_y = 0.0
-aim_collision_mask = 5
+hit_collision_mask = 5
 
 [node name="Muzzle" type="Marker3D" parent="Weapon"]
 position = Vector3(0, 0, -0.9)

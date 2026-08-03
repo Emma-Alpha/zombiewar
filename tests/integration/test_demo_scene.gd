@@ -10,11 +10,35 @@ func run() -> Array[String]:
 		return failures
 
 	var arena := packed.instantiate()
+	var tree := Engine.get_main_loop() as SceneTree
+	tree.root.add_child(arena)
 	var player := arena.get_node_or_null("Player")
+	var visual_root := arena.get_node_or_null("Player/VisualRoot") as Node3D
+	var follow_camera := arena.get_node_or_null("FollowCamera") as FollowCamera
 	var camera := arena.get_node_or_null("FollowCamera/Camera3D") as Camera3D
 	var targets := arena.get_node_or_null("World/Targets")
 	_append(failures, Assertions.expect_true(player != null, "Demo has Player"))
-	_append(failures, Assertions.expect_true(player != null and player.has_method("set_aim_camera"), "Player accepts aim camera"))
+	_append(failures, Assertions.expect_true(
+		player != null and player.has_method("set_movement_camera"),
+		"Player accepts movement camera"
+	))
+	if player != null and player.has_method("set_movement_camera"):
+		_append(failures, Assertions.expect_true(
+			player.get("movement_camera") == camera,
+			"Demo wires camera-relative movement on startup"
+		))
+	_append(failures, Assertions.expect_true(
+		follow_camera != null and follow_camera.target == player,
+		"Demo wires camera follow on startup"
+	))
+	_append(failures, Assertions.expect_true(visual_root != null, "Player has VisualRoot"))
+	if visual_root != null:
+		_append(failures, Assertions.expect_float_near(
+			absf(visual_root.rotation.y),
+			PI,
+			0.0001,
+			"Player visual is corrected by 180 degrees"
+		))
 	_append(failures, Assertions.expect_true(camera != null, "Demo has Camera3D"))
 	if camera != null:
 		_append(failures, Assertions.expect_equal(camera.projection, Camera3D.PROJECTION_ORTHOGONAL, "Camera is orthographic"))

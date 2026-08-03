@@ -14,9 +14,8 @@ const HIDDEN_WEAPONS: Array[String] = [
 @export var jump_speed: float = 8.5
 
 @onready var visual_root: Node3D = $VisualRoot
-@onready var weapon: Node3D = $Weapon
 
-var aim_camera: Camera3D
+var movement_camera: Camera3D
 var animation_player: AnimationPlayer
 
 func _ready() -> void:
@@ -26,20 +25,14 @@ func _ready() -> void:
 		if weapon_visual != null:
 			weapon_visual.visible = false
 
-func set_aim_camera(camera: Camera3D) -> void:
-	aim_camera = camera
-	if weapon.has_method("set_aim_camera"):
-		weapon.call("set_aim_camera", camera)
-
-func face_world_point(world_point: Vector3) -> void:
-	var flat_target := Vector3(world_point.x, global_position.y, world_point.z)
-	if global_position.distance_squared_to(flat_target) > 0.0001:
-		look_at(flat_target, Vector3.UP)
+func set_movement_camera(camera: Camera3D) -> void:
+	movement_camera = camera
 
 func _physics_process(delta: float) -> void:
 	var input_vector := Input.get_vector("move_left", "move_right", "move_forward", "move_back")
-	var camera_basis := aim_camera.global_basis if aim_camera != null else Basis.IDENTITY
+	var camera_basis := movement_camera.global_basis if movement_camera != null else Basis.IDENTITY
 	var direction := PlayerMotion.world_direction(input_vector, camera_basis)
+	rotation.y = PlayerMotion.next_facing_yaw(direction, rotation.y)
 	var target_velocity := direction * move_speed
 	var acceleration := ground_acceleration if is_on_floor() else air_acceleration
 

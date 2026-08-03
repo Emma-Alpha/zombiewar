@@ -4,7 +4,7 @@ const TEST_PATHS: Array[String] = [
 	"res://tests/unit/test_project_contract.gd",
 	"res://tests/unit/test_player_motion.gd",
 	"res://tests/unit/test_follow_camera.gd",
-	"res://tests/unit/test_aim_and_fire.gd",
+	"res://tests/unit/test_directional_fire.gd",
 	"res://tests/unit/test_health.gd",
 	"res://tests/integration/test_demo_scene.gd",
 ]

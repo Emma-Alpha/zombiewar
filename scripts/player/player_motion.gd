@@ -13,6 +13,13 @@ static func world_direction(input_vector: Vector2, camera_basis: Basis) -> Vecto
 	var direction := camera_right * input_vector.x + camera_forward * -input_vector.y
 	return direction.normalized() if direction.length_squared() > 1.0 else direction
 
+static func next_facing_yaw(direction: Vector3, current_yaw: float) -> float:
+	var flat_direction := Vector3(direction.x, 0.0, direction.z)
+	if flat_direction.length_squared() <= 0.0001:
+		return current_yaw
+	flat_direction = flat_direction.normalized()
+	return atan2(-flat_direction.x, -flat_direction.z)
+
 static func next_vertical_velocity(
 	current_y: float,
 	grounded: bool,
