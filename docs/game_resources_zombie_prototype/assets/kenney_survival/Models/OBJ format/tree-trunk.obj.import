@@ -1,0 +1,25 @@
+[remap]
+
+importer="wavefront_obj"
+importer_version=1
+type="Mesh"
+uid="uid://dqr8u4wjl20bn"
+path="res://.godot/imported/tree-trunk.obj-3dda64464e2e228b7f07e8b35ca4b651.mesh"
+
+[deps]
+
+files=["res://.godot/imported/tree-trunk.obj-3dda64464e2e228b7f07e8b35ca4b651.mesh"]
+
+source_file="res://docs/game_resources_zombie_prototype/assets/kenney_survival/Models/OBJ format/tree-trunk.obj"
+dest_files=["res://.godot/imported/tree-trunk.obj-3dda64464e2e228b7f07e8b35ca4b651.mesh", "res://.godot/imported/tree-trunk.obj-3dda64464e2e228b7f07e8b35ca4b651.mesh"]
+
+[params]
+
+generate_tangents=true
+generate_lods=true
+generate_shadow_mesh=true
+generate_lightmap_uv2=false
+generate_lightmap_uv2_texel_size=0.2
+scale_mesh=Vector3(1, 1, 1)
+offset_mesh=Vector3(0, 0, 0)
+force_disable_mesh_compression=false

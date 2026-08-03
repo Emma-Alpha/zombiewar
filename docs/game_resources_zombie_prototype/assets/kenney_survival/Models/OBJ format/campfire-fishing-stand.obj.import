@@ -1,0 +1,25 @@
+[remap]
+
+importer="wavefront_obj"
+importer_version=1
+type="Mesh"
+uid="uid://0fwhbtecbft4"
+path="res://.godot/imported/campfire-fishing-stand.obj-2288ef1a94a2ece8dc8c4d3e5ea3fa53.mesh"
+
+[deps]
+
+files=["res://.godot/imported/campfire-fishing-stand.obj-2288ef1a94a2ece8dc8c4d3e5ea3fa53.mesh"]
+
+source_file="res://docs/game_resources_zombie_prototype/assets/kenney_survival/Models/OBJ format/campfire-fishing-stand.obj"
+dest_files=["res://.godot/imported/campfire-fishing-stand.obj-2288ef1a94a2ece8dc8c4d3e5ea3fa53.mesh", "res://.godot/imported/campfire-fishing-stand.obj-2288ef1a94a2ece8dc8c4d3e5ea3fa53.mesh"]
+
+[params]
+
+generate_tangents=true
+generate_lods=true
+generate_shadow_mesh=true
+generate_lightmap_uv2=false
+generate_lightmap_uv2_texel_size=0.2
+scale_mesh=Vector3(1, 1, 1)
+offset_mesh=Vector3(0, 0, 0)
+force_disable_mesh_compression=false
