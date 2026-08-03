@@ -2,6 +2,7 @@ extends SceneTree
 
 const TEST_PATHS: Array[String] = [
 	"res://tests/unit/test_project_contract.gd",
+	"res://tests/unit/test_player_motion.gd",
 ]
 
 func _initialize() -> void:
