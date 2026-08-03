@@ -17,6 +17,6 @@ func apply_damage(amount: float) -> float:
 		return 0.0
 	current -= applied
 	changed.emit(current, maximum)
-	if is_zero_approx(current):
+	if current == 0.0:
 		depleted.emit()
 	return applied

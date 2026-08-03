@@ -23,6 +23,18 @@ func run() -> Array[String]:
 	_append(failures, Assertions.expect_equal(depleted_emissions, 1, "Depletion signal emits once"))
 	_append(failures, Assertions.expect_float_near(health.apply_damage(-10.0), 0.0, 0.0001, "Negative damage is ignored"))
 	_append(failures, Assertions.expect_equal(depleted_emissions, 1, "Ignored damage does not re-emit depletion"))
+
+	depleted_emissions = 0
+	var near_zero_health: Variant = health_script.new(1.0)
+	near_zero_health.depleted.connect(_on_depleted)
+	near_zero_health.apply_damage(0.999999)
+	_append(failures, Assertions.expect_true(near_zero_health.current > 0.0, "Near-zero health remains positive"))
+	_append(failures, Assertions.expect_equal(depleted_emissions, 0, "Near-zero health does not emit depletion"))
+	near_zero_health.apply_damage(near_zero_health.current)
+	_append(failures, Assertions.expect_equal(near_zero_health.current, 0.0, "Exact remaining damage depletes health"))
+	_append(failures, Assertions.expect_equal(depleted_emissions, 1, "Exact zero emits depletion once"))
+	near_zero_health.apply_damage(1.0)
+	_append(failures, Assertions.expect_equal(depleted_emissions, 1, "Further damage does not re-emit depletion"))
 	return failures
 
 func _on_depleted() -> void:
