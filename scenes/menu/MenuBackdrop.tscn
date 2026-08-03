@@ -1,0 +1,79 @@
+[gd_scene load_steps=10 format=3]
+
+[ext_resource type="Script" path="res://scripts/menu/menu_backdrop.gd" id="1_backdrop"]
+[ext_resource type="PackedScene" path="res://assets/characters/Characters_Lis_SingleWeapon.gltf" id="2_player"]
+[ext_resource type="PackedScene" path="res://assets/enemies/Zombie_Basic.gltf" id="3_basic"]
+[ext_resource type="PackedScene" path="res://assets/enemies/Zombie_Chubby.gltf" id="4_chubby"]
+[ext_resource type="PackedScene" path="res://assets/vehicles/Vehicle_Pickup.gltf" id="5_pickup"]
+[ext_resource type="PackedScene" path="res://assets/environment/Container_Red.gltf" id="6_container"]
+
+[sub_resource type="Environment" id="Environment_menu"]
+background_mode = 1
+background_color = Color(0.012, 0.017, 0.019, 1)
+ambient_light_source = 2
+ambient_light_color = Color(0.29, 0.34, 0.36, 1)
+ambient_light_energy = 0.48
+fog_enabled = true
+fog_light_color = Color(0.16, 0.075, 0.065, 1)
+fog_density = 0.018
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_ground"]
+albedo_color = Color(0.075, 0.085, 0.087, 1)
+roughness = 0.92
+metallic = 0.08
+
+[sub_resource type="PlaneMesh" id="PlaneMesh_ground"]
+material = SubResource("StandardMaterial3D_ground")
+size = Vector2(34, 26)
+
+[node name="MenuBackdrop" type="Node3D"]
+script = ExtResource("1_backdrop")
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_menu")
+
+[node name="MoonKey" type="DirectionalLight3D" parent="."]
+rotation_degrees = Vector3(-48, -32, 0)
+light_color = Color(0.62, 0.72, 0.78, 1)
+light_energy = 1.15
+shadow_enabled = true
+
+[node name="WarningLight" type="OmniLight3D" parent="."]
+position = Vector3(-3.5, 3.4, -1.0)
+light_color = Color(1, 0.18, 0.08, 1)
+light_energy = 6.2
+omni_range = 15.0
+
+[node name="Ground" type="MeshInstance3D" parent="."]
+mesh = SubResource("PlaneMesh_ground")
+
+[node name="CameraRig" type="Node3D" parent="."]
+
+[node name="Camera3D" type="Camera3D" parent="CameraRig"]
+position = Vector3(8.4, 4.7, 11.5)
+current = true
+fov = 46.0
+
+[node name="SetDressing" type="Node3D" parent="."]
+
+[node name="PlayerHero" parent="SetDressing" instance=ExtResource("2_player")]
+position = Vector3(2.8, 0, 1.4)
+rotation_degrees = Vector3(0, 155, 0)
+scale = Vector3(1.08, 1.08, 1.08)
+
+[node name="ZombieBasic" parent="SetDressing" instance=ExtResource("3_basic")]
+position = Vector3(0.8, 0, -4.4)
+rotation_degrees = Vector3(0, -18, 0)
+
+[node name="ZombieChubby" parent="SetDressing" instance=ExtResource("4_chubby")]
+position = Vector3(5.1, 0, -6.4)
+rotation_degrees = Vector3(0, -28, 0)
+scale = Vector3(1.08, 1.08, 1.08)
+
+[node name="Pickup" parent="SetDressing" instance=ExtResource("5_pickup")]
+position = Vector3(-0.8, 0, -2.8)
+rotation_degrees = Vector3(0, 24, 0)
+
+[node name="Container" parent="SetDressing" instance=ExtResource("6_container")]
+position = Vector3(-6, 0, -5.4)
+rotation_degrees = Vector3(0, 90, 0)

@@ -8,9 +8,11 @@ const TEST_PATHS: Array[String] = [
 	"res://tests/unit/test_directional_fire.gd",
 	"res://tests/unit/test_health.gd",
 	"res://tests/integration/test_demo_scene.gd",
+	"res://tests/integration/test_main_menu_scene.gd",
 ]
 
 func _initialize() -> void:
+	await process_frame
 	var failures: Array[String] = []
 	for test_path in TEST_PATHS:
 		var test_script := load(test_path) as Script
