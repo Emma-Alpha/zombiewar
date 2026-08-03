@@ -12,10 +12,12 @@ Open `project.godot` in Godot 4.7.1 and run the configured main scene, or use:
 
 ## Controls
 
-- `W/A/S/D`: camera-relative movement
+- `W/A/S/D`: camera-relative movement and facing
+- Release movement keys: retain the last facing direction
 - `Space`: grounded jump
-- Mouse: aim on the arena floor
-- Hold left mouse button: fire the rifle
+- Hold `J`: fire the rifle along the current facing direction
+
+Mouse input is not used by the demo.
 
 ## Demo scope
 
