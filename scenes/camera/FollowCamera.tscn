@@ -1,0 +1,16 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/camera/follow_camera.gd" id="1_follow_camera"]
+
+[node name="FollowCamera" type="Node3D"]
+script = ExtResource("1_follow_camera")
+follow_speed = 10.0
+
+[node name="Camera3D" type="Camera3D" parent="."]
+position = Vector3(10, 12, 10)
+rotation_degrees = Vector3(-40.3, 45, 0)
+projection = 1
+size = 18.0
+near = 0.1
+far = 120.0
+current = true
