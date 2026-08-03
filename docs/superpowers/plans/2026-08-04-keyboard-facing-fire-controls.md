@@ -36,7 +36,7 @@
 - Delete: `tests/unit/test_aim_and_fire.gd` and `tests/unit/test_aim_and_fire.gd.uid` — replace mouse-aim expectations with directional-fire expectations.
 - Modify: `scripts/combat/player_weapon.gd` — fire from the muzzle along player forward without a camera or mouse position.
 - Modify: `scenes/player/Player.tscn` — apply the visual 180-degree correction and remove the obsolete aim-plane property.
-- Modify: `scripts/gameplay/demo_arena.gd` — inject the camera only for camera-relative movement.
+- Modify: `scripts/gameplay/demo_arena.gd` — inject the camera only for camera-relative movement as soon as its PackedScene instantiates, with an idempotent enter-tree retry, so the real startup side effect is testable.
 - Modify: `tests/integration/test_demo_scene.gd` — verify on-tree startup wiring, the movement-camera API, and visual correction.
 - Modify: `tests/test_runner.gd` — replace the old aim test path with the directional-fire test path.
 - Modify: `scenes/gameplay/DemoArena.tscn` — show the keyboard-only controls in the HUD.
@@ -147,6 +147,7 @@ git commit -m "feat: bind keyboard fire control"
 - Modify: `scripts/combat/player_weapon.gd`
 - Modify: `scenes/player/Player.tscn`
 - Modify: `scripts/gameplay/demo_arena.gd`
+- Modify: `scenes/gameplay/DemoArena.tscn`
 - Delete: `scripts/combat/aim_math.gd`
 - Delete: `scripts/combat/aim_math.gd.uid`
 - Delete: `tests/unit/test_aim_and_fire.gd`
@@ -256,7 +257,7 @@ Replace the old aim-test path in `tests/test_runner.gd`:
 	"res://tests/unit/test_directional_fire.gd",
 ```
 
-- [ ] **Step 3: Strengthen the scene test for movement-camera wiring and visual orientation**
+- [ ] **Step 3: Strengthen the scene test for movement-camera wiring, visual orientation, and the keyboard HUD**
 
 Replace `run()` in `tests/integration/test_demo_scene.gd` with:
 
@@ -277,6 +278,7 @@ func run() -> Array[String]:
 	var follow_camera := arena.get_node_or_null("FollowCamera") as FollowCamera
 	var camera := arena.get_node_or_null("FollowCamera/Camera3D") as Camera3D
 	var targets := arena.get_node_or_null("World/Targets")
+	var controls := arena.get_node_or_null("HUD/ControlsPanel/Controls") as Label
 	_append(failures, Assertions.expect_true(player != null, "Demo has Player"))
 	_append(failures, Assertions.expect_true(
 		player != null and player.has_method("set_movement_camera"),
@@ -304,6 +306,13 @@ func run() -> Array[String]:
 		_append(failures, Assertions.expect_equal(camera.projection, Camera3D.PROJECTION_ORTHOGONAL, "Camera is orthographic"))
 		_append(failures, Assertions.expect_float_near(camera.size, 18.0, 0.0001, "Camera orthographic size"))
 	_append(failures, Assertions.expect_true(targets != null and targets.get_child_count() == 4, "Demo has four zombie targets"))
+	_append(failures, Assertions.expect_true(controls != null, "Demo has controls label"))
+	if controls != null:
+		_append(failures, Assertions.expect_equal(
+			controls.text,
+			"WASD  MOVE + FACE    SPACE  JUMP    J  FIRE",
+			"HUD documents keyboard-only controls"
+		))
 	var configured_main_scene: String = ProjectSettings.get_setting("application/run/main_scene", "")
 	var resolved_main_scene := configured_main_scene
 	if configured_main_scene.begins_with("uid://"):
@@ -321,7 +330,7 @@ Run:
 /Applications/Godot.app/Contents/MacOS/Godot --headless --path . --script tests/test_runner.gd
 ```
 
-Expected: exit code `1` with failures for `PlayerMotion exposes retained-facing yaw`, `Weapon math helper loads`, `Player accepts movement camera`, and `Player visual is corrected by 180 degrees`.
+Expected: exit code `1` with failures for `PlayerMotion exposes retained-facing yaw`, `Weapon math helper loads`, `Player accepts movement camera`, `Player visual is corrected by 180 degrees`, and `HUD documents keyboard-only controls`.
 
 - [ ] **Step 5: Implement retained-facing yaw as pure movement logic**
 
@@ -499,6 +508,16 @@ position = Vector3(0, 0, -0.9)
 
 This removes `aim_plane_y`, keeps the muzzle on functional `-Z`, and rotates only the imported visual so the visible rifle points along the ray.
 
+Set the controls label in `scenes/gameplay/DemoArena.tscn` to:
+
+```ini
+[node name="Controls" type="Label" parent="HUD/ControlsPanel"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.952941, 0.933333, 0.894118, 1)
+theme_override_font_sizes/font_size = 16
+text = "WASD  MOVE + FACE    SPACE  JUMP    J  FIRE"
+```
+
 - [ ] **Step 8: Rename the arena camera wiring to movement-only**
 
 Replace `scripts/gameplay/demo_arena.gd` with:
@@ -506,12 +525,23 @@ Replace `scripts/gameplay/demo_arena.gd` with:
 ```gdscript
 extends Node3D
 
-@onready var player: PlayerController = $Player
-@onready var follow_camera: FollowCamera = $FollowCamera
-@onready var movement_camera: Camera3D = $FollowCamera/Camera3D
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_SCENE_INSTANTIATED:
+		_wire_dependencies()
 
-func _ready() -> void:
-	follow_camera.set_target(player)
+func _enter_tree() -> void:
+	_wire_dependencies()
+
+func _wire_dependencies() -> void:
+	var player := get_node_or_null("Player") as PlayerController
+	var follow_camera := get_node_or_null("FollowCamera") as FollowCamera
+	var movement_camera := get_node_or_null("FollowCamera/Camera3D") as Camera3D
+	if player == null or follow_camera == null or movement_camera == null:
+		return
+	if follow_camera.is_inside_tree():
+		follow_camera.set_target(player)
+	else:
+		follow_camera.target = player
 	player.set_movement_camera(movement_camera)
 ```
 
@@ -557,58 +587,14 @@ git commit -m "feat: fire along keyboard-controlled facing"
 
 **Files:**
 
-- Modify: `tests/integration/test_demo_scene.gd`
-- Modify: `scenes/gameplay/DemoArena.tscn:198-213`
 - Modify: `README.md:13-18`
 
 **Interfaces:**
 
 - Consumes: the final input contract and directional player/weapon behavior from Tasks 1 and 2.
-- Produces: exact in-game and README guidance for `WASD MOVE + FACE`, `SPACE JUMP`, and `J FIRE`, plus final manual acceptance evidence.
+- Produces: README guidance for `WASD MOVE + FACE`, `SPACE JUMP`, and `J FIRE`, plus final manual acceptance evidence. The matching in-game HUD contract is implemented and tested in Task 2 so no released code presents a stale LMB control hint.
 
-- [ ] **Step 1: Write the failing HUD contract**
-
-In `tests/integration/test_demo_scene.gd`, retrieve the controls label with the other scene nodes:
-
-```gdscript
-	var controls := arena.get_node_or_null("HUD/ControlsPanel/Controls") as Label
-```
-
-Add this assertion before freeing the arena:
-
-```gdscript
-	_append(failures, Assertions.expect_true(controls != null, "Demo has controls label"))
-	if controls != null:
-		_append(failures, Assertions.expect_equal(
-			controls.text,
-			"WASD  MOVE + FACE    SPACE  JUMP    J  FIRE",
-			"HUD documents keyboard-only controls"
-		))
-```
-
-- [ ] **Step 2: Run the integration contract and verify RED**
-
-Run:
-
-```bash
-/Applications/Godot.app/Contents/MacOS/Godot --headless --path . --script tests/test_runner.gd
-```
-
-Expected: exit code `1` with `HUD documents keyboard-only controls`; the current HUD still says `LMB FIRE`.
-
-- [ ] **Step 3: Update the in-game controls panel**
-
-Set the controls label in `scenes/gameplay/DemoArena.tscn` to:
-
-```ini
-[node name="Controls" type="Label" parent="HUD/ControlsPanel"]
-layout_mode = 2
-theme_override_colors/font_color = Color(0.952941, 0.933333, 0.894118, 1)
-theme_override_font_sizes/font_size = 16
-text = "WASD  MOVE + FACE    SPACE  JUMP    J  FIRE"
-```
-
-- [ ] **Step 4: Replace README control guidance**
+- [ ] **Step 1: Replace README control guidance**
 
 Replace the `## Controls` section in `README.md` with:
 
@@ -625,7 +611,7 @@ Mouse input is not used by the demo.
 
 Leave the run command, scope, deferred systems, and test command unchanged.
 
-- [ ] **Step 5: Run final automated verification**
+- [ ] **Step 2: Run final automated verification**
 
 Run:
 
@@ -637,7 +623,7 @@ git diff --check
 
 Expected: clean import/parse, exit code `0`, `PASS: 6 test file(s)`, and no whitespace errors.
 
-- [ ] **Step 6: Perform the final keyboard-only acceptance matrix**
+- [ ] **Step 3: Perform the final keyboard-only acceptance matrix**
 
 Run the main scene and record every row:
 
@@ -656,15 +642,15 @@ Run the main scene and record every row:
 | Resize | Resize from 1280×720 | HUD remains anchored and playable area remains visible |
 | Runtime health | Play for two minutes while observing output | No parser errors, invalid calls, missing resources, or repeated new warnings |
 
-- [ ] **Step 7: Commit the keyboard-only guidance**
+- [ ] **Step 4: Commit the keyboard-only guidance**
 
 ```bash
-git add README.md scenes/gameplay/DemoArena.tscn tests/integration/test_demo_scene.gd
+git add README.md
 git commit -m "docs: describe keyboard-only combat controls"
 ```
 
 ## Self-Review
 
-1. **Spec coverage:** Task 1 removes the last-mouse fire binding and assigns J. Task 2 makes movement input control and retain facing, corrects the 180-degree visual orientation, removes mouse aiming, fires from the muzzle along player forward, preserves cadence/damage/range, and updates startup wiring. Task 3 updates both user-facing control surfaces and requires a keyboard-only acceptance pass.
+1. **Spec coverage:** Task 1 removes the last-mouse fire binding and assigns J. Task 2 makes movement input control and retain facing, corrects the 180-degree visual orientation, removes mouse aiming, fires from the muzzle along player forward, preserves cadence/damage/range, updates startup wiring, and tests/updates the in-game control panel. Task 3 updates README guidance and requires a keyboard-only acceptance pass.
 2. **Placeholder scan:** The plan contains exact paths, signatures, test bodies, production code, property values, commands, expected failures, expected successes, commit boundaries, and acceptance rows; no unresolved implementation choice remains.
 3. **Type consistency:** `DemoArena` calls `PlayerController.set_movement_camera(Camera3D)`; `PlayerController` stores `movement_camera: Camera3D`; `PlayerMotion.next_facing_yaw(Vector3, float)` returns the player root yaw; `PlayerWeapon` passes `player.global_basis` to both `WeaponMath` functions; the test runner references exactly `test_directional_fire.gd`; the HUD and README use the confirmed J binding.
