@@ -15,6 +15,7 @@ const REQUIRED_KEY_BINDINGS: Dictionary = {
 	&"move_forward": KEY_W,
 	&"move_back": KEY_S,
 	&"jump": KEY_SPACE,
+	&"fire": KEY_J,
 }
 
 func run() -> Array[String]:
@@ -37,11 +38,6 @@ func run() -> Array[String]:
 		if events.size() != 1:
 			continue
 		var event := events[0]
-		if action == &"fire":
-			_append(failures, Assertions.expect_true(event is InputEventMouseButton, "Fire binding is a mouse button"))
-			if event is InputEventMouseButton:
-				_append(failures, Assertions.expect_equal(event.button_index, MOUSE_BUTTON_LEFT, "Fire binding is primary mouse button"))
-			continue
 		_append(failures, Assertions.expect_true(event is InputEventKey, "Input binding is a key: %s" % action))
 		if event is InputEventKey:
 			_append(failures, Assertions.expect_equal(event.keycode, REQUIRED_KEY_BINDINGS[action], "Key binding for %s" % action))
