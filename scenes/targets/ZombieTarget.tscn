@@ -1,0 +1,29 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://scripts/combat/zombie_target.gd" id="1_target"]
+[ext_resource type="PackedScene" path="res://assets/enemies/Zombie_Basic.gltf" id="2_model"]
+
+[sub_resource type="CapsuleShape3D" id="CapsuleShape3D_target"]
+radius = 0.5
+height = 1.9
+
+[node name="ZombieTarget" type="StaticBody3D"]
+collision_layer = 4
+collision_mask = 0
+script = ExtResource("1_target")
+max_health = 50.0
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+position = Vector3(0, 0.95, 0)
+shape = SubResource("CapsuleShape3D_target")
+
+[node name="VisualRoot" type="Node3D" parent="."]
+
+[node name="Zombie_Basic" parent="VisualRoot" instance=ExtResource("2_model")]
+
+[node name="HealthLabel" type="Label3D" parent="."]
+position = Vector3(0, 2.35, 0)
+text = "50 / 50"
+font_size = 32
+outline_size = 8
+billboard = 1
