@@ -1,0 +1,227 @@
+[gd_scene load_steps=18 format=3]
+
+[ext_resource type="Script" path="res://scripts/gameplay/demo_arena.gd" id="1_arena"]
+[ext_resource type="PackedScene" path="res://scenes/player/Player.tscn" id="2_player"]
+[ext_resource type="PackedScene" path="res://scenes/camera/FollowCamera.tscn" id="3_camera"]
+[ext_resource type="PackedScene" path="res://scenes/targets/ZombieTarget.tscn" id="4_target"]
+[ext_resource type="PackedScene" path="res://assets/vehicles/Vehicle_Pickup.gltf" id="5_pickup"]
+[ext_resource type="PackedScene" path="res://assets/environment/Container_Red.gltf" id="6_container"]
+
+[sub_resource type="Environment" id="Environment_arena"]
+background_mode = 1
+background_color = Color(0.0823529, 0.105882, 0.133333, 1)
+ambient_light_source = 2
+ambient_light_color = Color(0.560784, 0.639216, 0.721569, 1)
+ambient_light_energy = 0.55
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_ground"]
+albedo_color = Color(0.223529, 0.262745, 0.294118, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_ground"]
+material = SubResource("StandardMaterial3D_ground")
+size = Vector3(44, 0.3, 34)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_ground"]
+size = Vector3(44, 0.3, 34)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_boundary"]
+albedo_color = Color(0.447059, 0.184314, 0.215686, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_north_south"]
+material = SubResource("StandardMaterial3D_boundary")
+size = Vector3(44, 2, 0.5)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_north_south"]
+size = Vector3(44, 2, 0.5)
+
+[sub_resource type="BoxMesh" id="BoxMesh_east_west"]
+material = SubResource("StandardMaterial3D_boundary")
+size = Vector3(0.5, 2, 34)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_east_west"]
+size = Vector3(0.5, 2, 34)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_pickup"]
+size = Vector3(4.2, 1.8, 2.1)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_container"]
+size = Vector3(6.2, 2.8, 2.5)
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_controls"]
+bg_color = Color(0.0627451, 0.0784314, 0.0980392, 0.82)
+content_margin_left = 14.0
+content_margin_top = 10.0
+content_margin_right = 14.0
+content_margin_bottom = 10.0
+
+[node name="DemoArena" type="Node3D"]
+script = ExtResource("1_arena")
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_arena")
+
+[node name="Sun" type="DirectionalLight3D" parent="."]
+rotation_degrees = Vector3(-55, -35, 0)
+light_energy = 1.2
+shadow_enabled = true
+
+[node name="World" type="Node3D" parent="."]
+
+[node name="Ground" type="StaticBody3D" parent="World"]
+collision_layer = 1
+collision_mask = 0
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="World/Ground"]
+position = Vector3(0, -0.15, 0)
+mesh = SubResource("BoxMesh_ground")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="World/Ground"]
+position = Vector3(0, -0.15, 0)
+shape = SubResource("BoxShape3D_ground")
+
+[node name="Boundaries" type="Node3D" parent="World"]
+
+[node name="North" type="StaticBody3D" parent="World/Boundaries"]
+position = Vector3(0, 1, -17)
+collision_layer = 1
+collision_mask = 0
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="World/Boundaries/North"]
+mesh = SubResource("BoxMesh_north_south")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="World/Boundaries/North"]
+shape = SubResource("BoxShape3D_north_south")
+
+[node name="South" type="StaticBody3D" parent="World/Boundaries"]
+position = Vector3(0, 1, 17)
+collision_layer = 1
+collision_mask = 0
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="World/Boundaries/South"]
+mesh = SubResource("BoxMesh_north_south")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="World/Boundaries/South"]
+shape = SubResource("BoxShape3D_north_south")
+
+[node name="West" type="StaticBody3D" parent="World/Boundaries"]
+position = Vector3(-22, 1, 0)
+collision_layer = 1
+collision_mask = 0
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="World/Boundaries/West"]
+mesh = SubResource("BoxMesh_east_west")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="World/Boundaries/West"]
+shape = SubResource("BoxShape3D_east_west")
+
+[node name="East" type="StaticBody3D" parent="World/Boundaries"]
+position = Vector3(22, 1, 0)
+collision_layer = 1
+collision_mask = 0
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="World/Boundaries/East"]
+mesh = SubResource("BoxMesh_east_west")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="World/Boundaries/East"]
+shape = SubResource("BoxShape3D_east_west")
+
+[node name="Props" type="Node3D" parent="World"]
+
+[node name="PickupVisual" parent="World/Props" instance=ExtResource("5_pickup")]
+position = Vector3(4, 0, 1)
+rotation_degrees = Vector3(0, 25, 0)
+
+[node name="PickupCollision" type="StaticBody3D" parent="World/Props"]
+position = Vector3(4, 0.9, 1)
+rotation_degrees = Vector3(0, 25, 0)
+collision_layer = 1
+collision_mask = 0
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="World/Props/PickupCollision"]
+shape = SubResource("BoxShape3D_pickup")
+
+[node name="ContainerAVisual" parent="World/Props" instance=ExtResource("6_container")]
+position = Vector3(-7, 0, -5)
+rotation_degrees = Vector3(0, 90, 0)
+
+[node name="ContainerACollision" type="StaticBody3D" parent="World/Props"]
+position = Vector3(-7, 1.4, -5)
+rotation_degrees = Vector3(0, 90, 0)
+collision_layer = 1
+collision_mask = 0
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="World/Props/ContainerACollision"]
+shape = SubResource("BoxShape3D_container")
+
+[node name="ContainerBVisual" parent="World/Props" instance=ExtResource("6_container")]
+position = Vector3(8, 0, -8)
+
+[node name="ContainerBCollision" type="StaticBody3D" parent="World/Props"]
+position = Vector3(8, 1.4, -8)
+collision_layer = 1
+collision_mask = 0
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="World/Props/ContainerBCollision"]
+shape = SubResource("BoxShape3D_container")
+
+[node name="Targets" type="Node3D" parent="World"]
+
+[node name="ZombieTarget1" parent="World/Targets" instance=ExtResource("4_target")]
+position = Vector3(-4, 0, -5)
+
+[node name="ZombieTarget2" parent="World/Targets" instance=ExtResource("4_target")]
+position = Vector3(0, 0, -9)
+
+[node name="ZombieTarget3" parent="World/Targets" instance=ExtResource("4_target")]
+position = Vector3(8, 0, 6)
+
+[node name="ZombieTarget4" parent="World/Targets" instance=ExtResource("4_target")]
+position = Vector3(-10, 0, 7)
+
+[node name="Player" parent="." instance=ExtResource("2_player")]
+position = Vector3(0, 0, 6)
+
+[node name="FollowCamera" parent="." instance=ExtResource("3_camera")]
+position = Vector3(0, 0, 6)
+
+[node name="HUD" type="CanvasLayer" parent="."]
+
+[node name="Title" type="Label" parent="HUD"]
+offset_left = 24.0
+offset_top = 20.0
+offset_right = 390.0
+offset_bottom = 48.0
+theme_override_colors/font_color = Color(0.952941, 0.933333, 0.894118, 1)
+theme_override_font_sizes/font_size = 20
+text = "ZOMBIE WAR — CONTROL DEMO"
+
+[node name="ControlsPanel" type="PanelContainer" parent="HUD"]
+anchors_preset = 2
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_left = 24.0
+offset_top = -66.0
+offset_right = 462.0
+offset_bottom = -20.0
+grow_vertical = 0
+theme_override_styles/panel = SubResource("StyleBoxFlat_controls")
+
+[node name="Controls" type="Label" parent="HUD/ControlsPanel"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.952941, 0.933333, 0.894118, 1)
+theme_override_font_sizes/font_size = 16
+text = "WASD  MOVE    SPACE  JUMP    LMB  FIRE"
+
+[node name="Objective" type="Label" parent="HUD"]
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -448.0
+offset_top = 20.0
+offset_right = -24.0
+offset_bottom = 48.0
+grow_horizontal = 0
+theme_override_colors/font_color = Color(0.952941, 0.933333, 0.894118, 1)
+theme_override_font_sizes/font_size = 18
+text = "OBJECTIVE: CLEAR 4 PRACTICE TARGETS"
+horizontal_alignment = 2

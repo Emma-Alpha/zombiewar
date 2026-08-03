@@ -31,7 +31,7 @@ func _physics_process(delta: float) -> void:
 	var ray_origin := aim_camera.project_ray_origin(mouse_position)
 	var ray_direction := aim_camera.project_ray_normal(mouse_position).normalized()
 	var player := get_parent() as PlayerController
-	var ground_point := AimMath.intersect_y_plane(ray_origin, ray_direction, aim_plane_y)
+	var ground_point: Variant = AimMath.intersect_y_plane(ray_origin, ray_direction, aim_plane_y)
 	if ground_point is Vector3:
 		player.face_world_point(ground_point)
 

@@ -6,6 +6,7 @@ const TEST_PATHS: Array[String] = [
 	"res://tests/unit/test_follow_camera.gd",
 	"res://tests/unit/test_aim_and_fire.gd",
 	"res://tests/unit/test_health.gd",
+	"res://tests/integration/test_demo_scene.gd",
 ]
 
 func _initialize() -> void:
