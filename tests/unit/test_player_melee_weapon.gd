@@ -112,6 +112,7 @@ func run() -> Array[String]:
 	_test_weapon_switch_clears_buffered_attack(failures)
 	_test_dense_hitboxes_choose_closest_target(failures)
 	_test_body_hitbox_overlap_ignores_rear_target(failures)
+	_test_knife_preserves_legacy_forward_reach(failures)
 	return failures
 
 func _test_attack_interruptions(
@@ -426,6 +427,40 @@ func _test_body_hitbox_overlap_ignores_rear_target(failures: Array[String]) -> v
 		"Rear target is ignored when its enlarged body cylinder overlaps the melee box"
 	))
 	host.free()
+
+func _test_knife_preserves_legacy_forward_reach(failures: Array[String]) -> void:
+	_append(failures, Assertions.expect_float_near(
+		_attack_isolated_target(Vector3(0.0, 0.0, -2.30)),
+		50.0,
+		0.0001,
+		"Enlarged shooting cylinder does not extend Knife reach to 2.30 meters"
+	))
+	_append(failures, Assertions.expect_float_near(
+		_attack_isolated_target(Vector3(0.0, 0.0, -1.90)),
+		15.0,
+		0.0001,
+		"Knife still hits a target within its legacy forward reach"
+	))
+
+func _attack_isolated_target(target_position: Vector3) -> float:
+	var tree := Engine.get_main_loop() as SceneTree
+	var host := Node3D.new()
+	var player := PLAYER_SCENE.instantiate() as PlayerController
+	var target := TARGET_SCENE.instantiate() as ZombieTarget
+	target.position = target_position
+	tree.root.add_child(host)
+	host.add_child(player)
+	host.add_child(target)
+	var equipment := player.get_node("EquipmentController") as EquipmentController
+	equipment.equip_slot(2)
+	var knife := equipment.get_current_weapon() as MeleeWeapon
+	knife.set_physics_process(false)
+	equipment.set_attack_input(true, true, Vector3.FORWARD)
+	knife._physics_process(0.0)
+	knife._physics_process(0.22)
+	var remaining_health := target.health.current
+	host.free()
+	return remaining_health
 
 func _on_melee_attack_started(_animation_name: StringName, _lock_duration: float) -> void:
 	melee_attack_started_emissions += 1

@@ -126,6 +126,48 @@ func run() -> Array[String]:
 		0.0001,
 		"Tuned ground acceleration reaches three meters per second after 100 ms"
 	))
+	var half_input_velocity: Vector3 = player_motion.next_planar_velocity(
+		Vector3.ZERO,
+		Vector3.FORWARD * 0.5,
+		5.0,
+		30.0,
+		42.0,
+		1.0
+	)
+	_append(failures, Assertions.expect_float_near(
+		half_input_velocity.length(),
+		2.5,
+		0.0001,
+		"Half-strength movement input produces half movement speed"
+	))
+	var full_input_velocity: Vector3 = player_motion.next_planar_velocity(
+		Vector3.ZERO,
+		Vector3.FORWARD,
+		5.0,
+		30.0,
+		42.0,
+		1.0
+	)
+	_append(failures, Assertions.expect_float_near(
+		full_input_velocity.length(),
+		5.0,
+		0.0001,
+		"Full straight movement input reaches configured movement speed"
+	))
+	var diagonal_input_velocity: Vector3 = player_motion.next_planar_velocity(
+		Vector3.ZERO,
+		Vector3(1.0, 0.0, -1.0),
+		5.0,
+		30.0,
+		42.0,
+		1.0
+	)
+	_append(failures, Assertions.expect_float_near(
+		diagonal_input_velocity.length(),
+		5.0,
+		0.0001,
+		"Diagonal movement input cannot exceed configured movement speed"
+	))
 	var stopped: Vector3 = player_motion.next_planar_velocity(
 		Vector3.FORWARD * 5.0,
 		Vector3.ZERO,

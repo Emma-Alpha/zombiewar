@@ -38,7 +38,6 @@ func run() -> Array[String]:
 		"Portrait guard shows overlay and owns the pause it creates"
 	))
 	viewport.size = Vector2i(1280, 720)
-	guard.refresh_orientation()
 	_append(failures, Assertions.expect_true(
 		not guard.get_node("Overlay").visible and not tree.paused and not guard.paused_by_guard,
 		"Returning to landscape removes only the guard-owned pause"
@@ -58,7 +57,6 @@ func run() -> Array[String]:
 		"Portrait guard preserves pause ownership when the tree is already paused"
 	))
 	paused_viewport.size = Vector2i(1280, 720)
-	guard_during_existing_pause.refresh_orientation()
 	_append(failures, Assertions.expect_true(
 		not guard_during_existing_pause.get_node("Overlay").visible and
 		tree.paused and not guard_during_existing_pause.paused_by_guard,
