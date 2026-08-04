@@ -242,7 +242,7 @@ anchor_top = 1.0
 anchor_bottom = 1.0
 offset_left = 24.0
 offset_top = -66.0
-offset_right = 462.0
+offset_right = 760.0
 offset_bottom = -20.0
 grow_vertical = 0
 theme_override_styles/panel = SubResource("StyleBoxFlat_controls")
@@ -251,7 +251,7 @@ theme_override_styles/panel = SubResource("StyleBoxFlat_controls")
 layout_mode = 2
 theme_override_colors/font_color = Color(0.952941, 0.933333, 0.894118, 1)
 theme_override_font_sizes/font_size = 16
-text = "WASD  MOVE + FACE    SPACE  JUMP    J  FIRE"
+text = "WASD MOVE + FACE   SPACE JUMP   J ATTACK   1 PISTOL   2 RIFLE   3 KNIFE"
 
 [node name="GameOver" type="Label" parent="HUD"]
 visible = false

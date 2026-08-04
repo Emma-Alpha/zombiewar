@@ -1,0 +1,24 @@
+[gd_resource type="Resource" script_class="RangedWeaponDefinition" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/combat/weapons/ranged_weapon_definition.gd" id="1_definition"]
+
+[resource]
+script = ExtResource("1_definition")
+weapon_id = &"pistol"
+display_name = "PISTOL"
+visual_node_name = &"Pistol"
+trigger_mode = 0
+attacks_per_second = 3.0
+damage = 35.0
+idle_animation = &"Idle_Gun"
+run_animation = &"Run_Gun"
+attack_animation = &""
+attack_lock_duration = 0.0
+visual_recoil_kick = 0.10
+camera_impulse_strength = 0.08
+attack_range = 24.0
+hit_collision_mask = 5
+tracer_pool_size = 6
+aim_assist_angle_degrees = 6.0
+aim_assist_range = 15.0
+muzzle_anchor_offset = Vector3(0, 0, -0.35)

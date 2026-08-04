@@ -2,6 +2,9 @@ extends RefCounted
 
 const Assertions = preload("res://tests/helpers/assertions.gd")
 const ZombieDifficultyProfile = preload("res://scripts/gameplay/zombie_difficulty_profile.gd")
+const EquipmentController = preload("res://scripts/player/equipment_controller.gd")
+const RangedWeapon = preload("res://scripts/combat/weapons/ranged_weapon.gd")
+const MeleeWeapon = preload("res://scripts/combat/weapons/melee_weapon.gd")
 
 func run() -> Array[String]:
 	var failures: Array[String] = []
@@ -19,8 +22,7 @@ func run() -> Array[String]:
 	var camera := arena.get_node_or_null("FollowCamera/Camera3D") as Camera3D
 	var targets := arena.get_node_or_null("World/Targets")
 	var controls := arena.get_node_or_null("HUD/ControlsPanel/Controls") as Label
-	var weapon := arena.get_node_or_null("Player/Weapon") as PlayerWeapon
-	var aim_indicator := arena.get_node_or_null("Player/Weapon/AimIndicator") as Node3D
+	var equipment := arena.get_node_or_null("Player/EquipmentController") as EquipmentController
 	var hit_confirm := arena.get_node_or_null("HUD/HitConfirm") as Label
 	var ground := arena.get_node_or_null("World/Ground") as StaticBody3D
 	var ground_blood := arena.get_node_or_null("GroundBloodManager")
@@ -119,26 +121,32 @@ func run() -> Array[String]:
 		))
 	_append(failures, Assertions.expect_true(targets != null and targets.get_child_count() == 4, "Demo has four zombie targets"))
 	_append(failures, Assertions.expect_true(
-		weapon != null and weapon.has_method("set_combat_input"),
-		"Weapon consumes injected combat input"
+		equipment != null,
+		"Demo player owns the modular equipment controller"
 	))
-	_append(failures, Assertions.expect_true(
-		aim_indicator != null and aim_indicator.visible,
-		"Player has a visible keyboard aim indicator"
-	))
-	if weapon != null:
-		_append(failures, Assertions.expect_float_near(
-			weapon.max_range,
-			28.0,
-			0.0001,
-			"Weapon range matches the visible arena scale"
+	if equipment != null:
+		_append(failures, Assertions.expect_equal(
+			equipment.weapons.size(),
+			3,
+			"Demo loadout contains pistol rifle and knife"
+		))
+		_append(failures, Assertions.expect_equal(
+			equipment.get_current_definition().weapon_id,
+			&"rifle",
+			"Demo starts with the rifle equipped"
+		))
+		_append(failures, Assertions.expect_true(
+			equipment.weapons[0] is RangedWeapon and
+			equipment.weapons[1] is RangedWeapon and
+			equipment.weapons[2] is MeleeWeapon,
+			"Demo loadout uses two ranged runtimes and one melee runtime"
 		))
 	_append(failures, Assertions.expect_true(controls != null, "Demo has controls label"))
 	if controls != null:
 		_append(failures, Assertions.expect_equal(
 			controls.text,
-			"WASD  MOVE + FACE    SPACE  JUMP    J  FIRE",
-			"HUD documents keyboard-only controls"
+			"WASD MOVE + FACE   SPACE JUMP   J ATTACK   1 PISTOL   2 RIFLE   3 KNIFE",
+			"HUD documents attack and weapon switching controls"
 		))
 	_append(failures, Assertions.expect_true(
 		mobile_controls != null,
@@ -163,7 +171,7 @@ func run() -> Array[String]:
 		"Native joystick owns the radial deadzone"
 	))
 	_append(failures, Assertions.expect_true(
-		fire_button != null and fire_button.action == &"fire" and
+		fire_button != null and fire_button.action == &"primary_attack" and
 		fire_button.size.x >= 144.0 and fire_button.size.y >= 144.0,
 		"Demo has a large hold-to-fire touch button"
 	))

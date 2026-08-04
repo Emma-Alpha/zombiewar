@@ -37,15 +37,15 @@ func run() -> Array[String]:
 	_release_test_actions()
 
 	var fire_button: Variant = action_button_script.new()
-	fire_button.action = &"fire"
+	fire_button.action = &"primary_attack"
 	fire_button.set_pressed(true)
 	_append(failures, Assertions.expect_true(
-		Input.is_action_pressed(&"fire"),
+		Input.is_action_pressed(&"primary_attack"),
 		"Mobile action button presses configured action"
 	))
 	fire_button.cancel()
 	_append(failures, Assertions.expect_true(
-		not Input.is_action_pressed(&"fire"),
+		not Input.is_action_pressed(&"primary_attack"),
 		"Mobile action button cancel releases configured action"
 	))
 	fire_button.free()
@@ -162,26 +162,26 @@ func _append_raw_touch_event_failures(failures: Array[String]) -> void:
 
 	fire_button._input(_screen_touch(11, true, fire_center))
 	_append(failures, Assertions.expect_true(
-		fire_button.pressed and Input.is_action_pressed(&"fire"),
+		fire_button.pressed and Input.is_action_pressed(&"primary_attack"),
 		"Raw fire touch presses its action"
 	))
 	fire_button._input(_screen_touch(11, false, fire_center))
 	_append(failures, Assertions.expect_true(
-		not fire_button.pressed and not Input.is_action_pressed(&"fire"),
+		not fire_button.pressed and not Input.is_action_pressed(&"primary_attack"),
 		"Raw fire touch release releases its action"
 	))
 
 	fire_button._input(_screen_touch(12, true, fire_center))
 	fire_button._input(_screen_touch(13, false, fire_center))
 	_append(failures, Assertions.expect_true(
-		fire_button.active_touch_id == 12 and fire_button.pressed and Input.is_action_pressed(&"fire"),
+		fire_button.active_touch_id == 12 and fire_button.pressed and Input.is_action_pressed(&"primary_attack"),
 		"A different touch release cannot release the active fire button"
 	))
 	var outside_fire := fire_button.get_global_rect().end + Vector2(32.0, 32.0)
 	fire_button._input(_screen_drag(12, outside_fire))
 	fire_button._input(_screen_touch(12, false, outside_fire))
 	_append(failures, Assertions.expect_true(
-		not fire_button.pressed and not Input.is_action_pressed(&"fire"),
+		not fire_button.pressed and not Input.is_action_pressed(&"primary_attack"),
 		"Releasing the active touch outside the button releases fire"
 	))
 
@@ -189,7 +189,7 @@ func _append_raw_touch_event_failures(failures: Array[String]) -> void:
 	jump_button._input(_screen_touch(15, true, jump_center))
 	_append(failures, Assertions.expect_true(
 		fire_button.active_touch_id == 14 and jump_button.active_touch_id == 15 and
-		Input.is_action_pressed(&"fire") and Input.is_action_pressed(&"jump"),
+		Input.is_action_pressed(&"primary_attack") and Input.is_action_pressed(&"jump"),
 		"Different raw touch IDs hold fire and jump simultaneously"
 	))
 	for action in [&"move_left", &"move_right", &"move_forward", &"move_back"]:
@@ -200,7 +200,7 @@ func _append_raw_touch_event_failures(failures: Array[String]) -> void:
 		not Input.is_action_pressed(&"move_right") and
 		not Input.is_action_pressed(&"move_forward") and
 		not Input.is_action_pressed(&"move_back") and
-		not Input.is_action_pressed(&"fire") and
+		not Input.is_action_pressed(&"primary_attack") and
 		not Input.is_action_pressed(&"jump") and
 		fire_button.active_touch_id == -1 and not fire_button.pressed and
 		jump_button.active_touch_id == -1 and not jump_button.pressed,
@@ -224,7 +224,8 @@ func _screen_drag(index: int, position: Vector2) -> InputEventScreenDrag:
 
 func _release_test_actions() -> void:
 	for action in [
-		&"move_left", &"move_right", &"move_forward", &"move_back", &"jump", &"fire"
+		&"move_left", &"move_right", &"move_forward", &"move_back", &"jump",
+		&"primary_attack"
 	]:
 		Input.action_release(action)
 

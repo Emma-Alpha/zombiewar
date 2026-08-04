@@ -56,7 +56,7 @@ grow_horizontal = 0
 grow_vertical = 0
 mouse_filter = 2
 script = ExtResource("3_button")
-action = &"fire"
+action = &"primary_attack"
 
 [node name="Label" type="Label" parent="Layout/FireButton"]
 layout_mode = 1

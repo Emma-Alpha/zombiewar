@@ -17,8 +17,8 @@
 - 本计划共4个task，不再拆分更多独立task；每个task遵循RED→GREEN→回归验证。
 - 执行代理不得按task创建独立提交；整个计划完成后由用户自行暂存和提交。
 - `PlayerController`仍是唯一读取`Input`的节点；任何武器、`EquipmentController`和触发器辅助类均不得直接读取全局输入。
-- 把输入动作`fire`改名为`primary_attack`并继续绑定J；新增`weapon_pistol`=`1`、`weapon_rifle`=`2`、`weapon_knife`=`3`。
-- 第一版默认装备步枪；1切手枪、2切步枪、3切刀，切换立即生效并取消上一把武器尚未完成的攻击。
+- 把输入动作`fire`改名为`primary_attack`并继续绑定J；新增`weapon_pistol`=`1`、`weapon_rifle`=`2`、`weapon_knife`=`3`、`weapon_slot_4`=`4`。
+- 第一版默认装备步枪；1切手枪、2切步枪、3切刀、4尝试切换第4槽位。前三个槽位已有武器且切换立即生效并取消上一把武器尚未完成的攻击；第4槽位为预留空槽，在新增第4把武器前按4保持当前装备不变。
 - 手枪初始参数：单发、35伤害、3发/秒、24米射程、6度/15米辅助命中、视觉后坐0.10、镜头脉冲0.08。
 - 步枪保持当前核心参数：连发、25伤害、6发/秒、28米射程、5度/18米辅助命中、视觉后坐0.08、镜头脉冲0.06。
 - 刀初始参数：单次挥砍、35伤害、1.5次/秒、0.22秒命中时刻、0.55秒攻击锁、前方`Vector3(1.5, 1.4, 1.4)`盒形范围、镜头脉冲0.04。
@@ -64,7 +64,7 @@
 - `scenes/player/Player.tscn`：删除固定`Weapon`节点，添加`EquipmentController`并配置三把武器场景。
 - `scripts/gameplay/demo_arena.gd`：从`shot_fired`接线改为通用`attack_resolved`接线。
 - `scenes/gameplay/DemoArena.tscn`：更新键位提示。
-- `project.godot`：将J映射到`primary_attack`，加入数字键1/2/3武器槽动作。
+- `project.godot`：将J映射到`primary_attack`，加入数字键1/2/3/4武器槽动作。
 - `scripts/ui/mobile_action_button.gd`：不改实现，只继续消费任意注入的动作名。
 - `tests/unit/test_project_contract.gd`：更新输入动作契约。
 - `tests/unit/test_mobile_touch_controls.gd`：把移动端测试动作从`fire`改为`primary_attack`。
@@ -910,6 +910,7 @@ signal attack_resolved(
 @export var pistol_action: StringName = &"weapon_pistol"
 @export var rifle_action: StringName = &"weapon_rifle"
 @export var knife_action: StringName = &"weapon_knife"
+@export var slot_four_action: StringName = &"weapon_slot_4"
 
 @onready var equipment: EquipmentController = $EquipmentController
 @onready var functional_ray_origin: Marker3D = $FunctionalRayOrigin
@@ -937,6 +938,8 @@ elif Input.is_action_just_pressed(rifle_action):
 	equipment.equip_slot(1)
 elif Input.is_action_just_pressed(knife_action):
 	equipment.equip_slot(2)
+elif Input.is_action_just_pressed(slot_four_action):
+	equipment.equip_slot(3)
 
 var trigger_pressed := Input.is_action_pressed(primary_attack_action)
 var trigger_just_pressed := Input.is_action_just_pressed(primary_attack_action)
@@ -1055,9 +1058,14 @@ weapon_knife={
 "events": [Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":-1,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":false,"meta_pressed":false,"pressed":false,"keycode":51,"physical_keycode":0,"key_label":0,"unicode":51,"location":0,"echo":false,"script":null)
 ]
 }
+weapon_slot_4={
+"deadzone": 0.5,
+"events": [Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":-1,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":false,"meta_pressed":false,"pressed":false,"keycode":52,"physical_keycode":0,"key_label":0,"unicode":52,"location":0,"echo":false,"script":null)
+]
+}
 ```
 
-在`tests/unit/test_project_contract.gd`中要求`primary_attack`、`weapon_pistol`、`weapon_rifle`、`weapon_knife`，键值分别为`KEY_J`、`KEY_1`、`KEY_2`、`KEY_3`，并移除`fire`契约。在`tests/unit/test_mobile_touch_controls.gd`中把测试按钮动作和释放列表中的`&"fire"`全部替换为`&"primary_attack"`。
+在`tests/unit/test_project_contract.gd`中要求`primary_attack`、`weapon_pistol`、`weapon_rifle`、`weapon_knife`、`weapon_slot_4`，键值分别为`KEY_J`、`KEY_1`、`KEY_2`、`KEY_3`、`KEY_4`，并移除`fire`契约。在`tests/unit/test_mobile_touch_controls.gd`中把测试按钮动作和释放列表中的`&"fire"`全部替换为`&"primary_attack"`。
 
 把`test_weapon_feedback.gd`和`test_tracer_pool.gd`中的固定节点：
 

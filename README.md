@@ -12,15 +12,19 @@ Open `project.godot` in Godot 4.7.1 and run the configured main scene, or use:
 
 ## Controls
 
-- `W/A/S/D`: camera-relative movement and facing
-- Release movement keys: retain the last facing direction
+- `W/A/S/D`: camera-relative movement, facing, and attack direction
 - `Space`: grounded jump
-- Hold `J`: fire the rifle along the current facing direction
-- Change `W/A/S/D` while firing: immediately redirect movement, facing, and the next shot together
+- `J`: use the current weapon's primary attack
+- `1`: equip the semi-automatic pistol
+- `2`: equip the automatic rifle
+- `3`: equip the melee knife
+- `4`: reserved empty weapon slot; with no fourth weapon yet, keep the current weapon equipped
 
-- WASD始终同时改变移动、角色朝向和射击方向；按住J时改变WASD会立即朝新方向开火。
-- 松开WASD后保留最后一个非零方向，原地按住J会沿该方向继续射击。
-- 步枪使用5度、18米内的轻微胸口辅助命中，但不会穿过车辆、集装箱或墙体。
+- 手枪每次按下J只发射一枪，持续按住不会自动补发。
+- 步枪按住J以每秒6发持续射击。
+- 刀每次按下J播放一次Slash，在0.22秒命中窗口攻击前方最近的一只僵尸。
+- 切换武器会立即更换模型、移动动画和攻击方式，并取消上一把武器未完成的攻击。
+- WASD始终同时改变移动、角色朝向和攻击方向；松开后保留最后一个非零方向。
 - 命中产生短时空中血花；地面血迹在本局内永久保留，达到192个后复用最旧血迹。
 
 Mouse input is not used by the demo.
@@ -35,6 +39,8 @@ Mouse input is not used by the demo.
 ## Demo scope
 
 The demo contains one orthographic 2.5D arena, a controllable player, static collision props, and four active damageable zombies. Each zombie has 50 health; the rifle deals 25 base damage at 6 shots per second. The player starts with 100 health.
+
+The first version has no ammunition, reloads, inventory, pickups, drops, weapon upgrades, or mobile weapon-switching buttons. The mobile attack button uses the currently equipped weapon.
 
 Zombies wander randomly at low speed around their own spawn points by default. When the player enters the 7-unit perception range, they approach slowly at the speed supplied by the selected difficulty profile. They only stop and begin a punch after the player enters the fixed 1.45-unit attack range; the hit follows a 0.50-second windup and each attack uses the fixed 1.40-second cooldown. Difficulty changes only the perception approach speed, never attack damage or frequency. Player damage updates the HUD, flashes the screen, interrupts normal animation briefly, and lethal damage disables movement and shooting before showing `PLAYER DOWN`.
 

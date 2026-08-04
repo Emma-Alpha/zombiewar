@@ -2,6 +2,7 @@ extends RefCounted
 
 const Assertions = preload("res://tests/helpers/assertions.gd")
 const PLAYER_SCENE := preload("res://scenes/player/Player.tscn")
+const EquipmentController = preload("res://scripts/player/equipment_controller.gd")
 
 var damage_emissions := 0
 var death_emissions := 0
@@ -11,7 +12,10 @@ func run() -> Array[String]:
 	var player := PLAYER_SCENE.instantiate()
 	var tree := Engine.get_main_loop() as SceneTree
 	tree.root.add_child(player)
-	var aim_indicator := player.get_node_or_null("Weapon/AimIndicator") as Node3D
+	var equipment := player.get_node_or_null("EquipmentController") as EquipmentController
+	var weapon := equipment.get_current_weapon() if equipment != null else null
+	if weapon != null:
+		weapon.set_attack_input(true, true, Vector3.FORWARD)
 
 	_append(failures, Assertions.expect_true(
 		player.has_method("is_alive") and player.has_method("apply_damage"),
@@ -52,14 +56,19 @@ func run() -> Array[String]:
 		1,
 		"A successful hit emits one damage event"
 	))
+	_append(failures, Assertions.expect_true(
+		weapon != null and not weapon.trigger_pressed and not weapon.trigger_just_pressed,
+		"Taking damage cancels the current weapon attack"
+	))
+	player.set("attack_animation_remaining", 0.5)
 	player.call("apply_damage", 1000.0, Vector3.RIGHT)
 	_append(failures, Assertions.expect_true(
 		not bool(player.call("is_alive")),
 		"Lethal damage defeats player"
 	))
 	_append(failures, Assertions.expect_true(
-		aim_indicator != null and not aim_indicator.visible,
-		"Player death hides the persistent aim guide"
+		weapon != null and not weapon.trigger_pressed and not weapon.trigger_just_pressed,
+		"Player death keeps the current weapon attack cancelled"
 	))
 	_append(failures, Assertions.expect_equal(
 		death_emissions,
@@ -71,6 +80,12 @@ func run() -> Array[String]:
 		0.0,
 		0.0001,
 		"Death clears the temporary hit-reaction lock"
+	))
+	_append(failures, Assertions.expect_float_near(
+		float(player.get("attack_animation_remaining")),
+		0.0,
+		0.0001,
+		"Death clears the weapon attack animation lock"
 	))
 	_append(failures, Assertions.expect_float_near(
 		float(player.call("apply_damage", 10.0, Vector3.RIGHT)),

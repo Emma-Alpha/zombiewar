@@ -3,11 +3,16 @@ extends RefCounted
 const Assertions = preload("res://tests/helpers/assertions.gd")
 const PLAYER_SCENE := preload("res://scenes/player/Player.tscn")
 const CAMERA_SCENE := preload("res://scenes/camera/FollowCamera.tscn")
+const EquipmentController = preload("res://scripts/player/equipment_controller.gd")
+const RangedWeapon = preload("res://scripts/combat/weapons/ranged_weapon.gd")
 
 func run() -> Array[String]:
 	var failures: Array[String] = []
 	var player := PLAYER_SCENE.instantiate() as PlayerController
-	var weapon := player.get_node("Weapon") as PlayerWeapon
+	var tree := Engine.get_main_loop() as SceneTree
+	tree.root.add_child(player)
+	var equipment := player.get_node("EquipmentController") as EquipmentController
+	var weapon := equipment.get_current_weapon() as RangedWeapon
 	var muzzle_flash := weapon.get_node_or_null("Muzzle/MuzzleFlash")
 	var shot_audio := weapon.get_node_or_null("ShotAudio") as AudioStreamPlayer3D
 	_append(failures, Assertions.expect_true(
@@ -19,60 +24,18 @@ func run() -> Array[String]:
 		"Weapon has a loaded 3D shot sound"
 	))
 	_append(failures, Assertions.expect_true(
-		weapon.has_method("bind_visual_anchor"),
-		"Weapon can bind its muzzle to the animated rifle"
+		weapon.visual_anchor != null,
+		"Weapon binds its muzzle to the animated rifle"
 	))
-	var tree := Engine.get_main_loop() as SceneTree
-	tree.root.add_child(player)
-	var aim_indicator := weapon.get_node_or_null("AimIndicator") as Node3D
 	_append(failures, Assertions.expect_vector3_near(
 		weapon.muzzle.position,
-		Vector3(0.84, 0.31, 0.61),
+		Vector3(0.0, 0.0, -0.55),
 		0.0001,
 		"Visual muzzle uses the Rifle local barrel-tip offset"
 	))
-	_append(failures, Assertions.expect_true(
-		aim_indicator != null and aim_indicator.visible,
-		"Weapon has a visible persistent aim guide"
-	))
 
-	var aim_segments: Array[MeshInstance3D] = []
-	if aim_indicator != null:
-		for child in aim_indicator.get_children():
-			if child is MeshInstance3D:
-				aim_segments.append(child as MeshInstance3D)
-	_append(failures, Assertions.expect_equal(
-		aim_segments.size(),
-		5,
-		"Aim guide uses five separated segments"
-	))
-	if not aim_segments.is_empty():
-		var segment_mesh := aim_segments[0].mesh as BoxMesh
-		var segment_material: StandardMaterial3D
-		if segment_mesh != null:
-			segment_material = segment_mesh.material as StandardMaterial3D
-		_append(failures, Assertions.expect_true(
-			segment_material != null and
-			segment_material.albedo_color.b > segment_material.albedo_color.r and
-			segment_material.albedo_color.a < 0.6,
-			"Aim guide is translucent and cyan rather than tracer orange"
-		))
-
-	weapon.set_combat_input(false, false, Vector3.RIGHT)
+	weapon.set_attack_input(false, false, Vector3.RIGHT)
 	weapon._process(0.0)
-	if aim_indicator != null:
-		_append(failures, Assertions.expect_vector3_near(
-			aim_indicator.global_position,
-			weapon.muzzle.global_position,
-			0.0001,
-			"Aim guide starts at the live visual muzzle"
-		))
-		_append(failures, Assertions.expect_vector3_near(
-			-aim_indicator.global_basis.z,
-			Vector3.RIGHT,
-			0.0001,
-			"Aim guide points along the actual aim direction"
-		))
 	var visual_root := player.get_node("VisualRoot") as Node3D
 	var visual_muzzle_before := weapon.muzzle.global_position
 	visual_root.position += Vector3(0.0, 0.0, 0.12)
@@ -82,13 +45,6 @@ func run() -> Array[String]:
 		visual_muzzle_after.distance_to(visual_muzzle_before) > 0.11,
 		"Visual muzzle follows the recoil-driven rifle"
 	))
-	if aim_indicator != null:
-		_append(failures, Assertions.expect_vector3_near(
-			aim_indicator.global_position,
-			weapon.muzzle.global_position,
-			0.0001,
-			"Aim guide follows the recoil-driven rifle muzzle"
-		))
 	_append(failures, Assertions.expect_true(
 		weapon.has_method("get_ray_origin"),
 		"Weapon exposes a stable functional ray origin"

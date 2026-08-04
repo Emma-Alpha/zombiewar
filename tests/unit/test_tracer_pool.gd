@@ -3,13 +3,16 @@ extends RefCounted
 const Assertions = preload("res://tests/helpers/assertions.gd")
 const PLAYER_SCENE := preload("res://scenes/player/Player.tscn")
 const TRACER_SCRIPT := preload("res://scripts/fx/shot_tracer.gd")
+const EquipmentController = preload("res://scripts/player/equipment_controller.gd")
+const RangedWeapon = preload("res://scripts/combat/weapons/ranged_weapon.gd")
 
 func run() -> Array[String]:
 	var failures: Array[String] = []
 	var player := PLAYER_SCENE.instantiate() as PlayerController
 	var tree := Engine.get_main_loop() as SceneTree
 	tree.root.add_child(player)
-	var weapon := player.get_node("Weapon") as PlayerWeapon
+	var equipment := player.get_node("EquipmentController") as EquipmentController
+	var weapon := equipment.get_current_weapon() as RangedWeapon
 	var tracers := _tracers_in(weapon)
 	_append(failures, Assertions.expect_true(
 		tracers.size() >= 8,
@@ -19,7 +22,7 @@ func run() -> Array[String]:
 		var functional_origin := player.get_node("FunctionalRayOrigin") as Marker3D
 		functional_origin.global_position += Vector3(0.4, 0.0, 0.0)
 		var visual_origin := weapon.muzzle.global_position
-		weapon.call("_fire", player, Vector3.FORWARD)
+		weapon.call("_fire", Vector3.FORWARD)
 
 		var fired_tracer := tracers[0] as ShotTracer
 		var tracer_near_end := fired_tracer.to_global(Vector3(0.0, 0.0, 0.5))

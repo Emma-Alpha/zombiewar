@@ -4,12 +4,12 @@ class_name PlayerController
 const PlayerMotion = preload("res://scripts/player/player_motion.gd")
 const HitResult = preload("res://scripts/combat/hit_result.gd")
 const Health = preload("res://scripts/combat/health.gd")
-const HIDDEN_WEAPONS: Array[String] = [
-	"Axe", "Guitar", "Knife", "Pistol", "Shotgun", "SMG", "Spear",
-	"WoodenBat_Barbed", "WoodenBat_Saw",
-]
 
-signal shot_fired(direction: Vector3, result: HitResult)
+signal attack_resolved(
+	direction: Vector3,
+	result: HitResult,
+	camera_impulse_strength: float
+)
 signal health_changed(current: float, maximum: float)
 signal damaged(amount: float)
 signal died
@@ -25,7 +25,11 @@ signal died
 @export var move_back_action: StringName = &"move_back"
 @export_range(0.0, 1.0, 0.01) var move_input_deadzone := 0.0
 @export var jump_action: StringName = &"jump"
-@export var fire_action: StringName = &"fire"
+@export var primary_attack_action: StringName = &"primary_attack"
+@export var pistol_action: StringName = &"weapon_pistol"
+@export var rifle_action: StringName = &"weapon_rifle"
+@export var knife_action: StringName = &"weapon_knife"
+@export var slot_four_action: StringName = &"weapon_slot_4"
 
 @export_group("Movement Feel")
 @export var move_speed: float = 6.0
@@ -36,11 +40,10 @@ signal died
 @export var jump_speed: float = 8.5
 
 @export_group("Weapon Feel")
-@export var visual_recoil_kick := 0.08
 @export var visual_recoil_recovery := 1.2
 
 @onready var visual_root: Node3D = $VisualRoot
-@onready var weapon: PlayerWeapon = $Weapon
+@onready var equipment: EquipmentController = $EquipmentController
 @onready var functional_ray_origin: Marker3D = $FunctionalRayOrigin
 
 var movement_camera: Camera3D
@@ -51,25 +54,20 @@ var visual_recoil_offset := 0.0
 var health: Health
 var defeated := false
 var hit_reaction_remaining := 0.0
+var attack_animation_remaining := 0.0
 
 func _ready() -> void:
 	_ensure_health_initialized()
 	animation_player = visual_root.find_child("AnimationPlayer", true, false) as AnimationPlayer
-	for weapon_name in HIDDEN_WEAPONS:
-		var weapon_visual := visual_root.find_child(weapon_name, true, false) as Node3D
-		if weapon_visual != null:
-			weapon_visual.visible = false
-	var rifle_visual := visual_root.find_child("Rifle", true, false) as Node3D
-	if rifle_visual != null:
-		weapon.bind_visual_anchor(rifle_visual)
-	functional_ray_origin.global_position = weapon.muzzle.global_position
-	weapon.bind_functional_ray_origin(functional_ray_origin)
 	visual_rest_position = visual_root.position
-	if not weapon.shot_fired.is_connected(_on_weapon_shot_fired):
-		weapon.shot_fired.connect(_on_weapon_shot_fired)
+	equipment.attack_started.connect(_on_weapon_attack_started)
+	equipment.attack_resolved.connect(_on_weapon_attack_resolved)
+	equipment.weapon_changed.connect(_on_weapon_changed)
+	equipment.setup(self, visual_root, functional_ray_origin)
 
 func _process(delta: float) -> void:
 	hit_reaction_remaining = maxf(hit_reaction_remaining - delta, 0.0)
+	attack_animation_remaining = maxf(attack_animation_remaining - delta, 0.0)
 	visual_recoil_offset = move_toward(
 		visual_recoil_offset,
 		0.0,
@@ -96,15 +94,27 @@ func _physics_process(delta: float) -> void:
 	var input_vector := get_move_input_vector()
 	var camera_basis := movement_camera.global_basis if movement_camera != null else Basis.IDENTITY
 	var move_direction := PlayerMotion.world_direction(input_vector, camera_basis)
-	var trigger_pressed := Input.is_action_pressed(fire_action)
-	var trigger_just_pressed := Input.is_action_just_pressed(fire_action)
 
 	aim_direction = PlayerMotion.next_aim_direction(
 		move_direction,
 		aim_direction
 	)
 	rotation.y = PlayerMotion.next_facing_yaw(aim_direction, rotation.y)
-	weapon.set_combat_input(trigger_pressed, trigger_just_pressed, aim_direction)
+	if Input.is_action_just_pressed(pistol_action):
+		equipment.equip_slot(0)
+	elif Input.is_action_just_pressed(rifle_action):
+		equipment.equip_slot(1)
+	elif Input.is_action_just_pressed(knife_action):
+		equipment.equip_slot(2)
+	elif Input.is_action_just_pressed(slot_four_action):
+		equipment.equip_slot(3)
+
+	var trigger_pressed := Input.is_action_pressed(primary_attack_action)
+	var trigger_just_pressed := Input.is_action_just_pressed(primary_attack_action)
+	if hit_reaction_remaining > 0.0:
+		trigger_pressed = false
+		trigger_just_pressed = false
+	equipment.set_attack_input(trigger_pressed, trigger_just_pressed, aim_direction)
 
 	var acceleration := ground_acceleration if is_on_floor() else air_acceleration
 	var deceleration := ground_deceleration if is_on_floor() else air_acceleration
@@ -130,23 +140,52 @@ func _physics_process(delta: float) -> void:
 	_update_animation(Vector2(velocity.x, velocity.z).length())
 
 func _update_animation(horizontal_speed: float) -> void:
-	if animation_player == null or defeated or hit_reaction_remaining > 0.0:
+	if animation_player == null or defeated:
 		return
-	var animation_name := &"Idle_Gun"
+	if hit_reaction_remaining > 0.0:
+		return
+	if attack_animation_remaining > 0.0:
+		return
+	var animation_name := equipment.get_idle_animation()
 	if not is_on_floor():
 		animation_name = &"Jump_Idle"
 	elif horizontal_speed > 0.2:
-		animation_name = &"Run_Gun"
+		animation_name = equipment.get_run_animation()
 	if animation_player.current_animation != animation_name:
 		animation_player.play(animation_name, 0.15)
 
-func _on_weapon_shot_fired(
+func _on_weapon_attack_started(
+	animation_name: StringName,
+	lock_duration: float
+) -> void:
+	if defeated or hit_reaction_remaining > 0.0:
+		equipment.cancel_attack()
+		attack_animation_remaining = 0.0
+		return
+	attack_animation_remaining = maxf(lock_duration, 0.0)
+	if (
+		animation_player != null and
+		not animation_name.is_empty() and
+		animation_player.has_animation(animation_name)
+	):
+		animation_player.play(animation_name, 0.05)
+
+func _on_weapon_attack_resolved(
 	_origin: Vector3,
 	direction: Vector3,
-	result: HitResult
+	result: HitResult,
+	recoil_kick: float,
+	camera_impulse_strength: float
 ) -> void:
-	visual_recoil_offset = minf(visual_recoil_offset + visual_recoil_kick, 0.12)
-	shot_fired.emit(direction, result)
+	visual_recoil_offset = minf(
+		visual_recoil_offset + maxf(recoil_kick, 0.0),
+		0.12
+	)
+	attack_resolved.emit(direction, result, camera_impulse_strength)
+
+func _on_weapon_changed(_definition: WeaponDefinition) -> void:
+	attack_animation_remaining = 0.0
+	_update_animation(Vector2(velocity.x, velocity.z).length())
 
 func apply_damage(amount: float, _source_position := Vector3.ZERO) -> float:
 	_ensure_health_initialized()
@@ -155,6 +194,8 @@ func apply_damage(amount: float, _source_position := Vector3.ZERO) -> float:
 	var applied := health.apply_damage(amount)
 	if applied <= 0.0:
 		return 0.0
+	equipment.cancel_attack()
+	attack_animation_remaining = 0.0
 	damaged.emit(applied)
 	if not defeated:
 		hit_reaction_remaining = hit_reaction_duration
@@ -174,7 +215,7 @@ func _ensure_health_initialized() -> void:
 	health_changed.emit(health.current, health.maximum)
 
 func _update_defeated_motion(delta: float) -> void:
-	weapon.set_combat_input(false, false, aim_direction)
+	equipment.set_attack_input(false, false, aim_direction)
 	velocity.x = move_toward(velocity.x, 0.0, ground_deceleration * delta)
 	velocity.z = move_toward(velocity.z, 0.0, ground_deceleration * delta)
 	velocity.y = PlayerMotion.next_vertical_velocity(
@@ -191,13 +232,12 @@ func _on_health_changed(current: float, maximum: float) -> void:
 	health_changed.emit(current, maximum)
 
 func _on_depleted() -> void:
+	equipment.cancel_attack()
+	attack_animation_remaining = 0.0
 	defeated = true
 	hit_reaction_remaining = 0.0
 	velocity.x = 0.0
 	velocity.z = 0.0
-	weapon.set_combat_input(false, false, aim_direction)
-	weapon.set_physics_process(false)
-	weapon.set_aim_indicator_visible(false)
 	if animation_player != null and animation_player.has_animation(&"Death"):
 		animation_player.play(&"Death", 0.08)
 	died.emit()

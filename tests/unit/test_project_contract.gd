@@ -7,7 +7,11 @@ const REQUIRED_ACTIONS: Array[StringName] = [
 	&"move_forward",
 	&"move_back",
 	&"jump",
-	&"fire",
+	&"primary_attack",
+	&"weapon_pistol",
+	&"weapon_rifle",
+	&"weapon_knife",
+	&"weapon_slot_4",
 ]
 const REQUIRED_KEY_BINDINGS: Dictionary = {
 	&"move_left": KEY_A,
@@ -15,7 +19,11 @@ const REQUIRED_KEY_BINDINGS: Dictionary = {
 	&"move_forward": KEY_W,
 	&"move_back": KEY_S,
 	&"jump": KEY_SPACE,
-	&"fire": KEY_J,
+	&"primary_attack": KEY_J,
+	&"weapon_pistol": KEY_1,
+	&"weapon_rifle": KEY_2,
+	&"weapon_knife": KEY_3,
+	&"weapon_slot_4": KEY_4,
 }
 
 func run() -> Array[String]:
