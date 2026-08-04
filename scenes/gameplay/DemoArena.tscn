@@ -1,4 +1,4 @@
-[gd_scene load_steps=21 format=3]
+[gd_scene load_steps=25 format=3]
 
 [ext_resource type="Script" path="res://scripts/gameplay/demo_arena.gd" id="1_arena"]
 [ext_resource type="PackedScene" path="res://scenes/player/Player.tscn" id="2_player"]
@@ -9,6 +9,7 @@
 [ext_resource type="Script" path="res://scripts/fx/ground_blood_manager.gd" id="7_ground_blood"]
 [ext_resource type="Resource" path="res://resources/difficulty/zombie_normal.tres" id="8_zombie_difficulty"]
 [ext_resource type="PackedScene" path="res://scenes/ui/MobileControls.tscn" id="9_mobile_controls"]
+[ext_resource type="FontFile" path="res://assets/fonts/NotoSansSC-UI.ttf" id="10_cjk_font"]
 
 [sub_resource type="Environment" id="Environment_arena"]
 background_mode = 1
@@ -56,6 +57,42 @@ content_margin_left = 14.0
 content_margin_top = 10.0
 content_margin_right = 14.0
 content_margin_bottom = 10.0
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_command_normal"]
+bg_color = Color(0.0627451, 0.0784314, 0.0980392, 0.9)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(1, 0.72, 0.12, 0.9)
+corner_radius_top_left = 10
+corner_radius_top_right = 10
+corner_radius_bottom_right = 10
+corner_radius_bottom_left = 10
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_command_hover"]
+bg_color = Color(0.22, 0.14, 0.06, 0.96)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(1, 0.82, 0.34, 1)
+corner_radius_top_left = 10
+corner_radius_top_right = 10
+corner_radius_bottom_right = 10
+corner_radius_bottom_left = 10
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_command_pressed"]
+bg_color = Color(0.72, 0.18, 0.08, 0.98)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(1, 0.9, 0.55, 1)
+corner_radius_top_left = 10
+corner_radius_top_right = 10
+corner_radius_bottom_right = 10
+corner_radius_bottom_left = 10
 
 [node name="DemoArena" type="Node3D"]
 script = ExtResource("1_arena")
@@ -198,6 +235,43 @@ position = Vector3(0, 0, 6)
 
 [node name="HUD" type="CanvasLayer" parent="."]
 
+[node name="SpawnWaveButton" type="Button" parent="HUD"]
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -200.0
+offset_top = 92.0
+offset_right = -24.0
+offset_bottom = 148.0
+grow_horizontal = 0
+theme_override_fonts/font = ExtResource("10_cjk_font")
+theme_override_font_sizes/font_size = 20
+theme_override_styles/normal = SubResource("StyleBoxFlat_command_normal")
+theme_override_styles/hover = SubResource("StyleBoxFlat_command_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_command_pressed")
+text = "刷新僵尸"
+
+[node name="RestartButton" type="Button" parent="HUD"]
+visible = false
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -120.0
+offset_top = 84.0
+offset_right = 120.0
+offset_bottom = 156.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_fonts/font = ExtResource("10_cjk_font")
+theme_override_font_sizes/font_size = 24
+theme_override_colors/font_color = Color(1, 0.92, 0.72, 1)
+theme_override_styles/normal = SubResource("StyleBoxFlat_command_normal")
+theme_override_styles/hover = SubResource("StyleBoxFlat_command_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_command_pressed")
+text = "重新开始"
+
 [node name="MobileControls" parent="." instance=ExtResource("9_mobile_controls")]
 desktop_help_path = NodePath("../HUD/ControlsPanel")
 
@@ -273,7 +347,7 @@ theme_override_colors/font_shadow_color = Color(0, 0, 0, 0.9)
 theme_override_constants/shadow_offset_x = 3
 theme_override_constants/shadow_offset_y = 3
 theme_override_font_sizes/font_size = 42
-text = "PLAYER DOWN\nPRESS R TO RESTART"
+text = "PLAYER DOWN"
 horizontal_alignment = 1
 vertical_alignment = 1
 

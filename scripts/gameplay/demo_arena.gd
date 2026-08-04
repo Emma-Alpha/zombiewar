@@ -28,6 +28,7 @@ var damage_flash_tween: Tween
 var wave_rng := RandomNumberGenerator.new()
 var wave_number := 0
 var player_defeated := false
+var restart_pending := false
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_SCENE_INSTANTIATED:
@@ -47,13 +48,24 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and (event as InputEventKey).echo:
 		return
 	if event.is_action_pressed(&"spawn_wave"):
-		spawn_wave()
+		request_spawn_wave()
 		get_viewport().set_input_as_handled()
 		return
-	if event.is_action_pressed(&"restart_demo") and player_defeated:
-		restart_requested.emit()
-		call_deferred("_reload_current_scene")
+	if event.is_action_pressed(&"restart_demo"):
+		request_restart()
 		get_viewport().set_input_as_handled()
+
+func request_spawn_wave() -> int:
+	if player_defeated:
+		return 0
+	return spawn_wave()
+
+func request_restart() -> void:
+	if not player_defeated or restart_pending:
+		return
+	restart_pending = true
+	restart_requested.emit()
+	call_deferred("_reload_current_scene")
 
 func _reload_current_scene() -> void:
 	var scene_tree := get_tree()
@@ -61,6 +73,13 @@ func _reload_current_scene() -> void:
 		scene_tree.reload_current_scene()
 
 func _wire_dependencies() -> void:
+	var spawn_button := get_node_or_null("HUD/SpawnWaveButton") as Button
+	if spawn_button != null and not spawn_button.pressed.is_connected(request_spawn_wave):
+		spawn_button.pressed.connect(request_spawn_wave)
+	var restart_button := get_node_or_null("HUD/RestartButton") as Button
+	if restart_button != null and not restart_button.pressed.is_connected(request_restart):
+		restart_button.pressed.connect(request_restart)
+	_sync_command_controls()
 	var player := get_node_or_null("Player") as PlayerController
 	var targets := get_node_or_null("World/Targets")
 	if targets != null:
@@ -172,9 +191,18 @@ func _on_player_died() -> void:
 	player_defeated = true
 	var game_over := get_node_or_null("HUD/GameOver") as Label
 	if game_over != null:
-		game_over.text = "PLAYER DOWN\nPRESS R TO RESTART"
+		game_over.text = "PLAYER DOWN"
 		game_over.visible = true
+	_sync_command_controls()
 	_update_wave_hud()
+
+func _sync_command_controls() -> void:
+	var spawn_button := get_node_or_null("HUD/SpawnWaveButton") as Button
+	if spawn_button != null:
+		spawn_button.visible = not player_defeated
+	var restart_button := get_node_or_null("HUD/RestartButton") as Button
+	if restart_button != null:
+		restart_button.visible = player_defeated
 
 func spawn_wave() -> int:
 	if player_defeated:

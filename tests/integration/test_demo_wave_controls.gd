@@ -22,6 +22,8 @@ func run() -> Array[String]:
 	var wave_status := arena.get_node_or_null("HUD/WaveStatus") as Label
 	var game_over := arena.get_node_or_null("HUD/GameOver") as Label
 	var controls := arena.get_node_or_null("HUD/ControlsPanel/Controls") as Label
+	var spawn_wave_button := arena.get_node_or_null("HUD/SpawnWaveButton") as Button
+	var restart_button := arena.get_node_or_null("HUD/RestartButton") as Button
 	var restart_emissions := [0]
 	if arena.has_signal("restart_requested"):
 		arena.connect("restart_requested", func() -> void:
@@ -41,12 +43,20 @@ func run() -> Array[String]:
 		"Desktop help documents wave and restart controls"
 	))
 
-	var before_t := int(arena.call("get_active_zombie_count"))
-	arena.call("_unhandled_input", _pressed_action(&"spawn_wave"))
-	var after_t := int(arena.call("get_active_zombie_count"))
+	var before_button := int(arena.call("get_active_zombie_count"))
+	if spawn_wave_button != null:
+		spawn_wave_button.pressed.emit()
+	var after_button := int(arena.call("get_active_zombie_count"))
 	_append(failures, Assertions.expect_true(
-		after_t > before_t,
-		"T appends a wave while the player is alive"
+		after_button > before_button,
+		"Spawn-wave button appends a wave while alive"
+	))
+
+	var before_t := after_button
+	arena.call("_unhandled_input", _pressed_action(&"spawn_wave"))
+	_append(failures, Assertions.expect_true(
+		int(arena.call("get_active_zombie_count")) > before_t,
+		"T uses the same live wave request"
 	))
 
 	arena.call("_unhandled_input", _pressed_action(&"restart_demo"))
@@ -75,8 +85,8 @@ func run() -> Array[String]:
 	_append(failures, Assertions.expect_true(
 		game_over != null and
 		game_over.visible and
-		game_over.text == "PLAYER DOWN\nPRESS R TO RESTART",
-		"Death HUD explains the R restart"
+		game_over.text == "PLAYER DOWN",
+		"Death HUD shows the defeat state"
 	))
 	_append(failures, Assertions.expect_true(
 		objective != null and objective.text.contains("FINAL WAVE"),
@@ -84,18 +94,32 @@ func run() -> Array[String]:
 	))
 
 	var defeated_count := int(arena.call("get_active_zombie_count"))
-	arena.call("_unhandled_input", _pressed_action(&"spawn_wave"))
+	_append(failures, Assertions.expect_true(
+		spawn_wave_button != null and not spawn_wave_button.visible and
+		restart_button != null and restart_button.visible,
+		"Death swaps the spawn command for the centered restart command"
+	))
+
+	if spawn_wave_button != null:
+		spawn_wave_button.pressed.emit()
 	_append(failures, Assertions.expect_equal(
 		int(arena.call("get_active_zombie_count")),
 		defeated_count,
-		"T is ignored after player death"
+		"Spawn-wave button is ignored after player death"
 	))
 
+	if restart_button != null:
+		restart_button.pressed.emit()
+	_append(failures, Assertions.expect_equal(
+		restart_emissions[0],
+		1,
+		"Dead-player restart button requests one scene reload"
+	))
 	arena.call("_unhandled_input", _pressed_action(&"restart_demo"))
 	_append(failures, Assertions.expect_equal(
 		restart_emissions[0],
 		1,
-		"Dead-player R requests exactly one scene reload"
+		"Restart pending blocks duplicate button or R requests"
 	))
 
 	arena.free()
