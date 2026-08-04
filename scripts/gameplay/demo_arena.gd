@@ -5,6 +5,7 @@ signal restart_requested
 const HitResult = preload("res://scripts/combat/hit_result.gd")
 const ZombieDifficultyProfile = preload("res://scripts/gameplay/zombie_difficulty_profile.gd")
 const ZOMBIE_SCENE := preload("res://scenes/targets/ZombieTarget.tscn")
+const AUTO_WAVE_STATUS := "下一波即将到来"
 const SPAWN_POINT_NAMES: Array[StringName] = [
 	&"NorthWest",
 	&"NorthEast",
@@ -28,6 +29,7 @@ var damage_flash_tween: Tween
 var wave_rng := RandomNumberGenerator.new()
 var wave_number := 0
 var player_defeated := false
+var restart_pending := false
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_SCENE_INSTANTIATED:
@@ -47,13 +49,25 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and (event as InputEventKey).echo:
 		return
 	if event.is_action_pressed(&"spawn_wave"):
-		spawn_wave()
+		request_spawn_wave()
 		get_viewport().set_input_as_handled()
 		return
-	if event.is_action_pressed(&"restart_demo") and player_defeated:
-		restart_requested.emit()
-		call_deferred("_reload_current_scene")
+	if event.is_action_pressed(&"restart_demo"):
+		request_restart()
 		get_viewport().set_input_as_handled()
+
+func request_spawn_wave() -> int:
+	if player_defeated:
+		return 0
+	_cancel_auto_wave()
+	return spawn_wave()
+
+func request_restart() -> void:
+	if not player_defeated or restart_pending:
+		return
+	restart_pending = true
+	restart_requested.emit()
+	call_deferred("_reload_current_scene")
 
 func _reload_current_scene() -> void:
 	var scene_tree := get_tree()
@@ -61,6 +75,13 @@ func _reload_current_scene() -> void:
 		scene_tree.reload_current_scene()
 
 func _wire_dependencies() -> void:
+	var spawn_button := get_node_or_null("HUD/SpawnWaveButton") as Button
+	if spawn_button != null and not spawn_button.pressed.is_connected(request_spawn_wave):
+		spawn_button.pressed.connect(request_spawn_wave)
+	var restart_button := get_node_or_null("HUD/RestartButton") as Button
+	if restart_button != null and not restart_button.pressed.is_connected(request_restart):
+		restart_button.pressed.connect(request_restart)
+	_sync_command_controls()
 	var player := get_node_or_null("Player") as PlayerController
 	var targets := get_node_or_null("World/Targets")
 	if targets != null:
@@ -76,6 +97,12 @@ func _wire_dependencies() -> void:
 		not status_timer.timeout.is_connected(_hide_wave_status)
 	):
 		status_timer.timeout.connect(_hide_wave_status)
+	var auto_wave_timer := get_node_or_null("AutoWaveTimer") as Timer
+	if (
+		auto_wave_timer != null and
+		not auto_wave_timer.timeout.is_connected(_on_auto_wave_timeout)
+	):
+		auto_wave_timer.timeout.connect(_on_auto_wave_timeout)
 	var follow_camera := get_node_or_null("FollowCamera") as FollowCamera
 	var movement_camera := get_node_or_null("FollowCamera/Camera3D") as Camera3D
 	if player == null or follow_camera == null or movement_camera == null:
@@ -170,11 +197,21 @@ func _on_player_died() -> void:
 	if player_defeated:
 		return
 	player_defeated = true
+	_cancel_auto_wave()
 	var game_over := get_node_or_null("HUD/GameOver") as Label
 	if game_over != null:
-		game_over.text = "PLAYER DOWN\nPRESS R TO RESTART"
+		game_over.text = "PLAYER DOWN"
 		game_over.visible = true
+	_sync_command_controls()
 	_update_wave_hud()
+
+func _sync_command_controls() -> void:
+	var spawn_button := get_node_or_null("HUD/SpawnWaveButton") as Button
+	if spawn_button != null:
+		spawn_button.visible = not player_defeated
+	var restart_button := get_node_or_null("HUD/RestartButton") as Button
+	if restart_button != null:
+		restart_button.visible = player_defeated
 
 func spawn_wave() -> int:
 	if player_defeated:
@@ -291,7 +328,41 @@ func _has_spawn_clearance(
 
 func _on_target_exiting_tree(target: Node) -> void:
 	if target is ZombieTarget:
-		call_deferred("_update_wave_hud")
+		call_deferred("_refresh_wave_state_after_target_exit")
+
+func _refresh_wave_state_after_target_exit() -> void:
+	_update_wave_hud()
+	_schedule_auto_wave_if_empty()
+
+func _schedule_auto_wave_if_empty() -> bool:
+	if player_defeated or get_active_zombie_count() != 0:
+		return false
+	var timer := get_node_or_null("AutoWaveTimer") as Timer
+	if timer == null or not timer.is_stopped():
+		return false
+	var status_timer := get_node_or_null("WaveStatusTimer") as Timer
+	if status_timer != null:
+		status_timer.stop()
+	var status := get_node_or_null("HUD/WaveStatus") as Label
+	if status != null:
+		status.text = AUTO_WAVE_STATUS
+		status.visible = true
+	timer.start()
+	return true
+
+func _cancel_auto_wave() -> void:
+	var timer := get_node_or_null("AutoWaveTimer") as Timer
+	if timer != null:
+		timer.stop()
+	var status := get_node_or_null("HUD/WaveStatus") as Label
+	if status != null and status.text == AUTO_WAVE_STATUS:
+		status.visible = false
+
+func _on_auto_wave_timeout() -> void:
+	if player_defeated or get_active_zombie_count() != 0:
+		return
+	_hide_wave_status()
+	spawn_wave()
 
 func _update_wave_hud() -> void:
 	var objective := get_node_or_null("HUD/Objective") as Label

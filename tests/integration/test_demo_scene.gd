@@ -37,6 +37,9 @@ func run() -> Array[String]:
 	var game_over := arena.get_node_or_null("HUD/GameOver") as Label
 	var wave_status := arena.get_node_or_null("HUD/WaveStatus") as Label
 	var wave_status_timer := arena.get_node_or_null("WaveStatusTimer") as Timer
+	var auto_wave_timer := arena.get_node_or_null("AutoWaveTimer") as Timer
+	var spawn_wave_button := arena.get_node_or_null("HUD/SpawnWaveButton") as Button
+	var restart_button := arena.get_node_or_null("HUD/RestartButton") as Button
 	var mobile_controls := arena.get_node_or_null("MobileControls")
 	var virtual_joystick := arena.get_node_or_null(
 		"MobileControls/Layout/VirtualJoystick"
@@ -196,6 +199,46 @@ func run() -> Array[String]:
 		mobile_controls.get("desktop_help_path") == NodePath("../HUD/ControlsPanel"),
 		"Mobile controls toggle the existing desktop help panel"
 	))
+	_append(failures, Assertions.expect_true(
+		spawn_wave_button != null and
+		spawn_wave_button.get_parent() == arena.get_node_or_null("HUD") and
+		spawn_wave_button.size.x >= 176.0 and
+		spawn_wave_button.size.y >= 56.0 and
+		spawn_wave_button.visible,
+		"Demo exposes a live cross-platform spawn-wave button"
+	))
+	_append(failures, Assertions.expect_true(
+		restart_button != null and
+		restart_button.get_parent() == arena.get_node_or_null("HUD") and
+		restart_button.size.x >= 240.0 and
+		restart_button.size.y >= 72.0 and
+		not restart_button.visible,
+		"Demo keeps the centered restart button hidden while alive"
+	))
+	for command_button in [spawn_wave_button, restart_button]:
+		var button := command_button as Button
+		_append(failures, Assertions.expect_true(
+			button != null and button.get_theme_font(&"font") != null,
+			"Cross-platform command button has the Chinese UI font"
+		))
+		if button == null or button.get_theme_font(&"font") == null:
+			continue
+		for glyph in button.text:
+			_append(failures, Assertions.expect_true(
+				button.get_theme_font(&"font").has_char(glyph.unicode_at(0)),
+				"Command button font includes glyph %s" % glyph
+			))
+	_append(failures, Assertions.expect_true(
+		wave_status != null and wave_status.get_theme_font(&"font") != null,
+		"Automatic wave status has the Chinese UI font"
+	))
+	for glyph in "下一波即将到来":
+		_append(failures, Assertions.expect_true(
+			wave_status != null and
+			wave_status.get_theme_font(&"font") != null and
+			wave_status.get_theme_font(&"font").has_char(glyph.unicode_at(0)),
+			"Automatic wave status font includes glyph %s" % glyph
+		))
 	for candidate in [fire_label, jump_label]:
 		var label := candidate as Label
 		_append(failures, Assertions.expect_true(
@@ -220,6 +263,11 @@ func run() -> Array[String]:
 	_append(failures, Assertions.expect_true(
 		hit_confirm != null and hit_confirm.modulate.a == 0.0,
 		"Demo HUD has a hidden hit confirmation label"
+	))
+	_append(failures, Assertions.expect_true(
+		hit_confirm != null and
+		hit_confirm.mouse_filter == Control.MOUSE_FILTER_IGNORE,
+		"Hit confirmation ignores pointer input above the spawn-wave button"
 	))
 	_append(failures, Assertions.expect_true(
 		ground != null and ground.is_in_group(&"blood_surface"),
@@ -254,6 +302,13 @@ func run() -> Array[String]:
 		wave_status_timer.one_shot and
 		absf(wave_status_timer.wait_time - 1.2) <= 0.0001,
 		"Wave status uses a short one-shot timer"
+	))
+	_append(failures, Assertions.expect_true(
+		auto_wave_timer != null and
+		auto_wave_timer.one_shot and
+		absf(auto_wave_timer.wait_time - 1.5) <= 0.0001 and
+		auto_wave_timer.is_stopped(),
+		"Demo owns a stopped 1.5-second one-shot auto-wave timer"
 	))
 	if targets != null:
 		for target in zombies:
@@ -329,7 +384,7 @@ func run() -> Array[String]:
 		))
 		player.call("apply_damage", 1000.0, Vector3.ZERO)
 		_append(failures, Assertions.expect_true(
-			game_over.visible and game_over.text == "PLAYER DOWN\nPRESS R TO RESTART",
+			game_over.visible and game_over.text == "PLAYER DOWN",
 			"Lethal damage reveals game-over feedback"
 		))
 	arena.free()
