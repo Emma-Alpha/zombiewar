@@ -1,0 +1,113 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://scripts/ui/mobile_controls.gd" id="1_controls"]
+[ext_resource type="Script" path="res://scripts/ui/mobile_action_button.gd" id="3_button"]
+[ext_resource type="FontFile" path="res://assets/fonts/NotoSansSC-UI.ttf" id="4_cjk_font"]
+
+[node name="MobileControls" type="CanvasLayer"]
+layer = 20
+script = ExtResource("1_controls")
+
+[node name="Layout" type="Control" parent="."]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="VirtualJoystick" type="VirtualJoystick" parent="Layout"]
+custom_minimum_size = Vector2(208, 208)
+layout_mode = 1
+anchors_preset = 2
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_left = 40.0
+offset_top = -248.0
+offset_right = 248.0
+offset_bottom = -40.0
+grow_vertical = 0
+joystick_mode = 0
+joystick_size = 164.0
+tip_size = 76.0
+deadzone_ratio = 0.15
+clampzone_ratio = 1.0
+initial_offset_ratio = Vector2(0.5, 0.5)
+action_left = &"move_left"
+action_right = &"move_right"
+action_up = &"move_forward"
+action_down = &"move_back"
+visibility_mode = 0
+
+[node name="FireButton" type="Control" parent="Layout"]
+custom_minimum_size = Vector2(160, 160)
+layout_mode = 1
+anchors_preset = 3
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -200.0
+offset_top = -200.0
+offset_right = -40.0
+offset_bottom = -40.0
+grow_horizontal = 0
+grow_vertical = 0
+mouse_filter = 2
+script = ExtResource("3_button")
+action = &"fire"
+
+[node name="Label" type="Label" parent="Layout/FireButton"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_override_colors/font_color = Color(1, 0.95, 0.82, 1)
+theme_override_colors/font_shadow_color = Color(0, 0, 0, 0.9)
+theme_override_constants/shadow_offset_x = 2
+theme_override_constants/shadow_offset_y = 2
+theme_override_fonts/font = ExtResource("4_cjk_font")
+theme_override_font_sizes/font_size = 26
+text = "开火"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="JumpButton" type="Control" parent="Layout"]
+custom_minimum_size = Vector2(120, 120)
+layout_mode = 1
+anchors_preset = 3
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -336.0
+offset_top = -296.0
+offset_right = -216.0
+offset_bottom = -176.0
+grow_horizontal = 0
+grow_vertical = 0
+mouse_filter = 2
+script = ExtResource("3_button")
+action = &"jump"
+
+[node name="Label" type="Label" parent="Layout/JumpButton"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_override_colors/font_color = Color(1, 0.95, 0.82, 1)
+theme_override_colors/font_shadow_color = Color(0, 0, 0, 0.9)
+theme_override_constants/shadow_offset_x = 2
+theme_override_constants/shadow_offset_y = 2
+theme_override_fonts/font = ExtResource("4_cjk_font")
+theme_override_font_sizes/font_size = 22
+text = "跳跃"
+horizontal_alignment = 1
+vertical_alignment = 1

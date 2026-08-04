@@ -1,4 +1,4 @@
-[gd_scene load_steps=18 format=3]
+[gd_scene load_steps=19 format=3]
 
 [ext_resource type="Script" path="res://scripts/gameplay/demo_arena.gd" id="1_arena"]
 [ext_resource type="PackedScene" path="res://scenes/player/Player.tscn" id="2_player"]
@@ -6,6 +6,7 @@
 [ext_resource type="PackedScene" path="res://scenes/targets/ZombieTarget.tscn" id="4_target"]
 [ext_resource type="PackedScene" path="res://assets/vehicles/Vehicle_Pickup.gltf" id="5_pickup"]
 [ext_resource type="PackedScene" path="res://assets/environment/Container_Red.gltf" id="6_container"]
+[ext_resource type="PackedScene" path="res://scenes/ui/MobileControls.tscn" id="9_mobile_controls"]
 
 [sub_resource type="Environment" id="Environment_arena"]
 background_mode = 1
@@ -185,6 +186,9 @@ position = Vector3(0, 0, 6)
 position = Vector3(0, 0, 6)
 
 [node name="HUD" type="CanvasLayer" parent="."]
+
+[node name="MobileControls" parent="." instance=ExtResource("9_mobile_controls")]
+desktop_help_path = NodePath("../HUD/ControlsPanel")
 
 [node name="Title" type="Label" parent="HUD"]
 offset_left = 24.0

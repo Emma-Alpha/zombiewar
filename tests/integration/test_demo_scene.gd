@@ -18,6 +18,22 @@ func run() -> Array[String]:
 	var camera := arena.get_node_or_null("FollowCamera/Camera3D") as Camera3D
 	var targets := arena.get_node_or_null("World/Targets")
 	var controls := arena.get_node_or_null("HUD/ControlsPanel/Controls") as Label
+	var mobile_controls := arena.get_node_or_null("MobileControls")
+	var virtual_joystick := arena.get_node_or_null(
+		"MobileControls/Layout/VirtualJoystick"
+	) as VirtualJoystick
+	var fire_button := arena.get_node_or_null(
+		"MobileControls/Layout/FireButton"
+	) as MobileActionButton
+	var jump_button := arena.get_node_or_null(
+		"MobileControls/Layout/JumpButton"
+	) as MobileActionButton
+	var fire_label := arena.get_node_or_null(
+		"MobileControls/Layout/FireButton/Label"
+	) as Label
+	var jump_label := arena.get_node_or_null(
+		"MobileControls/Layout/JumpButton/Label"
+	) as Label
 	_append(failures, Assertions.expect_true(player != null, "Demo has Player"))
 	_append(failures, Assertions.expect_true(
 		player != null and player.has_method("set_movement_camera"),
@@ -52,6 +68,64 @@ func run() -> Array[String]:
 			"WASD  MOVE + FACE    SPACE  JUMP    J  FIRE",
 			"HUD documents keyboard-only controls"
 		))
+	_append(failures, Assertions.expect_true(
+		mobile_controls != null,
+		"Demo owns a mobile controls layer"
+	))
+	_append(failures, Assertions.expect_true(
+		virtual_joystick != null and virtual_joystick.joystick_size >= 144.0,
+		"Demo has a thumb-sized native movement joystick"
+	))
+	_append(failures, Assertions.expect_true(
+		virtual_joystick != null and
+		virtual_joystick.action_left == &"move_left" and
+		virtual_joystick.action_right == &"move_right" and
+		virtual_joystick.action_up == &"move_forward" and
+		virtual_joystick.action_down == &"move_back",
+		"Native joystick maps to the existing movement actions"
+	))
+	_append(failures, Assertions.expect_float_near(
+		virtual_joystick.deadzone_ratio if virtual_joystick != null else -1.0,
+		0.15,
+		0.0001,
+		"Native joystick owns the radial deadzone"
+	))
+	_append(failures, Assertions.expect_true(
+		fire_button != null and fire_button.action == &"fire" and
+		fire_button.size.x >= 144.0 and fire_button.size.y >= 144.0,
+		"Demo has a large hold-to-fire touch button"
+	))
+	_append(failures, Assertions.expect_true(
+		jump_button != null and jump_button.action == &"jump" and
+		jump_button.size.x >= 112.0 and jump_button.size.y >= 112.0,
+		"Demo has a distinct jump touch button"
+	))
+	_append(failures, Assertions.expect_true(
+		mobile_controls != null and
+		mobile_controls.get("desktop_help_path") == NodePath("../HUD/ControlsPanel"),
+		"Mobile controls toggle the existing desktop help panel"
+	))
+	for candidate in [fire_label, jump_label]:
+		var label := candidate as Label
+		_append(failures, Assertions.expect_true(
+			label != null,
+			"Mobile action button has a readable label"
+		))
+		if label == null:
+			continue
+		var font := label.get_theme_font(&"font")
+		_append(failures, Assertions.expect_true(
+			font != null,
+			"Mobile action label has an embedded font"
+		))
+		if font == null:
+			continue
+		for glyph in label.text:
+			var codepoint := glyph.unicode_at(0)
+			_append(failures, Assertions.expect_true(
+				font.has_char(codepoint),
+				"Mobile action font includes glyph %s" % glyph
+			))
 	arena.free()
 	return failures
 

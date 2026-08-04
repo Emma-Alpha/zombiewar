@@ -29,6 +29,14 @@ func run() -> Array[String]:
 		"Jolt Physics",
 		"3D physics engine"
 	))
+	_append(failures, Assertions.expect_equal(
+		ProjectSettings.get_setting(
+			"input_devices/pointing/emulate_touch_from_mouse",
+			false
+		),
+		true,
+		"Mouse can emulate touch for local control testing"
+	))
 	for action in REQUIRED_ACTIONS:
 		_append(failures, Assertions.expect_true(InputMap.has_action(action), "Missing input action: %s" % action))
 		if not InputMap.has_action(action):

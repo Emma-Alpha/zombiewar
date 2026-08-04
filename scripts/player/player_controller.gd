@@ -7,6 +7,7 @@ const HIDDEN_WEAPONS: Array[String] = [
 	"WoodenBat_Barbed", "WoodenBat_Saw",
 ]
 
+@export_range(0.0, 1.0, 0.01) var move_input_deadzone := 0.0
 @export var move_speed: float = 6.0
 @export var ground_acceleration: float = 30.0
 @export var air_acceleration: float = 12.0
@@ -28,8 +29,17 @@ func _ready() -> void:
 func set_movement_camera(camera: Camera3D) -> void:
 	movement_camera = camera
 
+func get_move_input_vector() -> Vector2:
+	return Input.get_vector(
+		&"move_left",
+		&"move_right",
+		&"move_forward",
+		&"move_back",
+		move_input_deadzone
+	)
+
 func _physics_process(delta: float) -> void:
-	var input_vector := Input.get_vector("move_left", "move_right", "move_forward", "move_back")
+	var input_vector := get_move_input_vector()
 	var camera_basis := movement_camera.global_basis if movement_camera != null else Basis.IDENTITY
 	var direction := PlayerMotion.world_direction(input_vector, camera_basis)
 	rotation.y = PlayerMotion.next_facing_yaw(direction, rotation.y)

@@ -19,6 +19,13 @@ Open `project.godot` in Godot 4.7.1 and run the configured main scene, or use:
 
 Mouse input is not used by the demo.
 
+### Mobile H5 controls
+
+- Touchscreen devices automatically show a left virtual joystick, a hold-to-fire button, and a jump button.
+- The joystick reuses the same movement/facing rules as WASD; releasing it retains the last facing direction.
+- Movement, jump, and hold-to-fire support simultaneous multi-touch input.
+- Non-touch desktop browsers keep the keyboard control panel and hide the mobile overlay.
+
 ## Demo scope
 
 The demo contains one orthographic 2.5D arena, a controllable player, static collision props, and four damageable zombie practice targets. Each target has 50 health; the rifle deals 25 damage at 6 shots per second.
@@ -30,3 +37,17 @@ Enemy navigation, attacks, spawn waves, experience, upgrades, loot, and persiste
 ```bash
 /Applications/Godot.app/Contents/MacOS/Godot --headless --path . --script tests/test_runner.gd
 ```
+
+## Export and mobile verification
+
+```bash
+mkdir -p build/web
+/Applications/Godot.app/Contents/MacOS/Godot --headless --path . --export-release Web build/web/index.html
+rsync -a build/web/ /opt/homebrew/var/www/zombiewar/
+curl -k -I https://zombiewar.devlocal.com/
+curl -k -I https://zombiewar.devlocal.com/index.wasm
+```
+
+The homepage and `index.wasm` responses must both include `Cache-Control: no-store, no-cache, must-revalidate, max-age=0`. The `index.wasm` response must also include `Content-Type: application/wasm`.
+
+Open `https://zombiewar.devlocal.com` from a phone that resolves `*.devlocal.com` to this Mac. Use landscape orientation and verify joystick movement, jump, hold-to-fire, simultaneous touches, audio unlock after the first tap, and background/foreground recovery.
