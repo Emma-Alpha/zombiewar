@@ -2,11 +2,30 @@ extends Node3D
 
 const HitResult = preload("res://scripts/combat/hit_result.gd")
 const ZombieDifficultyProfile = preload("res://scripts/gameplay/zombie_difficulty_profile.gd")
+const ZOMBIE_SCENE := preload("res://scenes/targets/ZombieTarget.tscn")
+const SPAWN_POINT_NAMES: Array[StringName] = [
+	&"NorthWest",
+	&"NorthEast",
+	&"SouthWest",
+	&"SouthEast",
+]
 
 @export var zombie_difficulty: ZombieDifficultyProfile
 
+@export_group("Wave Spawning")
+@export_range(1, 8, 1) var minimum_zombies_per_corner := 1
+@export_range(1, 8, 1) var maximum_zombies_per_corner := 2
+@export_range(4, 128, 1) var maximum_active_zombies := 24
+@export_range(0.0, 8.0, 0.05) var spawn_radius := 1.75
+@export_range(0.0, 4.0, 0.05) var minimum_spawn_spacing := 1.1
+@export_range(1.0, 100.0, 0.5) var wave_perception_range := 60.0
+@export var random_seed: int = 0
+
 var hit_confirm_tween: Tween
 var damage_flash_tween: Tween
+var wave_rng := RandomNumberGenerator.new()
+var wave_number := 0
+var player_defeated := false
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_SCENE_INSTANTIATED:
@@ -14,6 +33,13 @@ func _notification(what: int) -> void:
 
 func _enter_tree() -> void:
 	_wire_dependencies()
+
+func _ready() -> void:
+	if random_seed == 0:
+		wave_rng.randomize()
+	else:
+		wave_rng.seed = random_seed
+	spawn_wave()
 
 func _wire_dependencies() -> void:
 	var player := get_node_or_null("Player") as PlayerController
@@ -23,6 +49,8 @@ func _wire_dependencies() -> void:
 			_wire_target(target)
 		if not targets.child_entered_tree.is_connected(_wire_target):
 			targets.child_entered_tree.connect(_wire_target)
+		if not targets.child_exiting_tree.is_connected(_on_target_exiting_tree):
+			targets.child_exiting_tree.connect(_on_target_exiting_tree)
 	var follow_camera := get_node_or_null("FollowCamera") as FollowCamera
 	var movement_camera := get_node_or_null("FollowCamera/Camera3D") as Camera3D
 	if player == null or follow_camera == null or movement_camera == null:
@@ -114,9 +142,160 @@ func _on_player_damaged(_amount: float) -> void:
 	damage_flash_tween.tween_property(flash, "color:a", 0.0, 0.20)
 
 func _on_player_died() -> void:
+	player_defeated = true
 	var game_over := get_node_or_null("HUD/GameOver") as Label
 	if game_over != null:
 		game_over.visible = true
+	_update_wave_hud()
+
+func spawn_wave() -> int:
+	if player_defeated:
+		return 0
+	var targets := get_node_or_null("World/Targets") as Node3D
+	if targets == null:
+		_report_wave_problem("MISSING TARGET CONTAINER")
+		return 0
+	var spawn_points := _get_spawn_points()
+	if spawn_points.size() != SPAWN_POINT_NAMES.size():
+		_report_wave_problem("MISSING CORNER SPAWN POINT")
+		return 0
+
+	var remaining_capacity := maximum_active_zombies - get_active_zombie_count()
+	if remaining_capacity <= 0:
+		_show_wave_status("MAX ZOMBIES: %d" % maximum_active_zombies)
+		return 0
+
+	var occupied_positions := _collect_zombie_positions()
+	var spawned := 0
+	var next_wave_number := wave_number + 1
+	for marker in spawn_points:
+		var requested := wave_rng.randi_range(
+			minimum_zombies_per_corner,
+			maximum_zombies_per_corner
+		)
+		for _index in range(requested):
+			if spawned >= remaining_capacity:
+				break
+			var spawn_position := _sample_spawn_position(
+				marker.global_position,
+				occupied_positions
+			)
+			var zombie := ZOMBIE_SCENE.instantiate() as ZombieTarget
+			if zombie == null:
+				_report_wave_problem("FAILED TO CREATE ZOMBIE")
+				return spawned
+			zombie.name = "Wave%02dZombie%02d" % [
+				next_wave_number,
+				spawned + 1,
+			]
+			zombie.perception_range = wave_perception_range
+			zombie.position = targets.to_local(spawn_position)
+			targets.add_child(zombie)
+			occupied_positions.append(spawn_position)
+			spawned += 1
+		if spawned >= remaining_capacity:
+			break
+
+	if spawned > 0:
+		wave_number = next_wave_number
+	_update_wave_hud()
+	return spawned
+
+func get_active_zombie_count() -> int:
+	var targets := get_node_or_null("World/Targets")
+	if targets == null:
+		return 0
+	var count := 0
+	for child in targets.get_children():
+		if child is ZombieTarget:
+			count += 1
+	return count
+
+func _get_spawn_points() -> Array[Marker3D]:
+	var points: Array[Marker3D] = []
+	for point_name in SPAWN_POINT_NAMES:
+		var marker := get_node_or_null(
+			"World/SpawnPoints/%s" % String(point_name)
+		) as Marker3D
+		if marker == null:
+			return []
+		points.append(marker)
+	return points
+
+func _collect_zombie_positions() -> Array[Vector3]:
+	var positions: Array[Vector3] = []
+	var targets := get_node_or_null("World/Targets")
+	if targets == null:
+		return positions
+	for child in targets.get_children():
+		if child is ZombieTarget:
+			positions.append((child as ZombieTarget).global_position)
+	return positions
+
+func _sample_spawn_position(
+	center: Vector3,
+	occupied_positions: Array[Vector3]
+) -> Vector3:
+	var fallback := center
+	for _attempt in range(16):
+		var angle := wave_rng.randf_range(0.0, TAU)
+		var radius := sqrt(wave_rng.randf()) * spawn_radius
+		var candidate := center + Vector3(
+			cos(angle) * radius,
+			0.0,
+			sin(angle) * radius
+		)
+		fallback = candidate
+		if _has_spawn_clearance(candidate, occupied_positions):
+			return candidate
+	return fallback
+
+func _has_spawn_clearance(
+	candidate: Vector3,
+	occupied_positions: Array[Vector3]
+) -> bool:
+	for occupied in occupied_positions:
+		if Vector2(candidate.x, candidate.z).distance_to(
+			Vector2(occupied.x, occupied.z)
+		) < minimum_spawn_spacing:
+			return false
+	return true
+
+func _on_target_exiting_tree(target: Node) -> void:
+	if target is ZombieTarget:
+		call_deferred("_update_wave_hud")
+
+func _update_wave_hud() -> void:
 	var objective := get_node_or_null("HUD/Objective") as Label
-	if objective != null:
-		objective.text = "OBJECTIVE FAILED — PLAYER DOWN"
+	if objective == null:
+		return
+	var active_count := get_active_zombie_count()
+	if player_defeated:
+		objective.text = "FINAL WAVE %d    ZOMBIES %d" % [
+			wave_number,
+			active_count,
+		]
+	else:
+		objective.text = "WAVE %d    ALIVE %d    T: NEW WAVE" % [
+			wave_number,
+			active_count,
+		]
+
+func _show_wave_status(message: String) -> void:
+	var label := get_node_or_null("HUD/WaveStatus") as Label
+	if label == null:
+		return
+	label.text = message
+	label.visible = true
+	var timer := get_node_or_null("WaveStatusTimer") as Timer
+	if timer != null:
+		timer.start()
+
+func _hide_wave_status() -> void:
+	var label := get_node_or_null("HUD/WaveStatus") as Label
+	if label != null:
+		label.visible = false
+
+func _report_wave_problem(message: String) -> void:
+	push_warning(message)
+	_show_wave_status(message)

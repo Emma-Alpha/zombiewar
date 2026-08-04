@@ -170,17 +170,19 @@ shape = SubResource("BoxShape3D_container")
 
 [node name="Targets" type="Node3D" parent="World"]
 
-[node name="ZombieTarget1" parent="World/Targets" instance=ExtResource("4_target")]
-position = Vector3(-4, 0, -5)
+[node name="SpawnPoints" type="Node3D" parent="World"]
 
-[node name="ZombieTarget2" parent="World/Targets" instance=ExtResource("4_target")]
-position = Vector3(0, 0, -9)
+[node name="NorthWest" type="Marker3D" parent="World/SpawnPoints"]
+position = Vector3(-17, 0, -12)
 
-[node name="ZombieTarget3" parent="World/Targets" instance=ExtResource("4_target")]
-position = Vector3(8, 0, 6)
+[node name="NorthEast" type="Marker3D" parent="World/SpawnPoints"]
+position = Vector3(17, 0, -12)
 
-[node name="ZombieTarget4" parent="World/Targets" instance=ExtResource("4_target")]
-position = Vector3(-10, 0, 7)
+[node name="SouthWest" type="Marker3D" parent="World/SpawnPoints"]
+position = Vector3(-17, 0, 12)
+
+[node name="SouthEast" type="Marker3D" parent="World/SpawnPoints"]
+position = Vector3(17, 0, 12)
 
 [node name="Player" parent="." instance=ExtResource("2_player")]
 position = Vector3(0, 0, 6)

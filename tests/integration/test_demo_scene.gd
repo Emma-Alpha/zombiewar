@@ -14,6 +14,7 @@ func run() -> Array[String]:
 		return failures
 
 	var arena := packed.instantiate()
+	arena.set("random_seed", 20260805)
 	var tree := Engine.get_main_loop() as SceneTree
 	tree.root.add_child(arena)
 	var player := arena.get_node_or_null("Player")
@@ -21,6 +22,11 @@ func run() -> Array[String]:
 	var follow_camera := arena.get_node_or_null("FollowCamera") as FollowCamera
 	var camera := arena.get_node_or_null("FollowCamera/Camera3D") as Camera3D
 	var targets := arena.get_node_or_null("World/Targets")
+	var zombies: Array[ZombieTarget] = []
+	if targets != null:
+		for child in targets.get_children():
+			if child is ZombieTarget:
+				zombies.append(child as ZombieTarget)
 	var controls := arena.get_node_or_null("HUD/ControlsPanel/Controls") as Label
 	var equipment := arena.get_node_or_null("Player/EquipmentController") as EquipmentController
 	var hit_confirm := arena.get_node_or_null("HUD/HitConfirm") as Label
@@ -119,7 +125,10 @@ func run() -> Array[String]:
 			0.0001,
 			"Camera forward aligns with world negative Z"
 		))
-	_append(failures, Assertions.expect_true(targets != null and targets.get_child_count() == 4, "Demo has four zombie targets"))
+	_append(failures, Assertions.expect_true(
+		targets != null and zombies.size() >= 4 and zombies.size() <= 8,
+		"Demo starts with a four-to-eight zombie wave"
+	))
 	_append(failures, Assertions.expect_true(
 		equipment != null,
 		"Demo player owns the modular equipment controller"
@@ -235,7 +244,7 @@ func run() -> Array[String]:
 		"Game-over message starts hidden"
 	))
 	if targets != null:
-		for target in targets.get_children():
+		for target in zombies:
 			_append(failures, Assertions.expect_float_near(
 				float(target.get("perception_move_speed")),
 				1.30,
@@ -244,9 +253,9 @@ func run() -> Array[String]:
 			))
 			_append(failures, Assertions.expect_float_near(
 				float(target.get("perception_range")),
-				7.0,
+				60.0,
 				0.0001,
-				"Difficulty does not alter zombie perception range"
+				"Every wave zombie pursues across the arena"
 			))
 			_append(failures, Assertions.expect_float_near(
 				float(target.get("attack_range")),

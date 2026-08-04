@@ -25,6 +25,7 @@ const TEST_PATHS: Array[String] = [
 	"res://tests/unit/test_player_damage.gd",
 	"res://tests/unit/test_weapon_feedback.gd",
 	"res://tests/integration/test_demo_scene.gd",
+	"res://tests/integration/test_demo_wave_spawning.gd",
 	"res://tests/integration/test_main_menu_scene.gd",
 	"res://tests/integration/test_menu_cjk_font.gd",
 ]
