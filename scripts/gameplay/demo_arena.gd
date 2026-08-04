@@ -32,8 +32,8 @@ func _wire_dependencies() -> void:
 	else:
 		follow_camera.target = player
 	player.set_movement_camera(movement_camera)
-	if not player.shot_fired.is_connected(_on_player_shot):
-		player.shot_fired.connect(_on_player_shot)
+	if not player.attack_resolved.is_connected(_on_player_attack):
+		player.attack_resolved.connect(_on_player_attack)
 	if not player.health_changed.is_connected(_on_player_health_changed):
 		player.health_changed.connect(_on_player_health_changed)
 	if not player.damaged.is_connected(_on_player_damaged):
@@ -77,9 +77,13 @@ func _on_ground_blood_requested(
 	else:
 		manager.spawn_hit_splat(origin, direction, intensity)
 
-func _on_player_shot(direction: Vector3, result: HitResult) -> void:
+func _on_player_attack(
+	direction: Vector3,
+	result: HitResult,
+	camera_impulse_strength: float
+) -> void:
 	var follow_camera := get_node("FollowCamera") as FollowCamera
-	follow_camera.add_shot_impulse(direction)
+	follow_camera.add_shot_impulse(direction, camera_impulse_strength)
 	if not result.did_hit:
 		return
 	var label := get_node("HUD/HitConfirm") as Label
