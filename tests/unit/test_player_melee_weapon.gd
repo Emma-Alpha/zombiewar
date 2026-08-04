@@ -111,6 +111,7 @@ func run() -> Array[String]:
 	_test_damage_clears_buffered_attack(failures)
 	_test_weapon_switch_clears_buffered_attack(failures)
 	_test_dense_hitboxes_choose_closest_target(failures)
+	_test_body_hitbox_overlap_ignores_rear_target(failures)
 	return failures
 
 func _test_attack_interruptions(
@@ -398,6 +399,31 @@ func _test_dense_hitboxes_choose_closest_target(failures: Array[String]) -> void
 		50.0,
 		0.0001,
 		"Dense farther hitboxes do not hide the closest target"
+	))
+	host.free()
+
+func _test_body_hitbox_overlap_ignores_rear_target(failures: Array[String]) -> void:
+	var tree := Engine.get_main_loop() as SceneTree
+	var host := Node3D.new()
+	var player := PLAYER_SCENE.instantiate() as PlayerController
+	var rear_target := TARGET_SCENE.instantiate() as ZombieTarget
+	rear_target.position = Vector3(0.0, 0.0, 0.9)
+	tree.root.add_child(host)
+	host.add_child(player)
+	host.add_child(rear_target)
+	var equipment := player.get_node("EquipmentController") as EquipmentController
+	equipment.equip_slot(2)
+	var knife := equipment.get_current_weapon() as MeleeWeapon
+	knife.set_physics_process(false)
+
+	equipment.set_attack_input(true, true, Vector3.FORWARD)
+	knife._physics_process(0.0)
+	knife._physics_process(0.22)
+	_append(failures, Assertions.expect_float_near(
+		rear_target.health.current,
+		50.0,
+		0.0001,
+		"Rear target is ignored when its enlarged body cylinder overlaps the melee box"
 	))
 	host.free()
 
