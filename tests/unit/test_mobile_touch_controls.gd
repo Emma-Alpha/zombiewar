@@ -146,17 +146,31 @@ func _append_raw_touch_event_failures(failures: Array[String]) -> void:
 	controls.force_visible = true
 	var tree := Engine.get_main_loop() as SceneTree
 	tree.root.add_child(controls)
+	var virtual_joystick := controls.get_node_or_null("Layout/VirtualJoystick") as VirtualJoystick
 	var fire_button := controls.get_node_or_null("Layout/FireButton") as MobileActionButton
 	var jump_button := controls.get_node_or_null("Layout/JumpButton") as MobileActionButton
+	_append(failures, Assertions.expect_true(
+		virtual_joystick != null and virtual_joystick.size == Vector2(252.0, 252.0) and
+		is_equal_approx(virtual_joystick.joystick_size, 204.0) and
+		is_equal_approx(virtual_joystick.tip_size, 88.0) and
+		is_equal_approx(virtual_joystick.deadzone_ratio, 0.12),
+		"Raw touch tests use the enlarged low-deadzone movement joystick"
+	))
 	_append(failures, Assertions.expect_true(
 		fire_button != null and jump_button != null and
 		fire_button.get_global_rect().size != Vector2.ZERO and
 		jump_button.get_global_rect().size != Vector2.ZERO,
 		"Raw touch tests use visible action buttons with actual rectangles"
 	))
-	if fire_button == null or jump_button == null:
+	if virtual_joystick == null or fire_button == null or jump_button == null:
 		controls.free()
 		return
+	var joystick_rect := virtual_joystick.get_global_rect()
+	_append(failures, Assertions.expect_true(
+		not joystick_rect.intersects(fire_button.get_global_rect()) and
+		not joystick_rect.intersects(jump_button.get_global_rect()),
+		"Enlarged movement joystick does not overlap fire or jump touch targets"
+	))
 	var fire_center := fire_button.get_global_rect().get_center()
 	var jump_center := jump_button.get_global_rect().get_center()
 

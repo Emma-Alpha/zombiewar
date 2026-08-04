@@ -32,9 +32,9 @@ signal died
 @export var slot_four_action: StringName = &"weapon_slot_4"
 
 @export_group("Movement Feel")
-@export var move_speed: float = 6.0
-@export var ground_acceleration: float = 42.0
-@export var ground_deceleration: float = 60.0
+@export var move_speed: float = 5.0
+@export var ground_acceleration: float = 30.0
+@export var ground_deceleration: float = 42.0
 @export var air_acceleration: float = 12.0
 @export var gravity: float = 24.0
 @export var jump_speed: float = 8.5

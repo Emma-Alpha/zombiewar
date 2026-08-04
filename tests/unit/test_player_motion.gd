@@ -115,30 +115,30 @@ func run() -> Array[String]:
 	var accelerated: Vector3 = player_motion.next_planar_velocity(
 		Vector3.ZERO,
 		Vector3.FORWARD,
-		6.0,
+		5.0,
+		30.0,
 		42.0,
-		60.0,
 		0.1
 	)
 	_append(failures, Assertions.expect_float_near(
 		accelerated.length(),
-		4.2,
+		3.0,
 		0.0001,
-		"Ground acceleration reaches the expected speed after 100 ms"
+		"Tuned ground acceleration reaches three meters per second after 100 ms"
 	))
 	var stopped: Vector3 = player_motion.next_planar_velocity(
-		Vector3.FORWARD * 6.0,
+		Vector3.FORWARD * 5.0,
 		Vector3.ZERO,
-		6.0,
+		5.0,
+		30.0,
 		42.0,
-		60.0,
 		0.1
 	)
 	_append(failures, Assertions.expect_vector3_near(
 		stopped,
-		Vector3.ZERO,
+		Vector3.FORWARD * 0.8,
 		0.0001,
-		"Dedicated deceleration stops the player within 100 ms"
+		"Tuned deceleration leaves a short controllable stopping tail"
 	))
 	_append(failures, Assertions.expect_float_near(
 		player_motion.next_vertical_velocity(0.0, true, true, 0.016, 24.0, 8.5),

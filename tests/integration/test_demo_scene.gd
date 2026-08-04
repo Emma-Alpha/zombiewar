@@ -67,6 +67,18 @@ func run() -> Array[String]:
 			"Demo defaults to normal zombie perception speed"
 		))
 	_append(failures, Assertions.expect_true(player != null, "Demo has Player"))
+	if player != null:
+		_append(failures, Assertions.expect_float_near(
+			float(player.get("move_speed")), 5.0, 0.0001, "Player tuned move speed"
+		))
+		_append(failures, Assertions.expect_float_near(
+			float(player.get("ground_acceleration")), 30.0, 0.0001,
+			"Player tuned ground acceleration"
+		))
+		_append(failures, Assertions.expect_float_near(
+			float(player.get("ground_deceleration")), 42.0, 0.0001,
+			"Player tuned ground deceleration"
+		))
 	_append(failures, Assertions.expect_true(
 		player != null and player.has_method("set_movement_camera"),
 		"Player accepts movement camera"
@@ -91,7 +103,7 @@ func run() -> Array[String]:
 	_append(failures, Assertions.expect_true(camera != null, "Demo has Camera3D"))
 	if camera != null:
 		_append(failures, Assertions.expect_equal(camera.projection, Camera3D.PROJECTION_ORTHOGONAL, "Camera is orthographic"))
-		_append(failures, Assertions.expect_float_near(camera.size, 18.0, 0.0001, "Camera orthographic size"))
+		_append(failures, Assertions.expect_float_near(camera.size, 15.0, 0.0001, "Camera orthographic size"))
 		_append(failures, Assertions.expect_vector3_near(
 			camera.position,
 			Vector3(0.0, 12.0, sqrt(200.0)),
@@ -165,8 +177,10 @@ func run() -> Array[String]:
 		"Demo owns a mobile controls layer"
 	))
 	_append(failures, Assertions.expect_true(
-		virtual_joystick != null and virtual_joystick.joystick_size >= 144.0,
-		"Demo has a thumb-sized native movement joystick"
+		virtual_joystick != null and virtual_joystick.size == Vector2(252.0, 252.0) and
+		is_equal_approx(virtual_joystick.joystick_size, 204.0) and
+		is_equal_approx(virtual_joystick.tip_size, 88.0),
+		"Demo has an enlarged native movement joystick"
 	))
 	_append(failures, Assertions.expect_true(
 		virtual_joystick != null and
@@ -178,9 +192,9 @@ func run() -> Array[String]:
 	))
 	_append(failures, Assertions.expect_float_near(
 		virtual_joystick.deadzone_ratio if virtual_joystick != null else -1.0,
-		0.15,
+		0.12,
 		0.0001,
-		"Native joystick owns the radial deadzone"
+		"Native joystick uses the tuned radial deadzone"
 	))
 	_append(failures, Assertions.expect_true(
 		fire_button != null and fire_button.action == &"primary_attack" and
