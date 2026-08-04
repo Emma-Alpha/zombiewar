@@ -1,5 +1,7 @@
 extends Node3D
 
+signal restart_requested
+
 const HitResult = preload("res://scripts/combat/hit_result.gd")
 const ZombieDifficultyProfile = preload("res://scripts/gameplay/zombie_difficulty_profile.gd")
 const ZOMBIE_SCENE := preload("res://scenes/targets/ZombieTarget.tscn")
@@ -41,6 +43,23 @@ func _ready() -> void:
 		wave_rng.seed = random_seed
 	spawn_wave()
 
+func _unhandled_input(event: InputEvent) -> void:
+	if event is InputEventKey and (event as InputEventKey).echo:
+		return
+	if event.is_action_pressed(&"spawn_wave"):
+		spawn_wave()
+		get_viewport().set_input_as_handled()
+		return
+	if event.is_action_pressed(&"restart_demo") and player_defeated:
+		restart_requested.emit()
+		call_deferred("_reload_current_scene")
+		get_viewport().set_input_as_handled()
+
+func _reload_current_scene() -> void:
+	var scene_tree := get_tree()
+	if scene_tree != null:
+		scene_tree.reload_current_scene()
+
 func _wire_dependencies() -> void:
 	var player := get_node_or_null("Player") as PlayerController
 	var targets := get_node_or_null("World/Targets")
@@ -51,6 +70,12 @@ func _wire_dependencies() -> void:
 			targets.child_entered_tree.connect(_wire_target)
 		if not targets.child_exiting_tree.is_connected(_on_target_exiting_tree):
 			targets.child_exiting_tree.connect(_on_target_exiting_tree)
+	var status_timer := get_node_or_null("WaveStatusTimer") as Timer
+	if (
+		status_timer != null and
+		not status_timer.timeout.is_connected(_hide_wave_status)
+	):
+		status_timer.timeout.connect(_hide_wave_status)
 	var follow_camera := get_node_or_null("FollowCamera") as FollowCamera
 	var movement_camera := get_node_or_null("FollowCamera/Camera3D") as Camera3D
 	if player == null or follow_camera == null or movement_camera == null:
@@ -142,9 +167,12 @@ func _on_player_damaged(_amount: float) -> void:
 	damage_flash_tween.tween_property(flash, "color:a", 0.0, 0.20)
 
 func _on_player_died() -> void:
+	if player_defeated:
+		return
 	player_defeated = true
 	var game_over := get_node_or_null("HUD/GameOver") as Label
 	if game_over != null:
+		game_over.text = "PLAYER DOWN\nPRESS R TO RESTART"
 		game_over.visible = true
 	_update_wave_hud()
 

@@ -35,6 +35,8 @@ func run() -> Array[String]:
 	var health_label := arena.get_node_or_null("HUD/PlayerHealth") as Label
 	var damage_flash := arena.get_node_or_null("HUD/DamageFlash") as ColorRect
 	var game_over := arena.get_node_or_null("HUD/GameOver") as Label
+	var wave_status := arena.get_node_or_null("HUD/WaveStatus") as Label
+	var wave_status_timer := arena.get_node_or_null("WaveStatusTimer") as Timer
 	var mobile_controls := arena.get_node_or_null("MobileControls")
 	var virtual_joystick := arena.get_node_or_null(
 		"MobileControls/Layout/VirtualJoystick"
@@ -154,7 +156,7 @@ func run() -> Array[String]:
 	if controls != null:
 		_append(failures, Assertions.expect_equal(
 			controls.text,
-			"WASD MOVE + FACE   SPACE JUMP   J ATTACK   1 PISTOL   2 RIFLE   3 KNIFE",
+			"WASD  MOVE + FACE    SPACE  JUMP    J  FIRE    1-3  WEAPON    T  WAVE    R  RESTART",
 			"HUD documents attack and weapon switching controls"
 		))
 	_append(failures, Assertions.expect_true(
@@ -243,6 +245,16 @@ func run() -> Array[String]:
 		game_over != null and not game_over.visible,
 		"Game-over message starts hidden"
 	))
+	_append(failures, Assertions.expect_true(
+		wave_status != null and not wave_status.visible,
+		"Wave status starts hidden"
+	))
+	_append(failures, Assertions.expect_true(
+		wave_status_timer != null and
+		wave_status_timer.one_shot and
+		absf(wave_status_timer.wait_time - 1.2) <= 0.0001,
+		"Wave status uses a short one-shot timer"
+	))
 	if targets != null:
 		for target in zombies:
 			_append(failures, Assertions.expect_float_near(
@@ -317,7 +329,7 @@ func run() -> Array[String]:
 		))
 		player.call("apply_damage", 1000.0, Vector3.ZERO)
 		_append(failures, Assertions.expect_true(
-			game_over.visible,
+			game_over.visible and game_over.text == "PLAYER DOWN\nPRESS R TO RESTART",
 			"Lethal damage reveals game-over feedback"
 		))
 	arena.free()

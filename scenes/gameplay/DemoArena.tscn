@@ -244,7 +244,7 @@ anchor_top = 1.0
 anchor_bottom = 1.0
 offset_left = 24.0
 offset_top = -66.0
-offset_right = 760.0
+offset_right = 920.0
 offset_bottom = -20.0
 grow_vertical = 0
 theme_override_styles/panel = SubResource("StyleBoxFlat_controls")
@@ -253,7 +253,7 @@ theme_override_styles/panel = SubResource("StyleBoxFlat_controls")
 layout_mode = 2
 theme_override_colors/font_color = Color(0.952941, 0.933333, 0.894118, 1)
 theme_override_font_sizes/font_size = 16
-text = "WASD MOVE + FACE   SPACE JUMP   J ATTACK   1 PISTOL   2 RIFLE   3 KNIFE"
+text = "WASD  MOVE + FACE    SPACE  JUMP    J  FIRE    1-3  WEAPON    T  WAVE    R  RESTART"
 
 [node name="GameOver" type="Label" parent="HUD"]
 visible = false
@@ -263,9 +263,9 @@ anchor_top = 0.5
 anchor_right = 0.5
 anchor_bottom = 0.5
 offset_left = -220.0
-offset_top = -42.0
+offset_top = -64.0
 offset_right = 220.0
-offset_bottom = 42.0
+offset_bottom = 64.0
 grow_horizontal = 2
 grow_vertical = 2
 theme_override_colors/font_color = Color(1, 0.25, 0.18, 1)
@@ -273,7 +273,7 @@ theme_override_colors/font_shadow_color = Color(0, 0, 0, 0.9)
 theme_override_constants/shadow_offset_x = 3
 theme_override_constants/shadow_offset_y = 3
 theme_override_font_sizes/font_size = 42
-text = "PLAYER DOWN"
+text = "PLAYER DOWN\nPRESS R TO RESTART"
 horizontal_alignment = 1
 vertical_alignment = 1
 
@@ -288,5 +288,24 @@ offset_bottom = 48.0
 grow_horizontal = 0
 theme_override_colors/font_color = Color(0.952941, 0.933333, 0.894118, 1)
 theme_override_font_sizes/font_size = 18
-text = "OBJECTIVE: SURVIVE AND CLEAR 4 ZOMBIES"
+text = "WAVE 0    ALIVE 0    T: NEW WAVE"
 horizontal_alignment = 2
+
+[node name="WaveStatus" type="Label" parent="HUD"]
+visible = false
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -448.0
+offset_top = 54.0
+offset_right = -24.0
+offset_bottom = 82.0
+grow_horizontal = 0
+theme_override_colors/font_color = Color(1, 0.78, 0.26, 1)
+theme_override_font_sizes/font_size = 18
+text = ""
+horizontal_alignment = 2
+
+[node name="WaveStatusTimer" type="Timer" parent="."]
+wait_time = 1.2
+one_shot = true
