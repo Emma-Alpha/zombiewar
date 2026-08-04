@@ -39,6 +39,7 @@ func run() -> Array[String]:
 	var wave_status := arena.get_node_or_null("HUD/WaveStatus") as Label
 	var wave_status_timer := arena.get_node_or_null("WaveStatusTimer") as Timer
 	var mobile_controls := arena.get_node_or_null("MobileControls")
+	var orientation_guard := arena.get_node_or_null("MobileOrientationGuard") as MobileOrientationGuard
 	var virtual_joystick := arena.get_node_or_null(
 		"MobileControls/Layout/VirtualJoystick"
 	) as VirtualJoystick
@@ -175,6 +176,11 @@ func run() -> Array[String]:
 	_append(failures, Assertions.expect_true(
 		mobile_controls != null,
 		"Demo owns a mobile controls layer"
+	))
+	_append(failures, Assertions.expect_true(
+		orientation_guard != null and
+		orientation_guard.input_cancel_target_path == NodePath("../MobileControls"),
+		"Demo blocks portrait play and releases mobile controls"
 	))
 	_append(failures, Assertions.expect_true(
 		virtual_joystick != null and virtual_joystick.size == Vector2(252.0, 252.0) and

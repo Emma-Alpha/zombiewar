@@ -208,7 +208,7 @@ func _append_raw_touch_event_failures(failures: Array[String]) -> void:
 	))
 	for action in [&"move_left", &"move_right", &"move_forward", &"move_back"]:
 		Input.action_press(action)
-	controls.notification(Node.NOTIFICATION_APPLICATION_FOCUS_OUT)
+	controls.cancel_all_input()
 	_append(failures, Assertions.expect_true(
 		not Input.is_action_pressed(&"move_left") and
 		not Input.is_action_pressed(&"move_right") and
