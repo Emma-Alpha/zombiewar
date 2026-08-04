@@ -52,7 +52,18 @@ func run() -> Array[String]:
 		"Spawn-wave button appends a wave while alive"
 	))
 
-	var before_t := after_button
+	var before_top_edge_click := int(arena.call("get_active_zombie_count"))
+	if spawn_wave_button != null:
+		_click_at(
+			tree.root.get_viewport(),
+			spawn_wave_button.get_global_rect().position + Vector2(16.0, 8.0)
+		)
+	_append(failures, Assertions.expect_true(
+		int(arena.call("get_active_zombie_count")) > before_top_edge_click,
+		"Pointer click through the hit-confirm overlap spawns a wave"
+	))
+
+	var before_t := int(arena.call("get_active_zombie_count"))
 	arena.call("_unhandled_input", _pressed_action(&"spawn_wave"))
 	_append(failures, Assertions.expect_true(
 		int(arena.call("get_active_zombie_count")) > before_t,
@@ -137,6 +148,17 @@ func _append_auto_wave_failures(
 	var timer := arena.get_node_or_null("AutoWaveTimer") as Timer
 	var wave_status := arena.get_node_or_null("HUD/WaveStatus") as Label
 	var player := arena.get_node_or_null("Player") as PlayerController
+	var targets := arena.get_node_or_null("World/Targets")
+	_append(failures, Assertions.expect_true(
+		targets != null and targets.child_exiting_tree.is_connected(
+			arena._on_target_exiting_tree
+		),
+		"Target removal is connected to automatic-wave scheduling"
+	))
+	_append(failures, Assertions.expect_true(
+		timer != null and timer.timeout.is_connected(arena._on_auto_wave_timeout),
+		"Auto-wave timer timeout is connected to the wave request"
+	))
 
 	_clear_zombies(arena)
 	arena.call("_refresh_wave_state_after_target_exit")
@@ -162,14 +184,13 @@ func _append_auto_wave_failures(
 
 	_clear_zombies(arena)
 	arena.call("_schedule_auto_wave_if_empty")
-	if timer != null:
-		timer.stop()
 	var wave_before_auto := int(arena.get("wave_number"))
-	arena.call("_on_auto_wave_timeout")
+	if timer != null:
+		timer.timeout.emit()
 	_append(failures, Assertions.expect_true(
 		int(arena.get("wave_number")) == wave_before_auto + 1 and
 		int(arena.call("get_active_zombie_count")) >= 4,
-		"Auto-wave timeout creates the next four-corner wave"
+		"Auto-wave Timer timeout creates the next four-corner wave"
 	))
 
 	_clear_zombies(arena)
@@ -200,6 +221,20 @@ func _pressed_action(action: StringName) -> InputEventAction:
 	event.action = action
 	event.pressed = true
 	return event
+
+func _click_at(viewport: Viewport, position: Vector2) -> void:
+	var press := InputEventMouseButton.new()
+	press.position = position
+	press.global_position = position
+	press.button_index = MOUSE_BUTTON_LEFT
+	press.pressed = true
+	viewport.push_input(press, true)
+	var release := InputEventMouseButton.new()
+	release.position = position
+	release.global_position = position
+	release.button_index = MOUSE_BUTTON_LEFT
+	release.pressed = false
+	viewport.push_input(release, true)
 
 func _append(failures: Array[String], failure: String) -> void:
 	if not failure.is_empty():

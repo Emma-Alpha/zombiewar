@@ -228,6 +228,17 @@ func run() -> Array[String]:
 				button.get_theme_font(&"font").has_char(glyph.unicode_at(0)),
 				"Command button font includes glyph %s" % glyph
 			))
+	_append(failures, Assertions.expect_true(
+		wave_status != null and wave_status.get_theme_font(&"font") != null,
+		"Automatic wave status has the Chinese UI font"
+	))
+	for glyph in "下一波即将到来":
+		_append(failures, Assertions.expect_true(
+			wave_status != null and
+			wave_status.get_theme_font(&"font") != null and
+			wave_status.get_theme_font(&"font").has_char(glyph.unicode_at(0)),
+			"Automatic wave status font includes glyph %s" % glyph
+		))
 	for candidate in [fire_label, jump_label]:
 		var label := candidate as Label
 		_append(failures, Assertions.expect_true(
@@ -252,6 +263,11 @@ func run() -> Array[String]:
 	_append(failures, Assertions.expect_true(
 		hit_confirm != null and hit_confirm.modulate.a == 0.0,
 		"Demo HUD has a hidden hit confirmation label"
+	))
+	_append(failures, Assertions.expect_true(
+		hit_confirm != null and
+		hit_confirm.mouse_filter == Control.MOUSE_FILTER_IGNORE,
+		"Hit confirmation ignores pointer input above the spawn-wave button"
 	))
 	_append(failures, Assertions.expect_true(
 		ground != null and ground.is_in_group(&"blood_surface"),
