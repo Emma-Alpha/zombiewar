@@ -5,6 +5,7 @@ const ZombieDifficultyProfile = preload("res://scripts/gameplay/zombie_difficult
 const EquipmentController = preload("res://scripts/player/equipment_controller.gd")
 const RangedWeapon = preload("res://scripts/combat/weapons/ranged_weapon.gd")
 const MeleeWeapon = preload("res://scripts/combat/weapons/melee_weapon.gd")
+const HitResult = preload("res://scripts/combat/hit_result.gd")
 
 func run() -> Array[String]:
 	var failures: Array[String] = []
@@ -233,6 +234,23 @@ func run() -> Array[String]:
 		hit_confirm != null,
 		"Arena has shot result confirmation UI"
 	))
+	if hit_confirm != null:
+		arena.call(
+			"_on_player_attack",
+			Vector3.FORWARD,
+			HitResult.resolved(10.0, &"body", true, false, Vector3.ZERO),
+			0.0
+		)
+		_append(failures, Assertions.expect_equal(
+			hit_confirm.text,
+			"HIT",
+			"HUD shows a normal hit even when it receives a legacy critical result"
+		))
+		_append(failures, Assertions.expect_equal(
+			hit_confirm.modulate,
+			Color.WHITE,
+			"HUD keeps normal-hit confirmation white"
+		))
 	_append(failures, Assertions.expect_true(
 		health_label != null and health_label.text == "HP 100 / 100",
 		"Demo HUD starts with full player health"

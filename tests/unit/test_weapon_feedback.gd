@@ -3,6 +3,7 @@ extends RefCounted
 const Assertions = preload("res://tests/helpers/assertions.gd")
 const PLAYER_SCENE := preload("res://scenes/player/Player.tscn")
 const CAMERA_SCENE := preload("res://scenes/camera/FollowCamera.tscn")
+const ZOMBIE_SCENE := preload("res://scenes/targets/ZombieTarget.tscn")
 const EquipmentController = preload("res://scripts/player/equipment_controller.gd")
 const RangedWeapon = preload("res://scripts/combat/weapons/ranged_weapon.gd")
 
@@ -60,6 +61,21 @@ func run() -> Array[String]:
 			0.0001,
 			"Functional ray origin is unchanged by VisualRoot recoil"
 		))
+
+	var offset_target := ZOMBIE_SCENE.instantiate() as ZombieTarget
+	offset_target.position = Vector3(1.4, 0.0, -17.0)
+	offset_target.set_physics_process(false)
+	tree.root.add_child(offset_target)
+	var functional_origin := player.get_node("FunctionalRayOrigin") as Marker3D
+	functional_origin.global_position = Vector3(0.0, 1.1, 0.0)
+	weapon.call("_fire", Vector3.FORWARD)
+	_append(failures, Assertions.expect_float_near(
+		offset_target.health.current,
+		50.0,
+		0.0001,
+		"Direct fire does not bend toward a nearby off-axis target"
+	))
+	offset_target.free()
 
 	var follow_camera := CAMERA_SCENE.instantiate() as FollowCamera
 	_append(failures, Assertions.expect_true(

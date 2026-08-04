@@ -373,7 +373,7 @@ func _test_dense_hitboxes_choose_closest_target(failures: Array[String]) -> void
 	var closest_target := TARGET_SCENE.instantiate() as ZombieTarget
 	closest_target.position = Vector3(-0.7, 0.0, -0.25)
 	for hitbox in closest_target.get_node("Hitboxes").get_children():
-		if hitbox.name != "TorsoHitbox":
+		if hitbox.name != "BodyHitbox":
 			(hitbox as Area3D).collision_layer = 0
 	tree.root.add_child(host)
 	host.add_child(player)

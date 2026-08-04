@@ -39,11 +39,7 @@ func run() -> Array[String]:
 		"apply_hit",
 		10.0,
 		Vector3(0.0, 1.1, 0.0),
-		Vector3.FORWARD,
-		&"torso",
-		1.0,
-		1.0,
-		0.06
+		Vector3.FORWARD
 	)
 	_append(failures, Assertions.expect_equal(
 		host.get_child_count(),

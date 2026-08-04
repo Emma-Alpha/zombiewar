@@ -104,50 +104,46 @@ func get_behavior_state() -> int:
 	return behavior_state
 
 func get_aim_point() -> Vector3:
-	var torso := get_node_or_null("Hitboxes/TorsoHitbox") as Area3D
-	return torso.global_position if torso != null else global_position + Vector3.UP * 1.1
+	var body := get_node_or_null("Hitboxes/BodyHitbox") as Area3D
+	return body.global_position if body != null else global_position + Vector3.UP * 1.1
 
 func apply_hit(
 	amount: float,
 	hit_position: Vector3,
-	shot_direction: Vector3,
-	_hit_zone: StringName = &"torso",
-	damage_multiplier: float = 1.0,
-	knockback_multiplier: float = 1.0,
-	vertical_bias: float = 0.05
+	shot_direction: Vector3
 ) -> HitResult:
 	_ensure_initialized()
 	if depleted:
 		return HitResult.miss(hit_position)
 	attack_cycle.cancel_pending()
 	attack_animation_remaining = 0.0
-	var applied_damage := health.apply_damage(amount * maxf(damage_multiplier, 0.0))
+	var applied_damage := health.apply_damage(maxf(amount, 0.0))
 	if applied_damage <= 0.0:
 		return HitResult.miss(hit_position)
 
 	var impulse := HitResponseMath.knockback_velocity(
 		shot_direction,
 		knockback_impulse,
-		knockback_multiplier,
-		vertical_bias
+		1.0,
+		0.05
 	)
 	velocity += impulse
 	_apply_visual_torque(hit_position, impulse)
-	_spawn_blood_impact(hit_position, shot_direction, knockback_multiplier)
+	_spawn_blood_impact(hit_position, shot_direction, 1.0)
 	visual_root.scale = Vector3.ONE * 1.08
 	var killed := health.current <= 0.0
 	ground_blood_requested.emit(
 		global_position if killed else hit_position,
 		shot_direction,
-		1.25 if killed else knockback_multiplier,
+		1.25 if killed else 1.0,
 		killed
 	)
 	if not killed:
 		_play_hit_reaction()
 	return HitResult.resolved(
 		applied_damage,
-		_hit_zone,
-		_hit_zone == &"head",
+		&"body",
+		false,
 		killed,
 		hit_position
 	)

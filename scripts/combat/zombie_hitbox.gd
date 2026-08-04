@@ -3,11 +3,6 @@ class_name ZombieHitbox
 
 const HitResult = preload("res://scripts/combat/hit_result.gd")
 
-@export var hit_zone: StringName = &"torso"
-@export_range(0.1, 3.0, 0.05) var damage_multiplier: float = 1.0
-@export_range(0.1, 3.0, 0.05) var knockback_multiplier: float = 1.0
-@export_range(0.0, 1.0, 0.01) var vertical_bias: float = 0.05
-
 func apply_hit(
 	amount: float,
 	hit_position: Vector3,
@@ -20,10 +15,6 @@ func apply_hit(
 		"apply_hit",
 		amount,
 		hit_position,
-		shot_direction,
-		hit_zone,
-		damage_multiplier,
-		knockback_multiplier,
-		vertical_bias
+		shot_direction
 	)
 	return result as HitResult if result is HitResult else HitResult.miss(hit_position)

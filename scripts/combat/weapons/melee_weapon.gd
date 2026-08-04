@@ -94,10 +94,16 @@ func _resolve_melee_hit() -> HitResult:
 	var closest_target: Node3D
 	var closest_distance := INF
 	var visited: Dictionary = {}
+	var wielder_forward := -wielder.global_transform.basis.z
+	wielder_forward.y = 0.0
 	for intersection in intersections:
 		var collider: Object = intersection.get("collider")
 		var target := _find_damage_target(collider)
 		if target == null:
+			continue
+		var target_offset := target.global_position - wielder.global_position
+		target_offset.y = 0.0
+		if target_offset.dot(wielder_forward) <= 0.0:
 			continue
 		var target_id := target.get_instance_id()
 		if visited.has(target_id):

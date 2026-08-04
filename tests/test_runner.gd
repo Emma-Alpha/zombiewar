@@ -11,7 +11,6 @@ const TEST_PATHS: Array[String] = [
 	"res://tests/unit/test_weapon_loadout.gd",
 	"res://tests/unit/test_player_melee_weapon.gd",
 	"res://tests/unit/test_hit_result.gd",
-	"res://tests/unit/test_aim_assist_math.gd",
 	"res://tests/unit/test_hit_response_math.gd",
 	"res://tests/unit/test_zombie_hitboxes.gd",
 	"res://tests/unit/test_blood_impact.gd",

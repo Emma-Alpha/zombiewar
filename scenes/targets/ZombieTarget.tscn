@@ -1,4 +1,4 @@
-[gd_scene load_steps=9 format=3]
+[gd_scene load_steps=6 format=3]
 
 [ext_resource type="Script" path="res://scripts/combat/zombie_target.gd" id="1_target"]
 [ext_resource type="PackedScene" path="res://assets/enemies/Zombie_Basic.gltf" id="2_model"]
@@ -8,17 +8,9 @@
 radius = 0.5
 height = 1.9
 
-[sub_resource type="SphereShape3D" id="SphereShape3D_head"]
-radius = 0.42
-
-[sub_resource type="BoxShape3D" id="BoxShape3D_torso"]
-size = Vector3(1.05, 1, 0.85)
-
-[sub_resource type="BoxShape3D" id="BoxShape3D_side"]
-size = Vector3(0.55, 1.25, 0.9)
-
-[sub_resource type="BoxShape3D" id="BoxShape3D_legs"]
-size = Vector3(0.95, 0.75, 0.8)
+[sub_resource type="CylinderShape3D" id="CylinderShape3D_body"]
+radius = 1.1
+height = 2.2
 
 [node name="ZombieTarget" type="CharacterBody3D" groups=["damageable_targets"]]
 collision_layer = 0
@@ -43,75 +35,15 @@ shape = SubResource("CapsuleShape3D_target")
 
 [node name="Hitboxes" type="Node3D" parent="."]
 
-[node name="HeadHitbox" type="Area3D" parent="Hitboxes"]
-position = Vector3(0, 1.72, 0)
-collision_layer = 4
-collision_mask = 0
-monitoring = false
-script = ExtResource("3_hitbox")
-hit_zone = &"head"
-damage_multiplier = 1.5
-knockback_multiplier = 1.35
-vertical_bias = 0.22
-
-[node name="CollisionShape3D" type="CollisionShape3D" parent="Hitboxes/HeadHitbox"]
-shape = SubResource("SphereShape3D_head")
-
-[node name="TorsoHitbox" type="Area3D" parent="Hitboxes"]
+[node name="BodyHitbox" type="Area3D" parent="Hitboxes"]
 position = Vector3(0, 1.1, 0)
 collision_layer = 4
 collision_mask = 0
 monitoring = false
 script = ExtResource("3_hitbox")
-hit_zone = &"torso"
-damage_multiplier = 1.0
-knockback_multiplier = 1.0
-vertical_bias = 0.06
 
-[node name="CollisionShape3D" type="CollisionShape3D" parent="Hitboxes/TorsoHitbox"]
-shape = SubResource("BoxShape3D_torso")
-
-[node name="LeftSideHitbox" type="Area3D" parent="Hitboxes"]
-position = Vector3(-0.62, 1.05, 0)
-collision_layer = 4
-collision_mask = 0
-monitoring = false
-script = ExtResource("3_hitbox")
-hit_zone = &"left_side"
-damage_multiplier = 0.8
-knockback_multiplier = 0.78
-vertical_bias = 0.1
-
-[node name="CollisionShape3D" type="CollisionShape3D" parent="Hitboxes/LeftSideHitbox"]
-shape = SubResource("BoxShape3D_side")
-
-[node name="RightSideHitbox" type="Area3D" parent="Hitboxes"]
-position = Vector3(0.62, 1.05, 0)
-collision_layer = 4
-collision_mask = 0
-monitoring = false
-script = ExtResource("3_hitbox")
-hit_zone = &"right_side"
-damage_multiplier = 0.8
-knockback_multiplier = 0.78
-vertical_bias = 0.1
-
-[node name="CollisionShape3D" type="CollisionShape3D" parent="Hitboxes/RightSideHitbox"]
-shape = SubResource("BoxShape3D_side")
-
-[node name="LegsHitbox" type="Area3D" parent="Hitboxes"]
-position = Vector3(0, 0.42, 0)
-collision_layer = 4
-collision_mask = 0
-monitoring = false
-script = ExtResource("3_hitbox")
-hit_zone = &"legs"
-damage_multiplier = 0.85
-knockback_multiplier = 0.65
-vertical_bias = 0.03
-
-[node name="CollisionShape3D" type="CollisionShape3D" parent="Hitboxes/LegsHitbox"]
-shape = SubResource("BoxShape3D_legs")
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Hitboxes/BodyHitbox"]
+shape = SubResource("CylinderShape3D_body")
 
 [node name="VisualRoot" type="Node3D" parent="."]
 

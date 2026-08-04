@@ -1,7 +1,6 @@
 extends WeaponBase
 class_name RangedWeapon
 
-const AimAssistMath = preload("res://scripts/combat/aim_assist_math.gd")
 const TRACER_SCENE := preload("res://scenes/fx/ShotTracer.tscn")
 const MuzzleFlash = preload("res://scripts/fx/muzzle_flash.gd")
 const WeaponTrigger = preload("res://scripts/combat/weapons/weapon_trigger.gd")
@@ -69,27 +68,14 @@ func _fire(shot_direction: Vector3) -> void:
 	var ranged_definition := definition as RangedWeaponDefinition
 	var ray_origin := get_ray_origin()
 	var ray_direction := WeaponMath.flat_direction(shot_direction)
-	var direct_end := WeaponMath.ray_end_from_direction(
+	var ray_end := WeaponMath.ray_end_from_direction(
 		ray_origin,
 		ray_direction,
 		ranged_definition.attack_range
 	)
-	var resolved_end := direct_end
-	var result := _intersect_shot(ray_origin, direct_end)
+	var result := _intersect_shot(ray_origin, ray_end)
 	var collider: Object = result.get("collider", null)
-
-	if collider == null or (
-		not collider.has_method("apply_hit") and
-		not collider.has_method("apply_damage")
-	):
-		var assisted_target := _find_assisted_target(ray_origin, ray_direction)
-		if assisted_target != null:
-			var assisted_end: Vector3 = assisted_target.call("get_aim_point")
-			resolved_end = assisted_end
-			result = _intersect_shot(ray_origin, resolved_end)
-			collider = result.get("collider", null)
-
-	var hit_position: Vector3 = result.get("position", resolved_end)
+	var hit_position: Vector3 = result.get("position", ray_end)
 	var hit_result := HitResult.miss(hit_position)
 	if collider != null and collider.has_method("apply_hit"):
 		var resolved: Variant = collider.call(
@@ -121,24 +107,6 @@ func _fire(shot_direction: Vector3) -> void:
 		ranged_definition.visual_recoil_kick,
 		ranged_definition.camera_impulse_strength
 	)
-
-func _find_assisted_target(origin: Vector3, direction: Vector3) -> Node3D:
-	var ranged_definition := definition as RangedWeaponDefinition
-	var targets: Array[Node3D] = []
-	var points: Array[Vector3] = []
-	for node in get_tree().get_nodes_in_group(&"damageable_targets"):
-		if node is Node3D and node.has_method("get_aim_point"):
-			targets.append(node as Node3D)
-			var aim_point: Vector3 = node.call("get_aim_point")
-			points.append(aim_point)
-	var selected := AimAssistMath.select_best_index(
-		origin,
-		direction,
-		points,
-		ranged_definition.aim_assist_range,
-		deg_to_rad(ranged_definition.aim_assist_angle_degrees)
-	)
-	return targets[selected] if selected >= 0 else null
 
 func _intersect_shot(from: Vector3, to: Vector3) -> Dictionary:
 	var ranged_definition := definition as RangedWeaponDefinition
