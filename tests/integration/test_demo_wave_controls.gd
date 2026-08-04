@@ -123,7 +123,77 @@ func run() -> Array[String]:
 	))
 
 	arena.free()
+	_append_auto_wave_failures(failures, packed, tree)
 	return failures
+
+func _append_auto_wave_failures(
+	failures: Array[String],
+	packed: PackedScene,
+	tree: SceneTree
+) -> void:
+	var arena := packed.instantiate()
+	arena.set("random_seed", 20260805)
+	tree.root.add_child(arena)
+	var timer := arena.get_node_or_null("AutoWaveTimer") as Timer
+	var wave_status := arena.get_node_or_null("HUD/WaveStatus") as Label
+	var player := arena.get_node_or_null("Player") as PlayerController
+
+	_clear_zombies(arena)
+	arena.call("_refresh_wave_state_after_target_exit")
+	_append(failures, Assertions.expect_true(
+		timer != null and not timer.is_stopped() and
+		wave_status != null and wave_status.visible and
+		wave_status.text == "下一波即将到来",
+		"Clearing the arena schedules one delayed wave"
+	))
+	_append(failures, Assertions.expect_true(
+		not bool(arena.call("_schedule_auto_wave_if_empty")),
+		"A running auto-wave timer cannot be scheduled twice"
+	))
+
+	var wave_before_manual := int(arena.get("wave_number"))
+	arena.call("request_spawn_wave")
+	_append(failures, Assertions.expect_true(
+		timer != null and timer.is_stopped() and
+		wave_status != null and not wave_status.visible and
+		int(arena.get("wave_number")) == wave_before_manual + 1,
+		"Manual wave skips the delay without leaving a second wave pending"
+	))
+
+	_clear_zombies(arena)
+	arena.call("_schedule_auto_wave_if_empty")
+	if timer != null:
+		timer.stop()
+	var wave_before_auto := int(arena.get("wave_number"))
+	arena.call("_on_auto_wave_timeout")
+	_append(failures, Assertions.expect_true(
+		int(arena.get("wave_number")) == wave_before_auto + 1 and
+		int(arena.call("get_active_zombie_count")) >= 4,
+		"Auto-wave timeout creates the next four-corner wave"
+	))
+
+	_clear_zombies(arena)
+	arena.call("_schedule_auto_wave_if_empty")
+	if player != null:
+		player.apply_damage(1000.0, Vector3.ZERO)
+	var defeated_wave := int(arena.get("wave_number"))
+	arena.call("_on_auto_wave_timeout")
+	_append(failures, Assertions.expect_true(
+		timer != null and timer.is_stopped() and
+		int(arena.get("wave_number")) == defeated_wave and
+		int(arena.call("get_active_zombie_count")) == 0,
+		"Player death cancels and blocks the pending automatic wave"
+	))
+	arena.free()
+
+func _clear_zombies(arena: Node) -> void:
+	var targets := arena.get_node_or_null("World/Targets")
+	if targets == null:
+		return
+	for child in targets.get_children():
+		if child is ZombieTarget:
+			targets.remove_child(child)
+			child.free()
 
 func _pressed_action(action: StringName) -> InputEventAction:
 	var event := InputEventAction.new()

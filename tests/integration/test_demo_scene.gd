@@ -37,6 +37,7 @@ func run() -> Array[String]:
 	var game_over := arena.get_node_or_null("HUD/GameOver") as Label
 	var wave_status := arena.get_node_or_null("HUD/WaveStatus") as Label
 	var wave_status_timer := arena.get_node_or_null("WaveStatusTimer") as Timer
+	var auto_wave_timer := arena.get_node_or_null("AutoWaveTimer") as Timer
 	var spawn_wave_button := arena.get_node_or_null("HUD/SpawnWaveButton") as Button
 	var restart_button := arena.get_node_or_null("HUD/RestartButton") as Button
 	var mobile_controls := arena.get_node_or_null("MobileControls")
@@ -285,6 +286,13 @@ func run() -> Array[String]:
 		wave_status_timer.one_shot and
 		absf(wave_status_timer.wait_time - 1.2) <= 0.0001,
 		"Wave status uses a short one-shot timer"
+	))
+	_append(failures, Assertions.expect_true(
+		auto_wave_timer != null and
+		auto_wave_timer.one_shot and
+		absf(auto_wave_timer.wait_time - 1.5) <= 0.0001 and
+		auto_wave_timer.is_stopped(),
+		"Demo owns a stopped 1.5-second one-shot auto-wave timer"
 	))
 	if targets != null:
 		for target in zombies:
