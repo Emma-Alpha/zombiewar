@@ -1,0 +1,12 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/fx/ground_blood_splat.gd" id="1_script"]
+[ext_resource type="Texture2D" path="res://assets/fx/blood/kenney_splat29.png" id="2_texture"]
+
+[node name="GroundBloodSplat" type="Sprite3D"]
+texture = ExtResource("2_texture")
+pixel_size = 0.0032
+billboard = 0
+alpha_cut = 1
+cast_shadow = 0
+script = ExtResource("1_script")

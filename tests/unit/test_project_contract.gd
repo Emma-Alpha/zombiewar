@@ -30,6 +30,11 @@ func run() -> Array[String]:
 		"3D physics engine"
 	))
 	_append(failures, Assertions.expect_equal(
+		ProjectSettings.get_setting("physics/common/physics_interpolation", false),
+		true,
+		"Physics interpolation is enabled"
+	))
+	_append(failures, Assertions.expect_equal(
 		ProjectSettings.get_setting(
 			"input_devices/pointing/emulate_touch_from_mouse",
 			false

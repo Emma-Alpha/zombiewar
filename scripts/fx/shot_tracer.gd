@@ -5,31 +5,32 @@ class_name ShotTracer
 
 var remaining: float
 
+func _ready() -> void:
+	deactivate()
+
 func setup(from: Vector3, to: Vector3) -> void:
 	var distance := from.distance_to(to)
 	if distance <= 0.001:
-		queue_free()
+		deactivate()
 		return
 
-	remaining = lifetime
+	remaining = maxf(lifetime, 0.001)
 	global_position = (from + to) * 0.5
+	scale = Vector3.ONE
 	look_at(to, Vector3.UP)
+	scale.z = distance
+	transparency = 0.0
+	visible = true
+	set_process(true)
 
-	var tracer_mesh := BoxMesh.new()
-	tracer_mesh.size = Vector3(0.035, 0.035, distance)
-	mesh = tracer_mesh
-
-	var material := StandardMaterial3D.new()
-	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	material.albedo_color = Color(1.0, 0.78, 0.18)
-	material.emission_enabled = true
-	material.emission = Color(1.0, 0.45, 0.05)
-	material.emission_energy_multiplier = 3.0
-	material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	material_override = material
+func deactivate() -> void:
+	remaining = 0.0
+	transparency = 1.0
+	visible = false
+	set_process(false)
 
 func _process(delta: float) -> void:
 	remaining -= delta
-	transparency = clampf(1.0 - remaining / lifetime, 0.0, 1.0)
+	transparency = clampf(1.0 - remaining / maxf(lifetime, 0.001), 0.0, 1.0)
 	if remaining <= 0.0:
-		queue_free()
+		deactivate()

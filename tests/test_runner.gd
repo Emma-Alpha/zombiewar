@@ -7,9 +7,23 @@ const TEST_PATHS: Array[String] = [
 	"res://tests/unit/test_mobile_touch_controls.gd",
 	"res://tests/unit/test_follow_camera.gd",
 	"res://tests/unit/test_directional_fire.gd",
+	"res://tests/unit/test_hit_result.gd",
+	"res://tests/unit/test_aim_assist_math.gd",
+	"res://tests/unit/test_hit_response_math.gd",
+	"res://tests/unit/test_zombie_hitboxes.gd",
+	"res://tests/unit/test_blood_impact.gd",
+	"res://tests/unit/test_ground_blood_manager.gd",
+	"res://tests/unit/test_tracer_pool.gd",
+	"res://tests/unit/test_melee_attack_cycle.gd",
+	"res://tests/unit/test_zombie_behavior_math.gd",
+	"res://tests/unit/test_zombie_behavior.gd",
+	"res://tests/unit/test_zombie_difficulty_profile.gd",
 	"res://tests/unit/test_health.gd",
+	"res://tests/unit/test_player_damage.gd",
+	"res://tests/unit/test_weapon_feedback.gd",
 	"res://tests/integration/test_demo_scene.gd",
 	"res://tests/integration/test_main_menu_scene.gd",
+	"res://tests/integration/test_menu_cjk_font.gd",
 ]
 
 func _initialize() -> void:

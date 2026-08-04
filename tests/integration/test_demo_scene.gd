@@ -1,6 +1,7 @@
 extends RefCounted
 
 const Assertions = preload("res://tests/helpers/assertions.gd")
+const ZombieDifficultyProfile = preload("res://scripts/gameplay/zombie_difficulty_profile.gd")
 
 func run() -> Array[String]:
 	var failures: Array[String] = []
@@ -18,6 +19,14 @@ func run() -> Array[String]:
 	var camera := arena.get_node_or_null("FollowCamera/Camera3D") as Camera3D
 	var targets := arena.get_node_or_null("World/Targets")
 	var controls := arena.get_node_or_null("HUD/ControlsPanel/Controls") as Label
+	var weapon := arena.get_node_or_null("Player/Weapon") as PlayerWeapon
+	var aim_indicator := arena.get_node_or_null("Player/Weapon/AimIndicator") as Node3D
+	var hit_confirm := arena.get_node_or_null("HUD/HitConfirm") as Label
+	var ground := arena.get_node_or_null("World/Ground") as StaticBody3D
+	var ground_blood := arena.get_node_or_null("GroundBloodManager")
+	var health_label := arena.get_node_or_null("HUD/PlayerHealth") as Label
+	var damage_flash := arena.get_node_or_null("HUD/DamageFlash") as ColorRect
+	var game_over := arena.get_node_or_null("HUD/GameOver") as Label
 	var mobile_controls := arena.get_node_or_null("MobileControls")
 	var virtual_joystick := arena.get_node_or_null(
 		"MobileControls/Layout/VirtualJoystick"
@@ -34,6 +43,18 @@ func run() -> Array[String]:
 	var jump_label := arena.get_node_or_null(
 		"MobileControls/Layout/JumpButton/Label"
 	) as Label
+	var difficulty := arena.get("zombie_difficulty") as ZombieDifficultyProfile
+	_append(failures, Assertions.expect_true(
+		difficulty != null,
+		"Demo has a zombie difficulty profile"
+	))
+	if difficulty != null:
+		_append(failures, Assertions.expect_float_near(
+			difficulty.perception_move_speed,
+			1.30,
+			0.0001,
+			"Demo defaults to normal zombie perception speed"
+		))
 	_append(failures, Assertions.expect_true(player != null, "Demo has Player"))
 	_append(failures, Assertions.expect_true(
 		player != null and player.has_method("set_movement_camera"),
@@ -60,7 +81,58 @@ func run() -> Array[String]:
 	if camera != null:
 		_append(failures, Assertions.expect_equal(camera.projection, Camera3D.PROJECTION_ORTHOGONAL, "Camera is orthographic"))
 		_append(failures, Assertions.expect_float_near(camera.size, 18.0, 0.0001, "Camera orthographic size"))
+		_append(failures, Assertions.expect_vector3_near(
+			camera.position,
+			Vector3(0.0, 12.0, sqrt(200.0)),
+			0.001,
+			"Camera preserves distance while moving onto the world Z axis"
+		))
+		_append(failures, Assertions.expect_float_near(
+			camera.rotation_degrees.x,
+			-40.3,
+			0.0001,
+			"Camera preserves the oblique pitch"
+		))
+		_append(failures, Assertions.expect_float_near(
+			camera.rotation_degrees.y,
+			0.0,
+			0.0001,
+			"Camera removes the 45 degree yaw"
+		))
+		var planar_right := camera.basis.x
+		planar_right.y = 0.0
+		planar_right = planar_right.normalized()
+		var planar_forward := -camera.basis.z
+		planar_forward.y = 0.0
+		planar_forward = planar_forward.normalized()
+		_append(failures, Assertions.expect_vector3_near(
+			planar_right,
+			Vector3.RIGHT,
+			0.0001,
+			"Camera right aligns with world positive X"
+		))
+		_append(failures, Assertions.expect_vector3_near(
+			planar_forward,
+			Vector3.FORWARD,
+			0.0001,
+			"Camera forward aligns with world negative Z"
+		))
 	_append(failures, Assertions.expect_true(targets != null and targets.get_child_count() == 4, "Demo has four zombie targets"))
+	_append(failures, Assertions.expect_true(
+		weapon != null and weapon.has_method("set_combat_input"),
+		"Weapon consumes injected combat input"
+	))
+	_append(failures, Assertions.expect_true(
+		aim_indicator != null and aim_indicator.visible,
+		"Player has a visible keyboard aim indicator"
+	))
+	if weapon != null:
+		_append(failures, Assertions.expect_float_near(
+			weapon.max_range,
+			28.0,
+			0.0001,
+			"Weapon range matches the visible arena scale"
+		))
 	_append(failures, Assertions.expect_true(controls != null, "Demo has controls label"))
 	if controls != null:
 		_append(failures, Assertions.expect_equal(
@@ -126,6 +198,111 @@ func run() -> Array[String]:
 				font.has_char(codepoint),
 				"Mobile action font includes glyph %s" % glyph
 			))
+	_append(failures, Assertions.expect_true(
+		hit_confirm != null and hit_confirm.modulate.a == 0.0,
+		"Demo HUD has a hidden hit confirmation label"
+	))
+	_append(failures, Assertions.expect_true(
+		ground != null and ground.is_in_group(&"blood_surface"),
+		"Arena ground is the only persistent blood projection surface"
+	))
+	_append(failures, Assertions.expect_true(
+		ground_blood != null and ground_blood.get("max_splats") == 192,
+		"Arena owns a capped persistent ground blood manager"
+	))
+	_append(failures, Assertions.expect_true(
+		hit_confirm != null,
+		"Arena has shot result confirmation UI"
+	))
+	_append(failures, Assertions.expect_true(
+		health_label != null and health_label.text == "HP 100 / 100",
+		"Demo HUD starts with full player health"
+	))
+	_append(failures, Assertions.expect_true(
+		damage_flash != null and damage_flash.color.a == 0.0,
+		"Damage flash starts transparent"
+	))
+	_append(failures, Assertions.expect_true(
+		game_over != null and not game_over.visible,
+		"Game-over message starts hidden"
+	))
+	if targets != null:
+		for target in targets.get_children():
+			_append(failures, Assertions.expect_float_near(
+				float(target.get("perception_move_speed")),
+				1.30,
+				0.0001,
+				"Every zombie receives the normal perception speed"
+			))
+			_append(failures, Assertions.expect_float_near(
+				float(target.get("perception_range")),
+				7.0,
+				0.0001,
+				"Difficulty does not alter zombie perception range"
+			))
+			_append(failures, Assertions.expect_float_near(
+				float(target.get("attack_range")),
+				1.45,
+				0.0001,
+				"Every zombie keeps the fixed attack range"
+			))
+			_append(failures, Assertions.expect_float_near(
+				float(target.get("attack_damage")),
+				10.0,
+				0.0001,
+				"Every zombie keeps the fixed attack damage"
+			))
+			_append(failures, Assertions.expect_float_near(
+				float(target.get("attack_windup")),
+				0.50,
+				0.0001,
+				"Every zombie keeps the fixed attack windup"
+			))
+			_append(failures, Assertions.expect_float_near(
+				float(target.get("attack_cooldown")),
+				1.40,
+				0.0001,
+				"Every zombie keeps the fixed attack cooldown"
+			))
+			_append(failures, Assertions.expect_float_near(
+				float(target.get("attack_animation_duration")),
+				0.70,
+				0.0001,
+				"Every zombie keeps the fixed attack animation duration"
+			))
+			_append(failures, Assertions.expect_true(
+				target is ZombieTarget and
+				(target as ZombieTarget).ground_blood_requested.is_connected(
+					Callable(arena, "_on_ground_blood_requested")
+				),
+				"Every arena target forwards blood requests to the scene manager"
+			))
+			_append(failures, Assertions.expect_true(
+				target.has_method("set_attack_target"),
+				"Every zombie exposes player targeting"
+			))
+			if target.has_method("set_attack_target"):
+				_append(failures, Assertions.expect_true(
+					target.get("attack_target") == player,
+					"Every zombie targets the arena player"
+				))
+				_append(failures, Assertions.expect_true(
+					float(target.get("attack_range")) > 0.0 and
+					float(target.get("attack_damage")) > 0.0,
+					"Every zombie has an enabled melee attack"
+				))
+	if player != null and health_label != null and game_over != null:
+		player.call("apply_damage", 10.0, Vector3.ZERO)
+		_append(failures, Assertions.expect_equal(
+			health_label.text,
+			"HP 90 / 100",
+			"HUD follows player damage"
+		))
+		player.call("apply_damage", 1000.0, Vector3.ZERO)
+		_append(failures, Assertions.expect_true(
+			game_over.visible,
+			"Lethal damage reveals game-over feedback"
+		))
 	arena.free()
 	return failures
 

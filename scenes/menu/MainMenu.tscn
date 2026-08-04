@@ -1,10 +1,11 @@
-[gd_scene load_steps=12 format=3]
+[gd_scene load_steps=13 format=3]
 
 [ext_resource type="Script" path="res://scripts/menu/main_menu.gd" id="1_menu"]
 [ext_resource type="PackedScene" path="res://scenes/menu/MenuBackdrop.tscn" id="2_backdrop"]
 [ext_resource type="AudioStream" path="res://docs/game_resources_zombie_prototype/assets/sfx/interface/Audio/select_001.ogg" id="3_select"]
 [ext_resource type="AudioStream" path="res://docs/game_resources_zombie_prototype/assets/sfx/interface/Audio/confirmation_001.ogg" id="4_confirm"]
 [ext_resource type="AudioStream" path="res://docs/game_resources_zombie_prototype/assets/sfx/interface/Audio/back_001.ogg" id="5_back"]
+[ext_resource type="FontFile" path="res://assets/fonts/NotoSansSC-UI.ttf" id="6_cjk_font"]
 
 [sub_resource type="Gradient" id="Gradient_left_shade"]
 offsets = PackedFloat32Array(0, 0.48, 0.72, 1)
@@ -146,6 +147,7 @@ color = Color(0.71, 0.16, 0.12, 1)
 [node name="Subtitle" type="Label" parent="MenuLayer/MenuRoot/LeftColumn"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.7, 0.73, 0.7, 1)
+theme_override_fonts/font = ExtResource("6_cjk_font")
 theme_override_font_sizes/font_size = 19
 text = "冲出尸潮，活到最后。"
 
@@ -161,6 +163,7 @@ focus_neighbor_bottom = NodePath("../QuitButton")
 theme_override_colors/font_color = Color(0.97, 0.95, 0.9, 1)
 theme_override_colors/font_hover_color = Color(1, 1, 1, 1)
 theme_override_colors/font_focus_color = Color(1, 1, 1, 1)
+theme_override_fonts/font = ExtResource("6_cjk_font")
 theme_override_font_sizes/font_size = 26
 theme_override_styles/normal = SubResource("StyleBox_button_normal")
 theme_override_styles/hover = SubResource("StyleBox_button_hover")
@@ -178,6 +181,7 @@ focus_neighbor_top = NodePath("../StartButton")
 theme_override_colors/font_color = Color(0.97, 0.95, 0.9, 1)
 theme_override_colors/font_hover_color = Color(1, 1, 1, 1)
 theme_override_colors/font_focus_color = Color(1, 1, 1, 1)
+theme_override_fonts/font = ExtResource("6_cjk_font")
 theme_override_font_sizes/font_size = 26
 theme_override_styles/normal = SubResource("StyleBox_button_normal")
 theme_override_styles/hover = SubResource("StyleBox_button_hover")
@@ -195,6 +199,7 @@ anchor_right = 0.55
 anchor_bottom = 0.97
 mouse_filter = 2
 theme_override_colors/font_color = Color(0.64, 0.67, 0.65, 1)
+theme_override_fonts/font = ExtResource("6_cjk_font")
 theme_override_font_sizes/font_size = 15
 text = "↑↓ / TAB 选择 · ENTER 确认"
 
@@ -270,12 +275,14 @@ theme_override_constants/separation = 18
 [node name="DialogTitle" type="Label" parent="MenuLayer/MenuRoot/ExitDialog/DialogPanel/DialogMargin/DialogContent"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.97, 0.95, 0.9, 1)
+theme_override_fonts/font = ExtResource("6_cjk_font")
 theme_override_font_sizes/font_size = 30
 text = "确认退出？"
 
 [node name="DialogMessage" type="Label" parent="MenuLayer/MenuRoot/ExitDialog/DialogPanel/DialogMargin/DialogContent"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.7, 0.73, 0.7, 1)
+theme_override_fonts/font = ExtResource("6_cjk_font")
 theme_override_font_sizes/font_size = 18
 text = "当前原型进度不会保存。"
 
@@ -292,6 +299,7 @@ layout_mode = 2
 focus_neighbor_right = NodePath("../ConfirmExitButton")
 size_flags_vertical = 8
 theme_override_colors/font_color = Color(0.97, 0.95, 0.9, 1)
+theme_override_fonts/font = ExtResource("6_cjk_font")
 theme_override_font_sizes/font_size = 20
 theme_override_styles/normal = SubResource("StyleBox_button_normal")
 theme_override_styles/hover = SubResource("StyleBox_button_hover")
@@ -306,6 +314,7 @@ layout_mode = 2
 focus_neighbor_left = NodePath("../CancelExitButton")
 size_flags_vertical = 8
 theme_override_colors/font_color = Color(0.97, 0.95, 0.9, 1)
+theme_override_fonts/font = ExtResource("6_cjk_font")
 theme_override_font_sizes/font_size = 20
 theme_override_styles/normal = SubResource("StyleBox_button_normal")
 theme_override_styles/hover = SubResource("StyleBox_button_hover")

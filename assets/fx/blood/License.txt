@@ -1,0 +1,12 @@
+Kenney Splat Pack (1.0)
+
+Source: https://kenney.nl/assets/splat-pack
+Selected file: PNG/Default (256px)/splat29.png
+Created/distributed by Kenney (https://kenney.nl)
+Creation date: 2022-03-16
+
+License: Creative Commons Zero (CC0)
+https://creativecommons.org/publicdomain/zero/1.0/
+
+This content is free to use in personal, educational, and commercial projects.
+Credit to Kenney is appreciated but not required.

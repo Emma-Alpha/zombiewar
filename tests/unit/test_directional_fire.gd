@@ -18,18 +18,15 @@ func run() -> Array[String]:
 			0.0001,
 			"Identity player basis fires along Godot forward"
 		))
-		var right_facing_basis := Basis(Vector3.UP, -PI / 2.0)
 		_append(failures, Assertions.expect_vector3_near(
-			weapon_math.forward_direction(right_facing_basis),
-			Vector3.RIGHT,
+			weapon_math.ray_end_from_direction(
+				Vector3(1.0, 1.2, 1.0),
+				Vector3.RIGHT * 3.0,
+				28.0
+			),
+			Vector3(29.0, 1.2, 1.0),
 			0.0001,
-			"Rotated player fires along retained facing"
-		))
-		_append(failures, Assertions.expect_vector3_near(
-			weapon_math.ray_end(Vector3(1.0, 1.2, 1.0), right_facing_basis, 80.0),
-			Vector3(81.0, 1.2, 1.0),
-			0.0001,
-			"Directional ray keeps the 80 meter range"
+			"Directional ray normalizes aim and uses the visible-arena range"
 		))
 
 	if fire_gate_script != null:
@@ -38,6 +35,32 @@ func run() -> Array[String]:
 		_append(failures, Assertions.expect_true(not gate.call("try_consume"), "Second immediate shot is blocked"))
 		gate.call("tick", 1.0 / 6.0)
 		_append(failures, Assertions.expect_true(gate.call("try_consume"), "Shot is available after cooldown"))
+
+		var carry_gate: RefCounted = fire_gate_script.new(1.0 / 6.0) as RefCounted
+		_append(failures, Assertions.expect_true(
+			carry_gate.try_consume(true),
+			"Held trigger fires immediately"
+		))
+		carry_gate.tick(0.2)
+		_append(failures, Assertions.expect_true(
+			carry_gate.try_consume(true),
+			"Overshoot frame still allows the next shot"
+		))
+		_append(failures, Assertions.expect_float_near(
+			carry_gate.remaining,
+			(1.0 / 6.0) - (0.2 - 1.0 / 6.0),
+			0.0001,
+			"Fire cadence carries frame overshoot into the next interval"
+		))
+
+		var buffered_gate: RefCounted = fire_gate_script.new(1.0 / 6.0) as RefCounted
+		buffered_gate.try_consume(true)
+		buffered_gate.request_shot(0.08)
+		buffered_gate.tick(1.0 / 6.0)
+		_append(failures, Assertions.expect_true(
+			buffered_gate.try_consume(false),
+			"Released tap fires when the buffered cooldown expires"
+		))
 	return failures
 
 func _append(failures: Array[String], failure: String) -> void:

@@ -1,0 +1,20 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://scripts/fx/muzzle_flash.gd" id="1_muzzle_flash"]
+
+[sub_resource type="Shader" id="Shader_muzzle_flash"]
+code = "shader_type spatial;\nrender_mode unshaded, cull_disabled, blend_add, depth_draw_never;\n\nvoid vertex() {\n\tMODELVIEW_MATRIX = VIEW_MATRIX * mat4(\n\t\tINV_VIEW_MATRIX[0],\n\t\tINV_VIEW_MATRIX[1],\n\t\tINV_VIEW_MATRIX[2],\n\t\tMODEL_MATRIX[3]\n\t);\n}\n\nvoid fragment() {\n\tvec2 centered = UV * 2.0 - 1.0;\n\tfloat radial = 1.0 - smoothstep(0.15, 1.0, length(centered));\n\tfloat streak = 1.0 - smoothstep(0.05, 0.42, abs(centered.y));\n\tfloat alpha = clamp(radial + streak * 0.35, 0.0, 1.0);\n\tALBEDO = mix(vec3(1.0, 0.18, 0.015), vec3(1.0, 0.9, 0.38), radial);\n\tEMISSION = ALBEDO * 3.0;\n\tALPHA = alpha;\n}\n"
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_muzzle_flash"]
+shader = SubResource("Shader_muzzle_flash")
+
+[sub_resource type="QuadMesh" id="QuadMesh_muzzle_flash"]
+material = SubResource("ShaderMaterial_muzzle_flash")
+size = Vector2(0.42, 0.42)
+
+[node name="MuzzleFlash" type="Node3D"]
+script = ExtResource("1_muzzle_flash")
+
+[node name="Flash" type="MeshInstance3D" parent="."]
+cast_shadow = 0
+mesh = SubResource("QuadMesh_muzzle_flash")

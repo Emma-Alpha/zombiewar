@@ -1,4 +1,4 @@
-[gd_scene load_steps=19 format=3]
+[gd_scene load_steps=21 format=3]
 
 [ext_resource type="Script" path="res://scripts/gameplay/demo_arena.gd" id="1_arena"]
 [ext_resource type="PackedScene" path="res://scenes/player/Player.tscn" id="2_player"]
@@ -6,6 +6,8 @@
 [ext_resource type="PackedScene" path="res://scenes/targets/ZombieTarget.tscn" id="4_target"]
 [ext_resource type="PackedScene" path="res://assets/vehicles/Vehicle_Pickup.gltf" id="5_pickup"]
 [ext_resource type="PackedScene" path="res://assets/environment/Container_Red.gltf" id="6_container"]
+[ext_resource type="Script" path="res://scripts/fx/ground_blood_manager.gd" id="7_ground_blood"]
+[ext_resource type="Resource" path="res://resources/difficulty/zombie_normal.tres" id="8_zombie_difficulty"]
 [ext_resource type="PackedScene" path="res://scenes/ui/MobileControls.tscn" id="9_mobile_controls"]
 
 [sub_resource type="Environment" id="Environment_arena"]
@@ -57,6 +59,7 @@ content_margin_bottom = 10.0
 
 [node name="DemoArena" type="Node3D"]
 script = ExtResource("1_arena")
+zombie_difficulty = ExtResource("8_zombie_difficulty")
 
 [node name="WorldEnvironment" type="WorldEnvironment" parent="."]
 environment = SubResource("Environment_arena")
@@ -68,7 +71,7 @@ shadow_enabled = true
 
 [node name="World" type="Node3D" parent="."]
 
-[node name="Ground" type="StaticBody3D" parent="World"]
+[node name="Ground" type="StaticBody3D" parent="World" groups=["blood_surface"]]
 collision_layer = 1
 collision_mask = 0
 
@@ -182,6 +185,12 @@ position = Vector3(-10, 0, 7)
 [node name="Player" parent="." instance=ExtResource("2_player")]
 position = Vector3(0, 0, 6)
 
+[node name="GroundBloodManager" type="Node3D" parent="."]
+script = ExtResource("7_ground_blood")
+max_splats = 192
+surface_collision_mask = 1
+hit_splat_probability = 0.55
+
 [node name="FollowCamera" parent="." instance=ExtResource("3_camera")]
 position = Vector3(0, 0, 6)
 
@@ -189,6 +198,15 @@ position = Vector3(0, 0, 6)
 
 [node name="MobileControls" parent="." instance=ExtResource("9_mobile_controls")]
 desktop_help_path = NodePath("../HUD/ControlsPanel")
+
+[node name="DamageFlash" type="ColorRect" parent="HUD"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0.8, 0.03, 0.02, 0)
 
 [node name="Title" type="Label" parent="HUD"]
 offset_left = 24.0
@@ -198,6 +216,25 @@ offset_bottom = 48.0
 theme_override_colors/font_color = Color(0.952941, 0.933333, 0.894118, 1)
 theme_override_font_sizes/font_size = 20
 text = "ZOMBIE WAR — CONTROL DEMO"
+
+[node name="PlayerHealth" type="Label" parent="HUD"]
+offset_left = 24.0
+offset_top = 50.0
+offset_right = 260.0
+offset_bottom = 78.0
+theme_override_colors/font_color = Color(1, 0.78, 0.26, 1)
+theme_override_font_sizes/font_size = 20
+text = "HP 100 / 100"
+
+[node name="HitConfirm" type="Label" parent="HUD"]
+anchors_preset = 10
+anchor_right = 1.0
+offset_top = 82.0
+offset_bottom = 112.0
+theme_override_font_sizes/font_size = 20
+text = ""
+horizontal_alignment = 1
+modulate = Color(1, 1, 1, 0)
 
 [node name="ControlsPanel" type="PanelContainer" parent="HUD"]
 anchors_preset = 2
@@ -216,6 +253,28 @@ theme_override_colors/font_color = Color(0.952941, 0.933333, 0.894118, 1)
 theme_override_font_sizes/font_size = 16
 text = "WASD  MOVE + FACE    SPACE  JUMP    J  FIRE"
 
+[node name="GameOver" type="Label" parent="HUD"]
+visible = false
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -220.0
+offset_top = -42.0
+offset_right = 220.0
+offset_bottom = 42.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_colors/font_color = Color(1, 0.25, 0.18, 1)
+theme_override_colors/font_shadow_color = Color(0, 0, 0, 0.9)
+theme_override_constants/shadow_offset_x = 3
+theme_override_constants/shadow_offset_y = 3
+theme_override_font_sizes/font_size = 42
+text = "PLAYER DOWN"
+horizontal_alignment = 1
+vertical_alignment = 1
+
 [node name="Objective" type="Label" parent="HUD"]
 anchors_preset = 1
 anchor_left = 1.0
@@ -227,5 +286,5 @@ offset_bottom = 48.0
 grow_horizontal = 0
 theme_override_colors/font_color = Color(0.952941, 0.933333, 0.894118, 1)
 theme_override_font_sizes/font_size = 18
-text = "OBJECTIVE: CLEAR 4 PRACTICE TARGETS"
+text = "OBJECTIVE: SURVIVE AND CLEAR 4 ZOMBIES"
 horizontal_alignment = 2

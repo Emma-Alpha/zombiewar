@@ -1,41 +1,358 @@
-extends StaticBody3D
+extends CharacterBody3D
 class_name ZombieTarget
 
 const Health = preload("res://scripts/combat/health.gd")
+const HitResponseMath = preload("res://scripts/combat/hit_response_math.gd")
+const HitResult = preload("res://scripts/combat/hit_result.gd")
+const MeleeAttackCycle = preload("res://scripts/combat/melee_attack_cycle.gd")
+const ZombieBehaviorMath = preload("res://scripts/combat/zombie_behavior_math.gd")
+const BLOOD_IMPACT_SCENE := preload("res://scenes/fx/BloodImpact.tscn")
+
+signal ground_blood_requested(
+	origin: Vector3,
+	direction: Vector3,
+	intensity: float,
+	death_pool: bool
+)
 
 @export var max_health: float = 50.0
+@export var knockback_impulse: float = 6.0
+@export var ground_drag: float = 11.0
+@export var air_drag: float = 2.5
+@export var gravity_multiplier: float = 1.0
+@export var reaction_spring: float = 18.0
+@export var reaction_damping: float = 8.0
+@export var max_visual_tilt_degrees: float = 18.0
+
+@export_group("Ambient Behavior")
+@export var perception_range := 7.0
+@export var perception_exit_margin := 1.0
+@export var wander_speed := 0.55
+@export var wander_radius := 3.5
+@export var wander_arrive_range := 0.25
+@export var wander_pause_min := 0.4
+@export var wander_pause_max := 1.2
+@export var perception_slow_radius := 1.5
+@export var movement_acceleration := 5.0
+
+@export_group("Attack Behavior")
+@export var attack_range := 1.45
+@export var attack_damage := 10.0
+@export var attack_cooldown := 1.40
+@export var attack_windup := 0.50
+@export var attack_animation_duration := 0.70
 
 @onready var visual_root: Node3D = $VisualRoot
-@onready var collision_shape: CollisionShape3D = $CollisionShape3D
+@onready var motion_collision: CollisionShape3D = $MotionCollision
+@onready var hitbox_root: Node3D = $Hitboxes
 @onready var health_label: Label3D = $HealthLabel
 
 var health: Health
 var animation_player: AnimationPlayer
+var visual_rest_rotation: Vector3
+var reaction_rotation := Vector3.ZERO
+var reaction_angular_velocity := Vector3.ZERO
+var depleted := false
+var hit_animation_cooldown := 0.0
+var attack_target: PlayerController
+var attack_cycle: MeleeAttackCycle
+var attack_animation_remaining := 0.0
+var perception_move_speed := 1.30
+var behavior_state := ZombieBehaviorMath.State.WANDER
+var home_position := Vector3.ZERO
+var wander_target := Vector3.ZERO
+var wander_pause_remaining := 0.0
+var wander_rng := RandomNumberGenerator.new()
 
 func _ready() -> void:
-	health = Health.new(max_health)
-	health.changed.connect(_on_health_changed)
-	health.depleted.connect(_on_depleted)
-	animation_player = visual_root.find_child("AnimationPlayer", true, false) as AnimationPlayer
-	if animation_player != null:
-		animation_player.play(&"Idle")
-	_refresh_label()
+	_ensure_initialized()
+	home_position = global_position
+	wander_rng.seed = hash(str(get_path()))
+	_select_wander_target()
 
-func apply_damage(amount: float, _hit_position: Vector3) -> void:
-	health.apply_damage(amount)
+func _ensure_initialized() -> void:
+	if visual_root == null:
+		visual_root = get_node("VisualRoot") as Node3D
+	if motion_collision == null:
+		motion_collision = get_node("MotionCollision") as CollisionShape3D
+	if hitbox_root == null:
+		hitbox_root = get_node("Hitboxes") as Node3D
+	if health_label == null:
+		health_label = get_node("HealthLabel") as Label3D
+	if health == null:
+		health = Health.new(max_health)
+		health.changed.connect(_on_health_changed)
+		health.depleted.connect(_on_depleted)
+		visual_rest_rotation = visual_root.rotation
+		_refresh_label()
+	if attack_cycle == null:
+		attack_cycle = MeleeAttackCycle.new(attack_cooldown, attack_windup)
+	if animation_player == null:
+		animation_player = visual_root.find_child("AnimationPlayer", true, false) as AnimationPlayer
+		if animation_player != null:
+			if not animation_player.animation_finished.is_connected(_on_animation_finished):
+				animation_player.animation_finished.connect(_on_animation_finished)
+			animation_player.play(&"Idle")
+
+func set_attack_target(target: PlayerController) -> void:
+	attack_target = target
+
+func set_perception_move_speed(speed: float) -> void:
+	perception_move_speed = maxf(speed, 0.0)
+
+func get_behavior_state() -> int:
+	return behavior_state
+
+func get_aim_point() -> Vector3:
+	var torso := get_node_or_null("Hitboxes/TorsoHitbox") as Area3D
+	return torso.global_position if torso != null else global_position + Vector3.UP * 1.1
+
+func apply_hit(
+	amount: float,
+	hit_position: Vector3,
+	shot_direction: Vector3,
+	_hit_zone: StringName = &"torso",
+	damage_multiplier: float = 1.0,
+	knockback_multiplier: float = 1.0,
+	vertical_bias: float = 0.05
+) -> HitResult:
+	_ensure_initialized()
+	if depleted:
+		return HitResult.miss(hit_position)
+	attack_cycle.cancel_pending()
+	attack_animation_remaining = 0.0
+	var applied_damage := health.apply_damage(amount * maxf(damage_multiplier, 0.0))
+	if applied_damage <= 0.0:
+		return HitResult.miss(hit_position)
+
+	var impulse := HitResponseMath.knockback_velocity(
+		shot_direction,
+		knockback_impulse,
+		knockback_multiplier,
+		vertical_bias
+	)
+	velocity += impulse
+	_apply_visual_torque(hit_position, impulse)
+	_spawn_blood_impact(hit_position, shot_direction, knockback_multiplier)
 	visual_root.scale = Vector3.ONE * 1.08
+	var killed := health.current <= 0.0
+	ground_blood_requested.emit(
+		global_position if killed else hit_position,
+		shot_direction,
+		1.25 if killed else knockback_multiplier,
+		killed
+	)
+	if not killed:
+		_play_hit_reaction()
+	return HitResult.resolved(
+		applied_damage,
+		_hit_zone,
+		_hit_zone == &"head",
+		killed,
+		hit_position
+	)
+
+func apply_damage(amount: float, hit_position: Vector3) -> HitResult:
+	return apply_hit(amount, hit_position, Vector3.ZERO)
+
+func _physics_process(delta: float) -> void:
+	_ensure_initialized()
+	var gravity := float(ProjectSettings.get_setting("physics/3d/default_gravity", 9.8))
+	if not is_on_floor():
+		velocity.y -= gravity * gravity_multiplier * delta
+	elif velocity.y < 0.0:
+		velocity.y = 0.0
+
+	var target_alive := _target_is_alive() and not depleted
+	var direction_to_target := Vector3.ZERO
+	var distance_to_target := INF
+	if target_alive:
+		direction_to_target = attack_target.global_position - global_position
+		direction_to_target.y = 0.0
+		distance_to_target = direction_to_target.length()
+		if distance_to_target > 0.001:
+			direction_to_target /= distance_to_target
+
+	var previous_state := behavior_state
+	behavior_state = ZombieBehaviorMath.next_state(
+		behavior_state,
+		distance_to_target,
+		target_alive,
+		perception_range,
+		perception_exit_margin,
+		attack_range
+	)
+	if previous_state == ZombieBehaviorMath.State.ATTACK and behavior_state != ZombieBehaviorMath.State.ATTACK:
+		attack_cycle.cancel_pending()
+		attack_animation_remaining = 0.0
+	var target_in_range := (
+		behavior_state == ZombieBehaviorMath.State.ATTACK and
+		target_alive and
+		distance_to_target <= attack_range
+	)
+
+	var was_winding_up := attack_cycle.is_winding_up()
+	var attack_landed := attack_cycle.tick(
+		delta,
+		target_in_range and hit_animation_cooldown <= 0.0 and not depleted,
+		target_alive and not depleted
+	)
+	if not was_winding_up and attack_cycle.is_winding_up():
+		_play_attack_animation()
+	if attack_landed and _target_is_alive():
+		attack_target.apply_damage(attack_damage, global_position)
+
+	var target_planar_velocity := Vector3.ZERO
+	if not depleted and hit_animation_cooldown <= 0.0:
+		match behavior_state:
+			ZombieBehaviorMath.State.WANDER:
+				target_planar_velocity = _wander_velocity(delta)
+			ZombieBehaviorMath.State.AWARE_APPROACH:
+				target_planar_velocity = ZombieBehaviorMath.arrive_velocity(
+					global_position,
+					attack_target.global_position,
+					attack_range,
+					perception_move_speed,
+					perception_slow_radius
+				)
+			ZombieBehaviorMath.State.ATTACK:
+				target_planar_velocity = Vector3.ZERO
+	var facing_direction := (
+		target_planar_velocity
+		if behavior_state == ZombieBehaviorMath.State.WANDER
+		else direction_to_target
+	)
+	if facing_direction.length_squared() > 0.0001:
+		rotation.y = ZombieBehaviorMath.facing_yaw(facing_direction, rotation.y)
+	var moving := target_planar_velocity.length_squared() > 0.0001
+	var planar_rate := movement_acceleration if moving else (
+		ground_drag if is_on_floor() else air_drag
+	)
+	velocity.x = move_toward(velocity.x, target_planar_velocity.x, planar_rate * delta)
+	velocity.z = move_toward(velocity.z, target_planar_velocity.z, planar_rate * delta)
+	move_and_slide()
+	_update_visual_reaction(delta)
+	_update_locomotion_animation()
+
+func _select_wander_target() -> void:
+	wander_target = ZombieBehaviorMath.wander_point(
+		home_position,
+		wander_rng.randf_range(0.0, TAU),
+		wander_rng.randf_range(0.35, 1.0),
+		wander_radius
+	)
+
+func _wander_velocity(delta: float) -> Vector3:
+	if wander_pause_remaining > 0.0:
+		wander_pause_remaining = maxf(wander_pause_remaining - delta, 0.0)
+		if wander_pause_remaining <= 0.0:
+			_select_wander_target()
+		return Vector3.ZERO
+	var offset := ZombieBehaviorMath.arrive_velocity(
+		global_position,
+		wander_target,
+		wander_arrive_range,
+		wander_speed,
+		0.8
+	)
+	if offset == Vector3.ZERO:
+		wander_pause_remaining = wander_rng.randf_range(wander_pause_min, wander_pause_max)
+	return offset
 
 func _process(delta: float) -> void:
+	hit_animation_cooldown = maxf(hit_animation_cooldown - delta, 0.0)
+	attack_animation_remaining = maxf(attack_animation_remaining - delta, 0.0)
 	visual_root.scale = visual_root.scale.move_toward(Vector3.ONE, delta * 1.5)
+
+func _target_is_alive() -> bool:
+	return (
+		attack_target != null and
+		is_instance_valid(attack_target) and
+		attack_target.is_alive()
+	)
+
+func _play_attack_animation() -> void:
+	attack_animation_remaining = attack_animation_duration
+	if animation_player != null and animation_player.has_animation(&"Punch"):
+		animation_player.play(&"Punch", 0.08)
+
+func _update_locomotion_animation() -> void:
+	if animation_player == null or depleted:
+		return
+	if hit_animation_cooldown > 0.0 or attack_animation_remaining > 0.0:
+		return
+	var animation_name := &"Walk" if Vector2(velocity.x, velocity.z).length() > 0.2 else &"Idle"
+	if animation_player.current_animation != animation_name:
+		animation_player.play(animation_name, 0.12)
+
+func _play_hit_reaction() -> void:
+	if animation_player == null or hit_animation_cooldown > 0.0:
+		return
+	attack_cycle.cancel_pending()
+	attack_animation_remaining = 0.0
+	if animation_player.has_animation(&"HitReact"):
+		animation_player.play(&"HitReact", 0.05)
+		hit_animation_cooldown = 0.2
+
+func _on_animation_finished(animation_name: StringName) -> void:
+	if depleted:
+		return
+	if animation_name == &"HitReact":
+		hit_animation_cooldown = 0.0
+	elif animation_name == &"Punch":
+		attack_animation_remaining = 0.0
+	_update_locomotion_animation()
+
+func _apply_visual_torque(hit_position: Vector3, impulse: Vector3) -> void:
+	var local_hit := hit_position - (global_position if is_inside_tree() else position)
+	var target_basis := global_basis if is_inside_tree() else basis
+	var local_impulse := target_basis.inverse() * impulse
+	var torque := local_hit.cross(local_impulse) * 0.075
+	reaction_angular_velocity += Vector3(torque.x, 0.0, torque.z)
+
+func _update_visual_reaction(delta: float) -> void:
+	reaction_angular_velocity -= reaction_rotation * reaction_spring * delta
+	reaction_angular_velocity = reaction_angular_velocity.move_toward(
+		Vector3.ZERO,
+		reaction_damping * delta
+	)
+	reaction_rotation += reaction_angular_velocity * delta
+	var max_tilt := deg_to_rad(max_visual_tilt_degrees)
+	if reaction_rotation.length() > max_tilt:
+		reaction_rotation = reaction_rotation.normalized() * max_tilt
+	visual_root.rotation = visual_rest_rotation + reaction_rotation
+
+func _spawn_blood_impact(
+	hit_position: Vector3,
+	shot_direction: Vector3,
+	intensity: float
+) -> void:
+	var effect_parent := get_parent()
+	if effect_parent == null:
+		return
+	var effect := BLOOD_IMPACT_SCENE.instantiate() as BloodImpact
+	effect_parent.add_child(effect)
+	effect.setup(hit_position, shot_direction, intensity)
 
 func _on_health_changed(_current: float, _maximum: float) -> void:
 	_refresh_label()
 
 func _on_depleted() -> void:
-	collision_shape.set_deferred("disabled", true)
-	health_label.text = "DOWN"
-	visual_root.visible = false
-	await get_tree().create_timer(0.35).timeout
+	depleted = true
+	attack_target = null
+	attack_cycle.cancel_pending()
+	attack_animation_remaining = 0.0
+	motion_collision.set_deferred("disabled", true)
+	for hitbox in hitbox_root.get_children():
+		var hitbox_shape := hitbox.get_node_or_null("CollisionShape3D") as CollisionShape3D
+		if hitbox_shape != null:
+			hitbox_shape.set_deferred("disabled", true)
+	health_label.visible = false
+	var death_duration := 0.65
+	if animation_player != null and animation_player.has_animation(&"Death"):
+		animation_player.play(&"Death", 0.08)
+		death_duration = minf(animation_player.get_animation(&"Death").length, 1.2)
+	await get_tree().create_timer(death_duration).timeout
 	queue_free()
 
 func _refresh_label() -> void:

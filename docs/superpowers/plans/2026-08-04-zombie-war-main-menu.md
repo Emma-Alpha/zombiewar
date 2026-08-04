@@ -877,4 +877,3 @@ If no files changed during verification, do not create an empty commit.
 1. **Spec coverage:** The plan covers the agreed low-poly movie-poster composition, existing demo assets, two primary actions, real gameplay routing, exit confirmation, keyboard/mouse navigation, audio feedback, responsive layouts, animations, camera motion, warning-light ambience, and regression tests. No requested behavior is missing.
 2. **Placeholder scan:** Every file path, model, animation, audio file, color, node name, scene destination, test command, and interaction is concrete. No unresolved implementation marker remains.
 3. **Type consistency:** MenuFlow method names and enum states match the unit test and main_menu.gd. Main-menu node names match the controller and integration test. GAME routing consistently targets res://scenes/gameplay/DemoArena.tscn, while application startup consistently targets res://scenes/menu/MainMenu.tscn.
-

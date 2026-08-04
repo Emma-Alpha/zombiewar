@@ -63,6 +63,83 @@ func run() -> Array[String]:
 			0.0001,
 			"No movement retains the previous facing"
 		))
+	var aim_parameter_count := -1
+	for method: Dictionary in player_motion.get_script_method_list():
+		if method.get("name", "") == "next_aim_direction":
+			var aim_parameters: Array = method.get("args", [])
+			aim_parameter_count = aim_parameters.size()
+			break
+	_append(failures, Assertions.expect_equal(
+		aim_parameter_count,
+		2,
+		"Aim direction accepts only movement and current direction"
+	))
+	if aim_parameter_count == 2:
+		var previous_aim := Vector3.FORWARD
+		var right_move := Vector3.RIGHT
+		var right_aim: Vector3 = player_motion.next_aim_direction(
+			right_move,
+			previous_aim
+		)
+		_append(failures, Assertions.expect_vector3_near(
+			right_aim,
+			Vector3.RIGHT,
+			0.0001,
+			"Movement direction immediately becomes the shooting direction"
+		))
+
+		var reversed_aim: Vector3 = player_motion.next_aim_direction(
+			Vector3.BACK,
+			right_aim
+		)
+		_append(failures, Assertions.expect_vector3_near(
+			reversed_aim,
+			Vector3.BACK,
+			0.0001,
+			"Changing movement direction immediately redirects shooting"
+		))
+
+		_append(failures, Assertions.expect_vector3_near(
+			player_motion.next_aim_direction(Vector3.ZERO, reversed_aim),
+			Vector3.BACK,
+			0.0001,
+			"Zero movement retains the last movement-aligned shooting direction"
+		))
+		_append(failures, Assertions.expect_vector3_near(
+			player_motion.next_aim_direction(Vector3.ZERO, Vector3.ZERO),
+			Vector3.FORWARD,
+			0.0001,
+			"Missing movement history falls back to Godot forward"
+		))
+
+	var accelerated: Vector3 = player_motion.next_planar_velocity(
+		Vector3.ZERO,
+		Vector3.FORWARD,
+		6.0,
+		42.0,
+		60.0,
+		0.1
+	)
+	_append(failures, Assertions.expect_float_near(
+		accelerated.length(),
+		4.2,
+		0.0001,
+		"Ground acceleration reaches the expected speed after 100 ms"
+	))
+	var stopped: Vector3 = player_motion.next_planar_velocity(
+		Vector3.FORWARD * 6.0,
+		Vector3.ZERO,
+		6.0,
+		42.0,
+		60.0,
+		0.1
+	)
+	_append(failures, Assertions.expect_vector3_near(
+		stopped,
+		Vector3.ZERO,
+		0.0001,
+		"Dedicated deceleration stops the player within 100 ms"
+	))
 	_append(failures, Assertions.expect_float_near(
 		player_motion.next_vertical_velocity(0.0, true, true, 0.016, 24.0, 8.5),
 		8.5,

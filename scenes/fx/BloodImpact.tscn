@@ -1,0 +1,48 @@
+[gd_scene load_steps=7 format=3]
+
+[ext_resource type="Script" path="res://scripts/fx/blood_impact.gd" id="1_blood"]
+[ext_resource type="Texture2D" path="res://assets/fx/blood/kenney_splat29.png" id="2_splat"]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_droplet"]
+transparency = 1
+shading_mode = 0
+albedo_color = Color(0.42, 0.005, 0.01, 0.96)
+roughness = 0.7
+
+[sub_resource type="SphereMesh" id="SphereMesh_droplet"]
+material = SubResource("StandardMaterial3D_droplet")
+radius = 0.035
+height = 0.08
+
+[sub_resource type="ParticleProcessMaterial" id="ParticleProcessMaterial_blood"]
+direction = Vector3(0, 0.12, -1)
+spread = 34.0
+initial_velocity_min = 2.4
+initial_velocity_max = 5.2
+gravity = Vector3(0, -7.5, 0)
+damping_min = 0.8
+damping_max = 1.8
+scale_min = 0.65
+scale_max = 1.45
+color = Color(0.5, 0.008, 0.012, 0.96)
+
+[node name="BloodImpact" type="Node3D"]
+script = ExtResource("1_blood")
+
+[node name="Splat" type="Sprite3D" parent="."]
+modulate = Color(0.52, 0.008, 0.015, 0.94)
+pixel_size = 0.0032
+texture = ExtResource("2_splat")
+billboard = 1
+alpha_cut = 1
+
+[node name="Droplets" type="GPUParticles3D" parent="."]
+emitting = false
+amount = 18
+lifetime = 0.45
+one_shot = true
+explosiveness = 1.0
+randomness = 0.35
+visibility_aabb = AABB(-4, -4, -4, 8, 8, 8)
+process_material = SubResource("ParticleProcessMaterial_blood")
+draw_pass_1 = SubResource("SphereMesh_droplet")
