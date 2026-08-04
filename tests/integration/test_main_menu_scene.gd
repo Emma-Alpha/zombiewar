@@ -58,6 +58,71 @@ func run() -> Array[String]:
 		"Chubby zombie uses the attack idle animation"
 	))
 
+	var menu_packed := load("res://scenes/menu/MainMenu.tscn") as PackedScene
+	_append(failures, Assertions.expect_true(
+		menu_packed != null,
+		"Main menu scene loads"
+	))
+	if menu_packed == null:
+		backdrop.free()
+		return failures
+
+	var menu := menu_packed.instantiate()
+	menu.get_node("SelectAudio").stream = null
+	menu.get_node("ConfirmAudio").stream = null
+	menu.get_node("BackAudio").stream = null
+	tree.root.add_child(menu)
+	var start_button := menu.get_node_or_null(
+		"MenuLayer/MenuRoot/LeftColumn/Actions/StartButton"
+	) as Button
+	var quit_button := menu.get_node_or_null(
+		"MenuLayer/MenuRoot/LeftColumn/Actions/QuitButton"
+	) as Button
+	var exit_dialog := menu.get_node_or_null(
+		"MenuLayer/MenuRoot/ExitDialog"
+	) as Control
+	var cancel_button := menu.get_node_or_null(
+		"MenuLayer/MenuRoot/ExitDialog/DialogPanel/DialogMargin/DialogContent/DialogActions/CancelExitButton"
+	) as Button
+
+	_append(failures, Assertions.expect_true(
+		start_button != null and start_button.text == "开始游戏",
+		"Main menu has the start action"
+	))
+	_append(failures, Assertions.expect_true(
+		quit_button != null and quit_button.text == "退出游戏",
+		"Main menu has the quit action"
+	))
+	_append(failures, Assertions.expect_true(
+		exit_dialog != null and not exit_dialog.visible,
+		"Exit dialog starts hidden"
+	))
+	_append(failures, Assertions.expect_true(
+		menu.get("game_scene_path") == "res://scenes/gameplay/DemoArena.tscn",
+		"Start action targets DemoArena"
+	))
+	_append(failures, Assertions.expect_true(
+		ResourceLoader.exists(menu.get("game_scene_path")),
+		"Configured gameplay destination exists"
+	))
+	_append(failures, Assertions.expect_true(
+		menu.get_viewport().gui_get_focus_owner() == start_button,
+		"Start button owns initial keyboard focus"
+	))
+
+	quit_button.pressed.emit()
+	_append(failures, Assertions.expect_true(
+		exit_dialog.visible,
+		"Quit action opens confirmation"
+	))
+	cancel_button.pressed.emit()
+	_append(failures, Assertions.expect_true(
+		not exit_dialog.visible,
+		"Cancel action closes confirmation"
+	))
+
+	menu.free()
+
 	backdrop.free()
 	return failures
 
