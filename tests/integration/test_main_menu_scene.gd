@@ -109,6 +109,19 @@ func run() -> Array[String]:
 		menu.get_viewport().gui_get_focus_owner() == start_button,
 		"Start button owns initial keyboard focus"
 	))
+	var configured_main_scene: String = ProjectSettings.get_setting(
+		"application/run/main_scene", ""
+	)
+	var resolved_main_scene := configured_main_scene
+	if configured_main_scene.begins_with("uid://"):
+		resolved_main_scene = ResourceUID.get_id_path(
+			ResourceUID.text_to_id(configured_main_scene)
+		)
+	_append(failures, Assertions.expect_equal(
+		resolved_main_scene,
+		"res://scenes/menu/MainMenu.tscn",
+		"Main menu is the project entry scene"
+	))
 
 	quit_button.pressed.emit()
 	_append(failures, Assertions.expect_true(

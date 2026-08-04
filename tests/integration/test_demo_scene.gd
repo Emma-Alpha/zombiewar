@@ -52,11 +52,6 @@ func run() -> Array[String]:
 			"WASD  MOVE + FACE    SPACE  JUMP    J  FIRE",
 			"HUD documents keyboard-only controls"
 		))
-	var configured_main_scene: String = ProjectSettings.get_setting("application/run/main_scene", "")
-	var resolved_main_scene := configured_main_scene
-	if configured_main_scene.begins_with("uid://"):
-		resolved_main_scene = ResourceUID.get_id_path(ResourceUID.text_to_id(configured_main_scene))
-	_append(failures, Assertions.expect_equal(resolved_main_scene, "res://scenes/gameplay/DemoArena.tscn", "Demo arena is project main scene"))
 	arena.free()
 	return failures
 

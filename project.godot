@@ -13,7 +13,7 @@ config_version=5
 config/name="zombiewar"
 config/features=PackedStringArray("4.7", "GL Compatibility")
 config/icon="res://icon.svg"
-run/main_scene="res://scenes/gameplay/DemoArena.tscn"
+run/main_scene="res://scenes/menu/MainMenu.tscn"
 
 [display]
 
