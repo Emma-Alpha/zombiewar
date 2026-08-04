@@ -12,6 +12,8 @@ const REQUIRED_ACTIONS: Array[StringName] = [
 	&"weapon_rifle",
 	&"weapon_knife",
 	&"weapon_slot_4",
+	&"spawn_wave",
+	&"restart_demo",
 ]
 const REQUIRED_KEY_BINDINGS: Dictionary = {
 	&"move_left": KEY_A,
@@ -24,6 +26,8 @@ const REQUIRED_KEY_BINDINGS: Dictionary = {
 	&"weapon_rifle": KEY_2,
 	&"weapon_knife": KEY_3,
 	&"weapon_slot_4": KEY_4,
+	&"spawn_wave": KEY_T,
+	&"restart_demo": KEY_R,
 }
 
 func run() -> Array[String]:
