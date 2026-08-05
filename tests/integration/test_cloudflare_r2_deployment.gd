@@ -8,6 +8,7 @@ func run() -> Array[String]:
 	var node_tests := [
 		ProjectSettings.globalize_path("res://tests/integration/cloudflare_r2_worker.test.mjs"),
 		ProjectSettings.globalize_path("res://tests/integration/cloudflare_r2_deploy_script.test.mjs"),
+		ProjectSettings.globalize_path("res://tests/integration/cloudflare_release_workflow.test.mjs"),
 	]
 	var node_args := ["--test"]
 	node_args.append_array(node_tests)
