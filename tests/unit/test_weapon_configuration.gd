@@ -48,6 +48,46 @@ func run() -> Array[String]:
 		1,
 		"Rifle hit mask includes solid world layer one"
 	))
+	var pistol_has_penetration := (
+		_has_property(pistol, &"penetration_damage_coefficient") and
+		_has_property(pistol, &"max_penetration_count")
+	)
+	var rifle_has_penetration := (
+		_has_property(rifle, &"penetration_damage_coefficient") and
+		_has_property(rifle, &"max_penetration_count")
+	)
+	_append(failures, Assertions.expect_true(
+		pistol_has_penetration,
+		"Pistol exposes penetration configuration"
+	))
+	_append(failures, Assertions.expect_true(
+		rifle_has_penetration,
+		"Rifle exposes penetration configuration"
+	))
+	if pistol_has_penetration:
+		_append(failures, Assertions.expect_float_near(
+			pistol.penetration_damage_coefficient,
+			0.5,
+			0.0001,
+			"Pistol penetration damage coefficient"
+		))
+		_append(failures, Assertions.expect_equal(
+			pistol.max_penetration_count,
+			1,
+			"Pistol maximum extra penetration count"
+		))
+	if rifle_has_penetration:
+		_append(failures, Assertions.expect_float_near(
+			rifle.penetration_damage_coefficient,
+			0.75,
+			0.0001,
+			"Rifle penetration damage coefficient"
+		))
+		_append(failures, Assertions.expect_equal(
+			rifle.max_penetration_count,
+			3,
+			"Rifle maximum extra penetration count"
+		))
 	_append(failures, Assertions.expect_float_near(
 		pistol.base_spread_degrees,
 		0.35,

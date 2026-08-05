@@ -19,7 +19,7 @@
 - 枪口火焰、声音、曳光、后坐力、相机冲击和 `attack_resolved` 每发只触发一次。
 - 不修改近战武器、僵尸基础属性、第三方 `addons/`，不引入实体子弹。
 - 验证只覆盖核心业务路径、Headless 解析和基本 Smoke Test，不追求覆盖率。
-- 当前工作区含用户已有且与本功能重叠的暂存/未暂存改动；所有子任务禁止回退、覆盖或自行提交这些改动。最终提交只能由根代理在确认可精确隔离后执行。
+- 实施位于 `codex/hitscan-zombie-penetration` 隔离 worktree；子任务可以提交自己的任务改动，全部 Task 与 Review 完成后由根代理 squash 为一个功能提交。
 - 计划编写时 `./tests/run_tests.sh` 已有 4 个与本功能无关的基线失败：刀动画 1 项、刀攻击周期 3 项。RED/GREEN 判断以穿透测试是否新增/消失为准，最终不得新增失败。
 
 ---
@@ -150,7 +150,7 @@ git diff --check -- \
   tests/unit/test_weapon_configuration.gd
 ```
 
-Expected: 无输出。此步骤不提交，由根代理保留现有工作区索引状态。
+Expected: 无输出。提交 Task 1 的配置与测试改动，提交信息使用 `feat: configure weapon penetration`。
 
 ### Task 2: Hitscan 多僵尸穿透与汇总结果
 
@@ -634,7 +634,7 @@ Expected: 无输出。
 
 **Interfaces:**
 - Consumes: Task 1 和 Task 2 的完整实现。
-- Produces: 可由根代理交付的已评审工作树；若能隔离既有改动，则最终 squash 为一个 Conventional Commit。
+- Produces: 可由根代理交付的已评审功能分支，并最终 squash 为一个 Conventional Commit。
 
 - [ ] **Step 1: 运行 Godot Headless 解析检查**
 
@@ -681,7 +681,7 @@ Expected: 无遗漏、无超出设计范围的重构。
 - 目标去重使用实体 ID，不使用 Hitbox ID。
 - 运行时 clamp 与 Inspector 范围一致。
 - 没有修改 `addons/`、近战或僵尸基础参数。
-- 没有覆盖工作区中已有的散布、移动端、刀或其他用户改动。
+- 没有回退基线提交中已有的散布、移动端、刀或其他改动。
 
 Expected: Review 无阻断项；普通风格建议仅在成本很低时修正。
 
@@ -702,10 +702,10 @@ git diff -- \
   tests/test_runner.gd
 ```
 
-Expected: 根代理能明确区分本功能与进入任务前已有改动。只有在不会带入无关改动时，才将设计、计划和实现 squash 为一个提交：
+Expected: 分支相对 `d69e99b` 只包含本功能的计划调整、配置、实现与测试。将 Task 提交 squash 为一个提交：
 
 ```bash
 git commit -m "feat: add hitscan zombie penetration"
 ```
 
-若同文件中的既有改动无法安全隔离，则不执行提交，保留工作树并在交付说明中列明原因；禁止通过 reset、checkout 或覆盖文件来制造干净索引。
+完成 squash 后重新运行 `git status --short`，必须为空；禁止通过 reset、checkout 或覆盖文件来绕过未审查改动。
