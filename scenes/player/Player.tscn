@@ -1,4 +1,4 @@
-[gd_scene load_steps=8 format=3]
+[gd_scene load_steps=12 format=3]
 
 [ext_resource type="Script" path="res://scripts/player/player_controller.gd" id="1_controller"]
 [ext_resource type="PackedScene" path="res://assets/characters/Characters_Lis_SingleWeapon.gltf" id="2_model"]
@@ -6,10 +6,23 @@
 [ext_resource type="PackedScene" path="res://scenes/weapons/Pistol.tscn" id="7_pistol"]
 [ext_resource type="PackedScene" path="res://scenes/weapons/Rifle.tscn" id="8_rifle"]
 [ext_resource type="PackedScene" path="res://scenes/weapons/Knife.tscn" id="9_knife"]
+[ext_resource type="Script" path="res://scripts/player/weapon_clearance_controller.gd" id="10_weapon_clearance"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_player"]
 radius = 0.45
 height = 1.8
+
+[sub_resource type="CapsuleShape3D" id="CapsuleShape3D_weapon_collision"]
+radius = 0.12
+height = 1.55
+
+[sub_resource type="CapsuleShape3D" id="CapsuleShape3D_weapon_normal_probe"]
+radius = 0.12
+height = 1.55
+
+[sub_resource type="CapsuleShape3D" id="CapsuleShape3D_weapon_raised_probe"]
+radius = 0.12
+height = 1.55
 
 [node name="Player" type="CharacterBody3D"]
 collision_layer = 2
@@ -21,6 +34,24 @@ max_health = 100.0
 [node name="CollisionShape3D" type="CollisionShape3D" parent="."]
 position = Vector3(0, 0.9, 0)
 shape = SubResource("CapsuleShape3D_player")
+
+[node name="WeaponCollision" type="CollisionShape3D" parent="."]
+position = Vector3(0, 1.12, -0.62)
+rotation_degrees = Vector3(90, 0, 0)
+shape = SubResource("CapsuleShape3D_weapon_collision")
+
+[node name="WeaponClearanceController" type="Node3D" parent="."]
+script = ExtResource("10_weapon_clearance")
+
+[node name="NormalProbe" type="ShapeCast3D" parent="WeaponClearanceController"]
+collision_mask = 1
+collide_with_areas = false
+shape = SubResource("CapsuleShape3D_weapon_normal_probe")
+
+[node name="RaisedProbe" type="ShapeCast3D" parent="WeaponClearanceController"]
+collision_mask = 1
+collide_with_areas = false
+shape = SubResource("CapsuleShape3D_weapon_raised_probe")
 
 [node name="VisualRoot" type="Node3D" parent="."]
 rotation_degrees = Vector3(0, 180, 0)

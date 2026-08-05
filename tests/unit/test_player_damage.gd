@@ -60,11 +60,16 @@ func run() -> Array[String]:
 		weapon != null and not weapon.trigger_pressed and not weapon.trigger_just_pressed,
 		"Taking damage cancels the current weapon attack"
 	))
+	var weapon_collision := player.get_node("WeaponCollision") as CollisionShape3D
 	player.set("attack_animation_remaining", 0.5)
 	player.call("apply_damage", 1000.0, Vector3.RIGHT)
 	_append(failures, Assertions.expect_true(
 		not bool(player.call("is_alive")),
 		"Lethal damage defeats player"
+	))
+	_append(failures, Assertions.expect_true(
+		weapon_collision.disabled,
+		"Player death disables firearm wall collision"
 	))
 	_append(failures, Assertions.expect_true(
 		weapon != null and not weapon.trigger_pressed and not weapon.trigger_just_pressed,

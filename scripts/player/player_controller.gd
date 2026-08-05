@@ -45,6 +45,7 @@ signal died
 @onready var visual_root: Node3D = $VisualRoot
 @onready var equipment: EquipmentController = $EquipmentController
 @onready var functional_ray_origin: Marker3D = $FunctionalRayOrigin
+@onready var weapon_clearance: WeaponClearanceController = $WeaponClearanceController
 
 var movement_camera: Camera3D
 var animation_player: AnimationPlayer
@@ -60,6 +61,7 @@ func _ready() -> void:
 	_ensure_health_initialized()
 	animation_player = visual_root.find_child("AnimationPlayer", true, false) as AnimationPlayer
 	visual_rest_position = visual_root.position
+	weapon_clearance.setup(self)
 	equipment.attack_started.connect(_on_weapon_attack_started)
 	equipment.attack_resolved.connect(_on_weapon_attack_resolved)
 	equipment.weapon_changed.connect(_on_weapon_changed)
@@ -99,7 +101,7 @@ func _physics_process(delta: float) -> void:
 		move_direction,
 		aim_direction
 	)
-	rotation.y = PlayerMotion.next_facing_yaw(aim_direction, rotation.y)
+	var target_yaw := PlayerMotion.next_facing_yaw(aim_direction, rotation.y)
 	if Input.is_action_just_pressed(pistol_action):
 		equipment.equip_slot(0)
 	elif Input.is_action_just_pressed(rifle_action):
@@ -108,13 +110,6 @@ func _physics_process(delta: float) -> void:
 		equipment.equip_slot(2)
 	elif Input.is_action_just_pressed(slot_four_action):
 		equipment.equip_slot(3)
-
-	var trigger_pressed := Input.is_action_pressed(primary_attack_action)
-	var trigger_just_pressed := Input.is_action_just_pressed(primary_attack_action)
-	if hit_reaction_remaining > 0.0:
-		trigger_pressed = false
-		trigger_just_pressed = false
-	equipment.set_attack_input(trigger_pressed, trigger_just_pressed, aim_direction)
 
 	var acceleration := ground_acceleration if is_on_floor() else air_acceleration
 	var deceleration := ground_deceleration if is_on_floor() else air_acceleration
@@ -136,6 +131,20 @@ func _physics_process(delta: float) -> void:
 		gravity,
 		jump_speed
 	)
+	var desired_motion := Vector3(velocity.x, 0.0, velocity.z) * delta
+	rotation.y = weapon_clearance.resolve_facing_yaw(
+		delta,
+		desired_motion,
+		target_yaw
+	)
+	var trigger_pressed := Input.is_action_pressed(primary_attack_action)
+	var trigger_just_pressed := Input.is_action_just_pressed(primary_attack_action)
+	weapon_clearance.observe_trigger(trigger_pressed)
+	if hit_reaction_remaining > 0.0 or not weapon_clearance.can_fire():
+		trigger_pressed = false
+		trigger_just_pressed = false
+		equipment.cancel_attack()
+	equipment.set_attack_input(trigger_pressed, trigger_just_pressed, aim_direction)
 	move_and_slide()
 	_update_animation(Vector2(velocity.x, velocity.z).length())
 
@@ -185,6 +194,7 @@ func _on_weapon_attack_resolved(
 
 func _on_weapon_changed(_definition: WeaponDefinition) -> void:
 	attack_animation_remaining = 0.0
+	weapon_clearance.bind_weapon(equipment.get_current_weapon())
 	_update_animation(Vector2(velocity.x, velocity.z).length())
 
 func apply_damage(amount: float, _source_position := Vector3.ZERO) -> float:
@@ -233,6 +243,7 @@ func _on_health_changed(current: float, maximum: float) -> void:
 
 func _on_depleted() -> void:
 	equipment.cancel_attack()
+	weapon_clearance.reset()
 	attack_animation_remaining = 0.0
 	defeated = true
 	hit_reaction_remaining = 0.0
