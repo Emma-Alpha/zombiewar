@@ -19,18 +19,23 @@ func setup(from: Vector3, to: Vector3) -> void:
 	scale = Vector3.ONE
 	look_at(to, Vector3.UP)
 	scale.z = distance
-	transparency = 0.0
+	set_instance_shader_parameter("lifetime_alpha", 1.0)
 	visible = true
 	set_process(true)
 
 func deactivate() -> void:
 	remaining = 0.0
-	transparency = 1.0
+	set_instance_shader_parameter("lifetime_alpha", 0.0)
 	visible = false
 	set_process(false)
 
 func _process(delta: float) -> void:
 	remaining -= delta
-	transparency = clampf(1.0 - remaining / maxf(lifetime, 0.001), 0.0, 1.0)
+	var alpha := clampf(
+		remaining / maxf(lifetime, 0.001),
+		0.0,
+		1.0
+	)
+	set_instance_shader_parameter("lifetime_alpha", alpha)
 	if remaining <= 0.0:
 		deactivate()

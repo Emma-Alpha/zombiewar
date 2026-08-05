@@ -171,6 +171,51 @@ func run() -> Array[String]:
 			"Shot impulse is capped for sustained and two-player fire"
 		))
 
+	var material := tracer.material_override as ShaderMaterial
+	var uniform_names: Array[StringName] = []
+	if material != null and material.shader != null:
+		for uniform: Dictionary in material.shader.get_shader_uniform_list():
+			uniform_names.append(StringName(uniform.get("name", &"")))
+	_append(failures, Assertions.expect_true(
+		material != null and
+			&"muzzle_alpha" in uniform_names and
+			&"hit_alpha" in uniform_names and
+			is_equal_approx(float(material.get_shader_parameter("muzzle_alpha")), 0.0) and
+			is_equal_approx(float(material.get_shader_parameter("hit_alpha")), 1.0),
+		"Tracer material exposes transparent muzzle and opaque hit endpoint contracts"
+	))
+	tracer.setup(Vector3.ZERO, Vector3(0.0, 0.0, -4.0))
+	_append(failures, Assertions.expect_vector3_near(
+		_tracer_start(tracer),
+		Vector3.ZERO,
+		0.0001,
+		"Tracer geometry starts at its setup origin"
+	))
+	_append(failures, Assertions.expect_vector3_near(
+		_tracer_end(tracer),
+		Vector3(0.0, 0.0, -4.0),
+		0.0001,
+		"Tracer geometry ends at its setup hit position"
+	))
+	tracer.setup(Vector3.ZERO, Vector3.ZERO)
+	_append(failures, Assertions.expect_true(
+		not tracer.visible,
+		"Zero-length tracer stays hidden"
+	))
+	tracer.setup(Vector3.ZERO, Vector3(0.0, 0.0, -4.0))
+	var start_alpha_value: Variant = tracer.get_instance_shader_parameter("lifetime_alpha")
+	var start_alpha := 0.0 if start_alpha_value == null else float(start_alpha_value)
+	tracer._process(tracer.lifetime * 0.5)
+	var middle_alpha_value: Variant = tracer.get_instance_shader_parameter("lifetime_alpha")
+	var middle_alpha := 0.0 if middle_alpha_value == null else float(middle_alpha_value)
+	tracer._process(tracer.lifetime * 0.5)
+	_append(failures, Assertions.expect_true(
+		is_equal_approx(start_alpha, 1.0) and
+			middle_alpha < start_alpha and middle_alpha > 0.0 and
+			not tracer.visible,
+		"Tracer keeps its full line and fades its shared lifetime alpha to zero"
+	))
+
 	player.free()
 	follow_camera.free()
 	return failures
@@ -189,6 +234,9 @@ func _make_wall(position: Vector3, size: Vector3) -> StaticBody3D:
 
 func _tracer_start(tracer: ShotTracer) -> Vector3:
 	return tracer.to_global(Vector3(0.0, 0.0, 0.5))
+
+func _tracer_end(tracer: ShotTracer) -> Vector3:
+	return tracer.to_global(Vector3(0.0, 0.0, -0.5))
 
 func _append(failures: Array[String], failure: String) -> void:
 	if not failure.is_empty():
