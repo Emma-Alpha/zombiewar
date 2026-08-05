@@ -28,13 +28,21 @@ func run() -> Array[String]:
 		))
 		_cleanup(player, wall, zombie)
 		return failures
+	if not clearance.has_method("update_clearance"):
+		_append(failures, Assertions.expect_true(
+			false,
+			"Clearance updates weapon pose without rejecting body yaw"
+		))
+		_cleanup(player, wall, zombie)
+		return failures
 	rifle._process(0.0)
 	var stale_muzzle_position := rifle.muzzle.global_position
 	var rifle_rest_transform := rifle.visual_anchor.transform
 	var pistol := player.equipment.weapons[0] as RangedWeapon
 	var pistol_rest_transform := pistol.visual_anchor.transform
 
-	clearance.resolve_facing_yaw(
+	clearance.call(
+		"update_clearance",
 		0.016,
 		Vector3(0.0, 0.0, -0.15),
 		0.0
@@ -77,7 +85,7 @@ func run() -> Array[String]:
 
 	wall.position.z = -4.0
 	wall.force_update_transform()
-	clearance.resolve_facing_yaw(0.15, Vector3.ZERO, 0.0)
+	clearance.call("update_clearance", 0.15, Vector3.ZERO, 0.0)
 	_append(failures, Assertions.expect_true(
 		not clearance.is_raised() and rifle.visual_anchor.transform.is_equal_approx(rifle_rest_transform),
 		"Clearance restores normal pose and the exact visual rest transform after 0.15 seconds"
@@ -133,13 +141,13 @@ func run() -> Array[String]:
 	zombie.set_physics_process(false)
 	tree.root.add_child(zombie)
 	player.equipment.equip_slot(1)
-	clearance.resolve_facing_yaw(0.016, Vector3.ZERO, 0.0)
+	clearance.call("update_clearance", 0.016, Vector3.ZERO, 0.0)
 	_append(failures, Assertions.expect_true(
 		not clearance.is_raised(),
 		"Zombie bodies and hit areas do not trigger firearm clearance"
 	))
 	_cleanup(player, active_wall, zombie)
-	_test_rejected_turn_uses_accepted_facing(failures)
+	_test_tucked_turn_uses_body_facing(failures)
 	_test_switching_contract(failures)
 	_test_normal_rebind_restores_stale_raised_visual(failures)
 	_test_real_weapon_collision_motion(failures)
@@ -280,7 +288,7 @@ func _test_raised_shot_obstruction_and_feedback(failures: Array[String]) -> void
 	tree.root.add_child(wall_target)
 	var clearance := player.get_node("WeaponClearanceController") as WeaponClearanceController
 	var rifle := player.equipment.get_current_weapon() as RangedWeapon
-	clearance.resolve_facing_yaw(0.016, Vector3.ZERO, 0.0)
+	clearance.call("update_clearance", 0.016, Vector3.ZERO, 0.0)
 	rifle._process(0.0)
 	_append(failures, Assertions.expect_true(
 		clearance.is_raised(),
@@ -375,7 +383,7 @@ func _assert_raised_blocker_pair(
 		"Unobstructed RAISED %s control reaches the target hit" % label
 	))
 
-func _test_rejected_turn_uses_accepted_facing(failures: Array[String]) -> void:
+func _test_tucked_turn_uses_body_facing(failures: Array[String]) -> void:
 	var tree := Engine.get_main_loop() as SceneTree
 	var player := PLAYER_SCENE.instantiate() as PlayerController
 	var side_blocker := _make_wall(
@@ -406,14 +414,18 @@ func _test_rejected_turn_uses_accepted_facing(failures: Array[String]) -> void:
 	var actual_forward := -player.global_basis.z.normalized()
 	var resolved_direction := resolved_directions[0]
 	_append(failures, Assertions.expect_true(
-		resolved_direction.dot(actual_forward) > 0.999,
-		"Rejected turn fires along the player's accepted facing"
+		is_equal_approx(player.rotation.y, -PI * 0.5) and
+			actual_forward.dot(Vector3.RIGHT) > 0.999 and
+			resolved_direction.dot(actual_forward) > 0.999,
+		"Fully blocked rifle tucks while the player completes the target turn"
 	))
-	_append(failures, Assertions.expect_float_near(
-		right_side_target.health.current,
-		right_side_target.health.maximum,
-		0.0001,
-		"Rejected target yaw cannot damage a target only in that direction"
+	var clearance := player.get_node(
+		"WeaponClearanceController"
+	) as WeaponClearanceController
+	_append(failures, Assertions.expect_true(
+		clearance.state.pose == WeaponClearanceState.Pose.TUCKED and
+			right_side_target.health.current < right_side_target.health.maximum,
+		"Tucked rifle still fires along the player's new body facing"
 	))
 	_release_player_input(player)
 	right_side_target.free()
@@ -438,7 +450,7 @@ func _test_switching_contract(failures: Array[String]) -> void:
 	var raised_probe := player.get_node(
 		"WeaponClearanceController/RaisedProbe"
 	) as ShapeCast3D
-	clearance.resolve_facing_yaw(0.016, Vector3.ZERO, 0.0)
+	clearance.call("update_clearance", 0.016, Vector3.ZERO, 0.0)
 	_append(failures, Assertions.expect_true(
 		clearance.is_raised(),
 		"Front wall commits the raised pose before ranged switching"
@@ -464,29 +476,30 @@ func _test_switching_contract(failures: Array[String]) -> void:
 		Vector3(3.0, 0.2, 2.0)
 	)
 	tree.root.add_child(remote_switch_ceiling)
-	var before_rejected_remote := player.equipment.get_current_weapon()
 	_append(failures, Assertions.expect_true(
-		not player.equipment.equip_slot(1) and
-			player.equipment.get_current_weapon() == before_rejected_remote,
-		"Remote-to-remote switch rejects transactionally when both poses are blocked"
+		player.equipment.equip_slot(1) and
+			clearance.state.pose == WeaponClearanceState.Pose.TUCKED and
+			not weapon_collision.disabled,
+		"Remote-to-remote switch inherits a safe tucked pose when both probes block"
 	))
 	_append(failures, Assertions.expect_true(
 		normal_probe.enabled and raised_probe.enabled,
-		"Rejected remote switch preserves both active clearance probes"
+		"Tucked remote switch preserves both active clearance probes"
 	))
 	remote_switch_ceiling.free()
-	clearance.resolve_facing_yaw(0.016, Vector3.ZERO, 0.0)
+	clearance.call("update_clearance", 0.016, Vector3.ZERO, 0.0)
 	_append(failures, Assertions.expect_true(
 		clearance.is_raised(),
 		"Preserved probes still resolve the remaining front-wall obstruction"
 	))
 	front_wall.position.z = -4.0
 	front_wall.force_update_transform()
-	clearance.resolve_facing_yaw(0.15, Vector3.ZERO, 0.0)
+	clearance.call("update_clearance", 0.15, Vector3.ZERO, 0.0)
 	_append(failures, Assertions.expect_true(
 		not clearance.is_raised(),
 		"Preserved probes still restore NORMAL after the wall clears"
 	))
+	player.equipment.equip_slot(0)
 
 	var rifle_candidate := player.equipment.weapons[1]
 	var saved_anchor := rifle_candidate.visual_anchor
@@ -521,10 +534,12 @@ func _test_switching_contract(failures: Array[String]) -> void:
 	)
 	tree.root.add_child(low_ceiling)
 	_append(failures, Assertions.expect_true(
-		not player.equipment.equip_slot(1) and
-			player.equipment.get_current_definition().weapon_id == &"knife" and
-			not player.equipment.weapons[1].visible,
-		"Melee-to-ranged switch fails closed when neither initial pose is safe"
+		player.equipment.equip_slot(1) and
+			player.equipment.get_current_definition().weapon_id == &"rifle" and
+			player.equipment.weapons[1].visible and
+			clearance.state.pose == WeaponClearanceState.Pose.TUCKED and
+			not weapon_collision.disabled,
+		"Melee-to-ranged switch equips safely in tucked pose when both probes block"
 	))
 	_release_player_input(player)
 	low_ceiling.free()
@@ -545,7 +560,7 @@ func _test_normal_rebind_restores_stale_raised_visual(
 	var clearance := player.get_node("WeaponClearanceController") as WeaponClearanceController
 	var rifle := player.equipment.weapons[1] as RangedWeapon
 	var rifle_rest_transform := rifle.visual_anchor.transform
-	clearance.resolve_facing_yaw(0.016, Vector3.ZERO, 0.0)
+	clearance.call("update_clearance", 0.016, Vector3.ZERO, 0.0)
 	_append(failures, Assertions.expect_true(
 		clearance.is_raised(),
 		"Front wall raises the old rifle before its pose becomes stale"
@@ -617,7 +632,8 @@ func _test_side_facing_visual_and_restore_margin(
 	wall.position = Vector3(0.0, 1.12, -4.0)
 	shape.size = Vector3(3.0, 2.0, 0.20)
 	wall.force_update_transform()
-	player.rotation.y = clearance.resolve_facing_yaw(0.15, Vector3.ZERO, 0.0)
+	clearance.call("update_clearance", 0.15, Vector3.ZERO, 0.0)
+	player.rotation.y = 0.0
 
 	var side_yaw := -PI * 0.5
 	player.rotation.y = side_yaw
@@ -626,11 +642,13 @@ func _test_side_facing_visual_and_restore_margin(
 	wall.position = Vector3(1.36, 1.12, 0.0)
 	shape.size = Vector3(0.02, 0.3, 1.0)
 	wall.force_update_transform()
-	player.rotation.y = clearance.resolve_facing_yaw(
+	clearance.call(
+		"update_clearance",
 		0.0,
 		Vector3.ZERO,
 		side_yaw
 	)
+	player.rotation.y = side_yaw
 	var raised_barrel_axis := rifle.visual_anchor.global_basis.x.normalized()
 	var raised_angle := acos(clampf(
 		rest_barrel_axis.dot(raised_barrel_axis),
@@ -654,11 +672,13 @@ func _test_side_facing_visual_and_restore_margin(
 
 	wall.position.x = 1.45
 	wall.force_update_transform()
-	player.rotation.y = clearance.resolve_facing_yaw(
+	clearance.call(
+		"update_clearance",
 		0.15,
 		Vector3.ZERO,
 		side_yaw
 	)
+	player.rotation.y = side_yaw
 	_append(failures, Assertions.expect_true(
 		clearance.is_raised(),
 		"Side-facing restore margin keeps the rifle raised inside its 0.08 meter buffer"
@@ -666,11 +686,13 @@ func _test_side_facing_visual_and_restore_margin(
 
 	wall.position.x = 1.57
 	wall.force_update_transform()
-	player.rotation.y = clearance.resolve_facing_yaw(
+	clearance.call(
+		"update_clearance",
 		0.15,
 		Vector3.ZERO,
 		side_yaw
 	)
+	player.rotation.y = side_yaw
 	_append(failures, Assertions.expect_true(
 		not clearance.is_raised(),
 		"Side-facing rifle lowers only after clearing the 0.08 meter restore margin"

@@ -159,6 +159,9 @@ func _test_double_blocked_ranged_equip_rejection(failures: Array[String]) -> voi
 	tree.root.add_child(melee_player)
 	var melee_equipment := melee_player.equipment
 	var melee_collision := melee_player.get_node_or_null("WeaponCollision") as CollisionShape3D
+	var melee_clearance := melee_player.get_node_or_null(
+		"WeaponClearanceController"
+	) as WeaponClearanceController
 	var melee_rifle := melee_equipment.weapons[1]
 	var melee_knife := melee_equipment.weapons[2]
 	melee_equipment.equip_slot(2)
@@ -166,19 +169,21 @@ func _test_double_blocked_ranged_equip_rejection(failures: Array[String]) -> voi
 	tree.root.add_child(front_wall)
 	tree.root.add_child(low_ceiling)
 	_append(failures, Assertions.expect_true(
-		not melee_equipment.equip_slot(1),
-		"Double-blocked rifle is rejected before it replaces an equipped knife"
+		melee_equipment.equip_slot(1),
+		"Double-blocked rifle equips by using the tucked pose"
 	))
 	_append(failures, Assertions.expect_true(
-		melee_equipment.current_slot == 2 and
-			melee_equipment.get_current_weapon() == melee_knife and
-			melee_knife.visual_anchor.visible and not melee_rifle.visual_anchor.visible and
-			melee_knife.trigger_pressed and melee_knife.trigger_just_pressed,
-		"Rejected rifle preserves the knife slot, visibility, and attack state"
+		melee_equipment.current_slot == 1 and
+			melee_equipment.get_current_weapon() == melee_rifle and
+			melee_rifle.visual_anchor.visible and not melee_knife.visual_anchor.visible and
+			not melee_knife.trigger_pressed and not melee_knife.trigger_just_pressed,
+		"Tucked rifle replaces the knife and clears the old attack state"
 	))
 	_append(failures, Assertions.expect_true(
-		melee_collision != null and melee_collision.disabled,
-		"Weapon collision stays disabled only because the preserved weapon is melee"
+		melee_collision != null and not melee_collision.disabled and
+			melee_clearance != null and
+			melee_clearance.state.pose == WeaponClearanceState.Pose.TUCKED,
+		"Tucked ranged equip keeps the shared weapon collision enabled"
 	))
 	front_wall.free()
 	low_ceiling.free()
@@ -196,6 +201,9 @@ func _test_double_blocked_ranged_equip_rejection(failures: Array[String]) -> voi
 	tree.root.add_child(ranged_player)
 	var ranged_equipment := ranged_player.equipment
 	var ranged_collision := ranged_player.get_node_or_null("WeaponCollision") as CollisionShape3D
+	var ranged_clearance := ranged_player.get_node_or_null(
+		"WeaponClearanceController"
+	) as WeaponClearanceController
 	var pistol := ranged_equipment.weapons[0]
 	var rifle := ranged_equipment.weapons[1]
 	ranged_equipment.equip_slot(0)
@@ -203,16 +211,18 @@ func _test_double_blocked_ranged_equip_rejection(failures: Array[String]) -> voi
 	tree.root.add_child(ranged_front_wall)
 	tree.root.add_child(ranged_low_ceiling)
 	_append(failures, Assertions.expect_true(
-		not ranged_equipment.equip_slot(1),
-		"Double-blocked rifle is rejected before it replaces an equipped pistol"
+		ranged_equipment.equip_slot(1),
+		"Double-blocked rifle replaces an equipped pistol in tucked pose"
 	))
 	_append(failures, Assertions.expect_true(
-		ranged_equipment.current_slot == 0 and
-			ranged_equipment.get_current_weapon() == pistol and
-			pistol.visual_anchor.visible and not rifle.visual_anchor.visible and
-			pistol.trigger_pressed and pistol.trigger_just_pressed and
-			ranged_collision != null and not ranged_collision.disabled,
-		"Rejected rifle keeps the active pistol collision enabled instead of disabling it"
+		ranged_equipment.current_slot == 1 and
+			ranged_equipment.get_current_weapon() == rifle and
+			rifle.visual_anchor.visible and not pistol.visual_anchor.visible and
+			not pistol.trigger_pressed and not pistol.trigger_just_pressed and
+			ranged_collision != null and not ranged_collision.disabled and
+			ranged_clearance != null and
+			ranged_clearance.state.pose == WeaponClearanceState.Pose.TUCKED,
+		"Tucked rifle switch preserves active collision and clears pistol attack state"
 	))
 	ranged_front_wall.free()
 	ranged_low_ceiling.free()
@@ -240,10 +250,16 @@ func _test_initial_double_blocked_loadout_is_collision_safe(
 	var weapon_collision := player.get_node_or_null(
 		"WeaponCollision"
 	) as CollisionShape3D
+	var clearance := player.get_node_or_null(
+		"WeaponClearanceController"
+	) as WeaponClearanceController
 	_append(failures, Assertions.expect_true(
-		equipment.get_current_weapon() == null and
-			weapon_collision != null and weapon_collision.disabled,
-		"Initial double-blocked equip leaves no weapon and no active weapon collision"
+		equipment.get_current_weapon() != null and
+			equipment.get_current_definition().weapon_id == &"rifle" and
+			weapon_collision != null and not weapon_collision.disabled and
+			clearance != null and
+			clearance.state.pose == WeaponClearanceState.Pose.TUCKED,
+		"Initial double-blocked loadout equips the rifle safely in tucked pose"
 	))
 	host.free()
 

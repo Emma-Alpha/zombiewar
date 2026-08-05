@@ -8,6 +8,8 @@ const WALL_CAPSULE_LENGTH := 1.55
 const WALL_CAPSULE_RADIUS := 0.12
 const WALL_CAPSULE_OFFSET := Vector3(0.0, 1.12, -0.62)
 const WALL_RAISE_ANGLE_DEGREES := 65.0
+const TUCKED_CAPSULE_OFFSET := Vector3(0.0, 0.9, 0.0)
+const TUCKED_ANGLE_DEGREES := 90.0
 
 @export var restore_delay := 0.15
 @export var restore_margin := 0.08
@@ -59,27 +61,27 @@ func try_bind_weapon(weapon: WeaponBase) -> bool:
 	raised_probe.enabled = true
 	var normal_clear := _probe_pose(normal_probe, false, Vector3.ZERO, wielder.rotation.y)
 	var raised_clear := _probe_pose(raised_probe, true, Vector3.ZERO, wielder.rotation.y)
-	if not normal_clear and not raised_clear:
-		if current_definition == null or state.pose == WeaponClearanceState.Pose.DISABLED:
-			normal_probe.enabled = false
-			raised_probe.enabled = false
-		return false
 	_restore_visual_immediately()
 	current_weapon = weapon
 	current_definition = weapon.definition as RangedWeaponDefinition
 	current_visual = weapon.visual_anchor
 	visual_rest_transform = current_visual.transform
-	state.configure(
-		WeaponClearanceState.Pose.NORMAL if normal_clear else WeaponClearanceState.Pose.RAISED
-	)
+	var initial_pose := WeaponClearanceState.Pose.TUCKED
+	if normal_clear:
+		initial_pose = WeaponClearanceState.Pose.NORMAL
+	elif raised_clear:
+		initial_pose = WeaponClearanceState.Pose.RAISED
+	state.configure(initial_pose)
 	weapon_collision.disabled = false
-	_commit_pose(state.pose)
+	_commit_pose(initial_pose)
 	return true
 
 func _has_usable_visual_anchor(weapon: WeaponBase) -> bool:
 	return weapon.visual_anchor != null and is_instance_valid(weapon.visual_anchor)
 
 func _current_pose_is_clear() -> bool:
+	if state.pose == WeaponClearanceState.Pose.TUCKED:
+		return true
 	var raised := state.pose == WeaponClearanceState.Pose.RAISED
 	var probe := raised_probe if raised else normal_probe
 	probe.enabled = true
@@ -90,13 +92,13 @@ func _exit_tree() -> void:
 	if state != null:
 		state.reset()
 
-func resolve_facing_yaw(
+func update_clearance(
 	delta: float,
 	desired_motion: Vector3,
 	target_yaw: float
-) -> float:
+) -> void:
 	if current_definition == null or state.pose == WeaponClearanceState.Pose.DISABLED:
-		return target_yaw
+		return
 	var normal_clear := _probe_pose(
 		normal_probe,
 		false,
@@ -109,17 +111,21 @@ func resolve_facing_yaw(
 		desired_motion,
 		target_yaw
 	)
-	var requested_pose := state.request_pose(delta, normal_clear)
-	var requested_clear := (
-		normal_clear
-		if requested_pose == WeaponClearanceState.Pose.NORMAL
-		else raised_clear
+	var requested_pose := state.request_pose(
+		delta,
+		normal_clear,
+		raised_clear
 	)
-	if not requested_clear:
-		return wielder.rotation.y
 	if requested_pose != state.pose:
 		_commit_pose(requested_pose)
-	return target_yaw
+
+func get_weapon_muzzle_origin(fallback: Vector3) -> Vector3:
+	var capsule := weapon_collision.shape as CapsuleShape3D
+	if capsule == null:
+		push_warning("WeaponCollision requires CapsuleShape3D")
+		return fallback
+	var barrel_direction := -weapon_collision.global_basis.y.normalized()
+	return weapon_collision.global_position + barrel_direction * capsule.height * 0.5
 
 func is_raised() -> bool:
 	return state.pose == WeaponClearanceState.Pose.RAISED
@@ -140,17 +146,27 @@ func _configure_shapes() -> void:
 
 func _commit_pose(requested_pose: int) -> void:
 	state.commit_pose(requested_pose)
-	var raised := state.pose == WeaponClearanceState.Pose.RAISED
-	weapon_collision.transform = _local_pose_transform(raised)
+	weapon_collision.transform = _local_pose_transform(state.pose)
+	var visual_angle := 0.0
+	if state.pose == WeaponClearanceState.Pose.RAISED:
+		visual_angle = WALL_RAISE_ANGLE_DEGREES
+	elif state.pose == WeaponClearanceState.Pose.TUCKED:
+		visual_angle = TUCKED_ANGLE_DEGREES
 	var target := visual_rest_transform
-	if raised:
+	if visual_angle > 0.0:
 		target.basis = target.basis * Basis(
 			Vector3.UP,
-			-deg_to_rad(WALL_RAISE_ANGLE_DEGREES)
+			-deg_to_rad(visual_angle)
 		)
 	current_visual.transform = target
 
-func _local_pose_transform(raised: bool) -> Transform3D:
+func _local_pose_transform(pose: int) -> Transform3D:
+	if pose == WeaponClearanceState.Pose.TUCKED:
+		return Transform3D(
+			Basis(Vector3.RIGHT, PI),
+			TUCKED_CAPSULE_OFFSET
+		)
+	var raised := pose == WeaponClearanceState.Pose.RAISED
 	var raise_radians := deg_to_rad(WALL_RAISE_ANGLE_DEGREES) if raised else 0.0
 	var pivot := Vector3(WALL_CAPSULE_OFFSET.x, WALL_CAPSULE_OFFSET.y, 0.0)
 	var raise_basis := Basis(Vector3.RIGHT, raise_radians)
@@ -161,7 +177,11 @@ func _local_pose_transform(raised: bool) -> Transform3D:
 	)
 
 func _probe_pose_transform(raised: bool, target_yaw: float) -> Transform3D:
-	var local_pose := _local_pose_transform(raised)
+	var local_pose := _local_pose_transform(
+		WeaponClearanceState.Pose.RAISED
+		if raised
+		else WeaponClearanceState.Pose.NORMAL
+	)
 	var facing_delta := wrapf(target_yaw - wielder.rotation.y, -PI, PI)
 	var facing_basis := Basis(Vector3.UP, facing_delta)
 	return Transform3D(facing_basis * local_pose.basis, facing_basis * local_pose.origin)

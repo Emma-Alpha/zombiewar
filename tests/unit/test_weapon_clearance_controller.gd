@@ -92,10 +92,17 @@ func run() -> Array[String]:
 		host.free()
 		return failures
 	var rest_transform := rifle_visual.transform
+	if not controller.has_method("update_clearance"):
+		_append(failures, Assertions.expect_true(
+			false,
+			"Weapon clearance updates pose without deciding player yaw"
+		))
+		host.free()
+		return failures
 
-	var accepted_yaw := controller.resolve_facing_yaw(0.016, Vector3(0.0, 0.0, -0.15), 0.0)
+	controller.call("update_clearance", 0.016, Vector3(0.0, 0.0, -0.15), 0.0)
 	_append(failures, Assertions.expect_true(
-		controller.is_raised() and accepted_yaw == 0.0 and
+		controller.is_raised() and
 			not rifle_visual.transform.is_equal_approx(rest_transform),
 		"Safe raised request snaps physical and visual pose in the obstruction frame"
 	))
@@ -105,37 +112,46 @@ func run() -> Array[String]:
 		Vector3(3.0, 0.2, 2.0)
 	)
 	host.add_child(ceiling)
-	var previous_pose := controller.state.pose
-	var previous_collision := weapon_collision.transform
-	var previous_visual := rifle_visual.transform
-	var previous_yaw := player.rotation.y
+	var target_yaw := PI * 0.5
+	controller.call("update_clearance", 0.016, Vector3.ZERO, target_yaw)
+	player.rotation.y = target_yaw
 	_append(failures, Assertions.expect_true(
-		controller.resolve_facing_yaw(0.016, Vector3.ZERO, PI * 0.5) == previous_yaw,
-		"Blocked normal and raised requests reject the target yaw"
+		controller.state.pose == WeaponClearanceState.Pose.TUCKED and
+			is_equal_approx(player.rotation.y, target_yaw),
+		"Blocked normal and raised poses tuck the rifle without rejecting player yaw"
+	))
+	var player_collision := player.get_node("CollisionShape3D") as CollisionShape3D
+	var player_capsule := player_collision.shape as CapsuleShape3D
+	var tucked_capsule := weapon_collision.shape as CapsuleShape3D
+	_append(failures, Assertions.expect_true(
+		player_capsule != null and tucked_capsule != null and
+			tucked_capsule.height < player_capsule.height and
+			tucked_capsule.radius < player_capsule.radius and
+			weapon_collision.position.is_equal_approx(player_collision.position),
+		"Tucked rifle capsule is fully contained by the player capsule"
 	))
 	_append(failures, Assertions.expect_true(
-		controller.state.pose == previous_pose and
-			weapon_collision.transform.is_equal_approx(previous_collision) and
-			rifle_visual.transform.is_equal_approx(previous_visual),
-		"Rejected pose preserves committed state, collision, and visual"
+		is_equal_approx(tucked_capsule.height, 1.55) and
+			is_equal_approx(tucked_capsule.radius, 0.12) and
+			absf(weapon_collision.basis.y.normalized().dot(Vector3.DOWN)) > 0.999,
+		"Tucked rifle keeps the shared envelope with its muzzle end pointing upward"
 	))
 
 	wall.position.z = -4.0
 	wall.force_update_transform()
-	controller.resolve_facing_yaw(0.10, Vector3.ZERO, PI * 0.5)
+	ceiling.position.y = 5.0
+	ceiling.force_update_transform()
+	controller.call("update_clearance", 0.016, Vector3.ZERO, target_yaw)
 	_append(failures, Assertions.expect_true(
-		controller.state.pose == previous_pose and
-			weapon_collision.transform.is_equal_approx(previous_collision) and
-			rifle_visual.transform.is_equal_approx(previous_visual) and
-			player.rotation.y == previous_yaw,
-		"Raised pose stays committed while a blocked raised probe prevents the yaw"
+		controller.state.pose == WeaponClearanceState.Pose.RAISED,
+		"Tucked pose restores to raised as soon as raised clearance is available"
 	))
-	var restored_yaw := controller.resolve_facing_yaw(0.05, Vector3.ZERO, PI * 0.5)
+	controller.call("update_clearance", 0.10, Vector3.ZERO, target_yaw)
+	controller.call("update_clearance", 0.05, Vector3.ZERO, target_yaw)
 	_append(failures, Assertions.expect_true(
 		controller.state.pose == WeaponClearanceState.Pose.NORMAL and
-			rifle_visual.transform.is_equal_approx(rest_transform) and
-			restored_yaw == PI * 0.5,
-		"A full 0.15 seconds of normal clearance atomically commits normal pose"
+			rifle_visual.transform.is_equal_approx(rest_transform),
+		"A full 0.15 seconds of normal clearance restores normal pose"
 	))
 	ceiling.free()
 
@@ -163,7 +179,7 @@ func run() -> Array[String]:
 	player.equipment.equip_slot(1)
 	wall.position = Vector3(0.0, 1.12, -1.1)
 	wall.force_update_transform()
-	controller.resolve_facing_yaw(0.0, Vector3.ZERO, 0.0)
+	controller.call("update_clearance", 0.0, Vector3.ZERO, 0.0)
 	_append(failures, Assertions.expect_true(
 		controller.is_raised() and not rifle_visual.transform.is_equal_approx(rest_transform),
 		"A second real wall obstruction raises the rifle before lethal damage"
@@ -191,7 +207,7 @@ func _test_exit_tree_restores_visual_transform(failures: Array[String]) -> void:
 	var rifle := player.equipment.get_current_weapon()
 	var rifle_visual := rifle.visual_anchor
 	var rest_transform := rifle_visual.transform
-	controller.resolve_facing_yaw(0.016, Vector3.ZERO, 0.0)
+	controller.call("update_clearance", 0.016, Vector3.ZERO, 0.0)
 	if not controller.has_method("_exit_tree"):
 		_append(failures, Assertions.expect_true(
 			false,

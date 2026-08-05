@@ -141,11 +141,12 @@ func _physics_process(delta: float) -> void:
 		jump_speed
 	)
 	var desired_motion := Vector3(velocity.x, 0.0, velocity.z) * delta
-	rotation.y = weapon_clearance.resolve_facing_yaw(
+	weapon_clearance.update_clearance(
 		delta,
 		desired_motion,
 		target_yaw
 	)
+	rotation.y = target_yaw
 	var trigger_pressed := Input.is_action_pressed(primary_attack_action)
 	var trigger_just_pressed := Input.is_action_just_pressed(primary_attack_action)
 	if hit_reaction_remaining > 0.0:
