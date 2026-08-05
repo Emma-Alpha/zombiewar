@@ -28,6 +28,8 @@ func run() -> Array[String]:
 		))
 		_cleanup(player, wall, zombie)
 		return failures
+	rifle._process(0.0)
+	var stale_muzzle_position := rifle.muzzle.global_position
 	var rifle_rest_transform := rifle.visual_anchor.transform
 	var pistol := player.equipment.weapons[0] as RangedWeapon
 	var pistol_rest_transform := pistol.visual_anchor.transform
@@ -41,6 +43,13 @@ func run() -> Array[String]:
 		clearance.is_raised(),
 		"Approaching a rifle-length wall clearance raises the rifle"
 	))
+	var committed_muzzle_position := (
+		rifle.visual_anchor.global_transform * rifle.muzzle.position
+	)
+	_append(failures, Assertions.expect_true(
+		committed_muzzle_position.distance_to(stale_muzzle_position) > 0.1,
+		"Same-frame muzzle fixture commits a visibly different raised anchor"
+	))
 	var raised_axis := weapon_collision.transform.basis.y.normalized()
 	_append(failures, Assertions.expect_true(
 		not weapon_collision.disabled and absf(raised_axis.y) > 0.85,
@@ -49,23 +58,21 @@ func run() -> Array[String]:
 
 	wall.position.z = -1.1
 	wall.force_update_transform()
-	var start_position := player.global_position
-	var collision := player.move_and_collide(Vector3(0.0, 0.0, -0.80), true)
-	_append(failures, Assertions.expect_true(
-		collision != null and player.global_position.is_equal_approx(start_position),
-		"Direct WeaponCollision blocks forward motion before the body capsule reaches the wall"
-	))
-	_append(failures, Assertions.expect_true(
-		player.move_and_collide(Vector3(0.0, 0.0, 0.20), true) == null,
-		"Player can test a backward escape motion away from the wall"
-	))
 	var cursor_before := rifle.tracer_pool_cursor
 	Input.action_press(player.primary_attack_action)
 	player._physics_process(0.016)
+	var shot_muzzle_position := rifle.visual_anchor.global_transform * rifle.muzzle.position
 	rifle._physics_process(0.20)
 	_append(failures, Assertions.expect_true(
 		clearance.is_raised() and rifle.tracer_pool_cursor != cursor_before,
 		"Raised rifle keeps firing at the existing cadence"
+	))
+	var same_frame_tracer := rifle.tracer_pool[cursor_before] as ShotTracer
+	_append(failures, Assertions.expect_vector3_near(
+		_tracer_start(same_frame_tracer),
+		shot_muzzle_position,
+		0.001,
+		"Same-frame raised shot starts its tracer at the committed raised muzzle"
 	))
 
 	wall.position.z = -4.0
@@ -76,15 +83,6 @@ func run() -> Array[String]:
 		"Clearance restores normal pose and the exact visual rest transform after 0.15 seconds"
 	))
 	Input.action_release(player.primary_attack_action)
-	var accepted_yaw := clearance.resolve_facing_yaw(0.016, Vector3.ZERO, PI * 0.5)
-	player.rotation.y = accepted_yaw
-	var expected_axis := Basis(Vector3.UP, accepted_yaw) * Vector3.BACK
-	var actual_axis := weapon_collision.global_basis.y.normalized()
-	_append(failures, Assertions.expect_true(
-		absf(actual_axis.dot(expected_axis.normalized())) > 0.999,
-		"WeaponCollision inherits accepted player yaw exactly once"
-	))
-	player.rotation.y = 0.0
 
 	wall.position.z = -0.95
 	wall.force_update_transform()
@@ -144,7 +142,238 @@ func run() -> Array[String]:
 	_test_rejected_turn_uses_accepted_facing(failures)
 	_test_switching_contract(failures)
 	_test_normal_rebind_restores_stale_raised_visual(failures)
+	_test_real_weapon_collision_motion(failures)
+	_test_raised_shot_obstruction_and_feedback(failures)
 	return failures
+
+func _test_real_weapon_collision_motion(failures: Array[String]) -> void:
+	_assert_weapon_collision_motion(
+		failures,
+		0.0,
+		Vector3(0.0, 1.12, -1.54),
+		Vector3(3.0, 0.3, 0.02),
+		Vector3(0.0, 0.0, -0.20),
+		Vector3(0.10, 0.0, 0.0),
+		"Forward",
+		true
+	)
+	_assert_weapon_collision_motion(
+		failures,
+		PI * 0.5,
+		Vector3(-1.54, 1.12, 0.0),
+		Vector3(0.02, 0.3, 3.0),
+		Vector3(-0.20, 0.0, 0.0),
+		Vector3(0.0, 0.0, 0.10),
+		"Yaw-90",
+		false
+	)
+
+func _assert_weapon_collision_motion(
+	failures: Array[String],
+	yaw: float,
+	wall_position: Vector3,
+	wall_size: Vector3,
+	requested_motion: Vector3,
+	lateral_motion: Vector3,
+	label: String,
+	verify_disabled_control: bool
+) -> void:
+	var tree := Engine.get_main_loop() as SceneTree
+	var player := PLAYER_SCENE.instantiate() as PlayerController
+	tree.root.add_child(player)
+	player.rotation.y = yaw
+	player.force_update_transform()
+	var wall := _make_wall(wall_position, wall_size)
+	tree.root.add_child(wall)
+	wall.force_update_transform()
+	var weapon_collision := player.get_node("WeaponCollision") as CollisionShape3D
+	var expected_center := Basis(Vector3.UP, yaw) * Vector3(0.0, 1.12, -0.62)
+	var expected_axis := Basis(Vector3.UP, yaw) * Vector3.BACK
+	_append(failures, Assertions.expect_vector3_near(
+		weapon_collision.global_position,
+		expected_center,
+		0.0001,
+		"%s WeaponCollision world center inherits yaw exactly once" % label
+	))
+	_append(failures, Assertions.expect_true(
+		absf(weapon_collision.global_basis.y.normalized().dot(expected_axis)) > 0.999,
+		"%s WeaponCollision long axis inherits yaw exactly once" % label
+	))
+	var start_position := player.global_position
+	var collision := player.move_and_collide(requested_motion)
+	_append(failures, Assertions.expect_true(
+		collision != null,
+		"%s real motion is blocked before full travel" % label
+	))
+	if collision != null:
+		var actual_travel := player.global_position - start_position
+		var wall_normal := -requested_motion.normalized()
+		var wall_face := wall.position + wall_normal * 0.01
+		var contact_position := collision.get_position()
+		_append(failures, Assertions.expect_true(
+			collision.get_collider() == wall and
+				collision.get_local_shape() == weapon_collision,
+			"%s first collision comes from WeaponCollision" % label
+		))
+		_append(failures, Assertions.expect_true(
+			actual_travel.distance_to(collision.get_travel()) < 0.001 and
+				actual_travel.length() > 0.08 and
+				actual_travel.length() < requested_motion.length() - 0.01,
+			"%s applies partial real travel before contact" % label
+		))
+		_append(failures, Assertions.expect_true(
+			absf((contact_position - wall_face).dot(wall_normal)) < 0.03 and
+				contact_position.y > 0.95 and contact_position.y < 1.29,
+			"%s first-contact point lies on the weapon-height wall" % label
+		))
+		var body_front := player.global_position + requested_motion.normalized() * 0.45
+		_append(failures, Assertions.expect_true(
+			(body_front - wall_face).dot(wall_normal) > 0.8,
+			"%s body capsule remains clear at weapon contact" % label
+		))
+		var contact_player_position := player.global_position
+		var escape_motion := -requested_motion.normalized() * 0.10
+		var escape_start := player.global_position
+		player.move_and_collide(escape_motion)
+		_append(failures, Assertions.expect_vector3_near(
+			player.global_position - escape_start,
+			escape_motion,
+			0.001,
+			"%s real backward motion escapes contact" % label
+		))
+		player.global_position = contact_player_position
+		player.force_update_transform()
+		var lateral_start := player.global_position
+		var lateral_collision := player.move_and_collide(lateral_motion)
+		_append(failures, Assertions.expect_true(
+			lateral_collision == null and
+				player.global_position.is_equal_approx(lateral_start + lateral_motion),
+			"%s real lateral motion remains available" % label
+		))
+	if verify_disabled_control:
+		player.global_position = start_position
+		player.force_update_transform()
+		weapon_collision.disabled = true
+		var disabled_collision := player.move_and_collide(requested_motion)
+		_append(failures, Assertions.expect_true(
+			disabled_collision == null and
+				player.global_position.is_equal_approx(start_position + requested_motion),
+			"Disabling WeaponCollision makes the weapon-only fixture pass through"
+		))
+		weapon_collision.disabled = false
+	_release_player_input(player)
+	wall.free()
+	player.free()
+
+func _test_raised_shot_obstruction_and_feedback(failures: Array[String]) -> void:
+	var tree := Engine.get_main_loop() as SceneTree
+	var player := PLAYER_SCENE.instantiate() as PlayerController
+	var wall := _make_wall(
+		Vector3(0.0, 1.12, -1.1),
+		Vector3(3.0, 0.3, 0.2)
+	)
+	var wall_target := ZOMBIE_SCENE.instantiate() as ZombieTarget
+	wall_target.position = Vector3(0.0, 0.0, -4.0)
+	wall_target.set_physics_process(false)
+	tree.root.add_child(player)
+	tree.root.add_child(wall)
+	tree.root.add_child(wall_target)
+	var clearance := player.get_node("WeaponClearanceController") as WeaponClearanceController
+	var rifle := player.equipment.get_current_weapon() as RangedWeapon
+	clearance.resolve_facing_yaw(0.016, Vector3.ZERO, 0.0)
+	rifle._process(0.0)
+	_append(failures, Assertions.expect_true(
+		clearance.is_raised(),
+		"Layer-one wall fixture commits RAISED before firing"
+	))
+	var feedback_positions: Array[Vector3] = []
+	rifle.attack_resolved.connect(func(
+		_origin: Vector3,
+		_direction: Vector3,
+		result: HitResult,
+		_recoil: float,
+		_impulse: float
+	) -> void:
+		feedback_positions.append(result.position)
+	)
+	_assert_raised_blocker_pair(
+		failures,
+		rifle,
+		clearance,
+		wall,
+		wall_target,
+		feedback_positions,
+		"wall"
+	)
+	wall_target.free()
+
+	var area := _make_area(
+		Vector3(0.0, 1.1, -2.0),
+		Vector3(2.0, 2.0, 0.2)
+	)
+	var area_target := ZOMBIE_SCENE.instantiate() as ZombieTarget
+	area_target.position = Vector3(0.0, 0.0, -4.0)
+	area_target.set_physics_process(false)
+	tree.root.add_child(area)
+	tree.root.add_child(area_target)
+	_assert_raised_blocker_pair(
+		failures,
+		rifle,
+		clearance,
+		area,
+		area_target,
+		feedback_positions,
+		"Area"
+	)
+	_release_player_input(player)
+	area_target.free()
+	player.free()
+
+func _assert_raised_blocker_pair(
+	failures: Array[String],
+	rifle: RangedWeapon,
+	clearance: WeaponClearanceController,
+	blocker: CollisionObject3D,
+	target: ZombieTarget,
+	feedback_positions: Array[Vector3],
+	label: String
+) -> void:
+	var ray_origin := rifle.get_ray_origin()
+	var ray_end := ray_origin + Vector3.FORWARD * (
+		rifle.definition as RangedWeaponDefinition
+	).attack_range
+	var blocked_result := rifle.call("_intersect_shot", ray_origin, ray_end) as Dictionary
+	var blocked_hit: Vector3 = blocked_result.get("position", ray_end)
+	var blocked_health := target.health.current
+	var blocked_tracer_index := rifle.tracer_pool_cursor
+	rifle.call("_fire", Vector3.FORWARD)
+	var blocked_tracer := rifle.tracer_pool[blocked_tracer_index] as ShotTracer
+	_append(failures, Assertions.expect_true(
+		clearance.is_raised() and blocked_result.get("collider", null) == blocker and
+			is_equal_approx(target.health.current, blocked_health),
+		"RAISED layer-one %s is first hit and protects its target" % label
+	))
+	_append(failures, Assertions.expect_true(
+		_tracer_end(blocked_tracer).distance_to(blocked_hit) < 0.001 and
+			feedback_positions.back().distance_to(blocked_hit) < 0.001,
+		"RAISED %s-blocked tracer and feedback end at first contact" % label
+	))
+	blocker.free()
+	var clear_result := rifle.call("_intersect_shot", ray_origin, ray_end) as Dictionary
+	var clear_hit: Vector3 = clear_result.get("position", ray_end)
+	var clear_health := target.health.current
+	var clear_tracer_index := rifle.tracer_pool_cursor
+	rifle.call("_fire", Vector3.FORWARD)
+	var clear_tracer := rifle.tracer_pool[clear_tracer_index] as ShotTracer
+	_append(failures, Assertions.expect_true(
+		clearance.is_raised() and target.health.current < clear_health,
+		"Removing the %s lets the same RAISED shot damage its target" % label
+	))
+	_append(failures, Assertions.expect_true(
+		_tracer_end(clear_tracer).distance_to(clear_hit) < 0.001 and
+			feedback_positions.back().distance_to(clear_hit) < 0.001,
+		"Unobstructed RAISED %s control reaches the target hit" % label
+	))
 
 func _test_rejected_turn_uses_accepted_facing(failures: Array[String]) -> void:
 	var tree := Engine.get_main_loop() as SceneTree
@@ -230,6 +459,34 @@ func _test_switching_contract(failures: Array[String]) -> void:
 				is_equal_approx(capsule.radius, 0.12),
 			"Ranged switch preserves the unified runtime envelope"
 		))
+	var remote_switch_ceiling := _make_wall(
+		Vector3(0.0, 2.25, -0.25),
+		Vector3(3.0, 0.2, 2.0)
+	)
+	tree.root.add_child(remote_switch_ceiling)
+	var before_rejected_remote := player.equipment.get_current_weapon()
+	_append(failures, Assertions.expect_true(
+		not player.equipment.equip_slot(1) and
+			player.equipment.get_current_weapon() == before_rejected_remote,
+		"Remote-to-remote switch rejects transactionally when both poses are blocked"
+	))
+	_append(failures, Assertions.expect_true(
+		normal_probe.enabled and raised_probe.enabled,
+		"Rejected remote switch preserves both active clearance probes"
+	))
+	remote_switch_ceiling.free()
+	clearance.resolve_facing_yaw(0.016, Vector3.ZERO, 0.0)
+	_append(failures, Assertions.expect_true(
+		clearance.is_raised(),
+		"Preserved probes still resolve the remaining front-wall obstruction"
+	))
+	front_wall.position.z = -4.0
+	front_wall.force_update_transform()
+	clearance.resolve_facing_yaw(0.15, Vector3.ZERO, 0.0)
+	_append(failures, Assertions.expect_true(
+		not clearance.is_raised(),
+		"Preserved probes still restore NORMAL after the wall clears"
+	))
 
 	var rifle_candidate := player.equipment.weapons[1]
 	var saved_anchor := rifle_candidate.visual_anchor
@@ -242,8 +499,22 @@ func _test_switching_contract(failures: Array[String]) -> void:
 		"Missing ranged visual rejects the switch without disabling current collision"
 	))
 	rifle_candidate.visual_anchor = saved_anchor
+	var freed_anchor := Node3D.new()
+	rifle_candidate.visual_anchor = freed_anchor
+	freed_anchor.free()
+	var before_slot := player.equipment.current_slot
+	_append(failures, Assertions.expect_true(
+		not player.equipment.equip_slot(1) and
+			player.equipment.get_current_weapon() == before_weapon and
+			player.equipment.current_slot == before_slot and
+			not weapon_collision.disabled and normal_probe.enabled and raised_probe.enabled,
+		"Freed ranged visual rejects transactionally without disturbing active clearance"
+	))
+	rifle_candidate.visual_anchor = saved_anchor
 
 	player.equipment.equip_slot(2)
+	front_wall.position.z = -1.1
+	front_wall.force_update_transform()
 	var low_ceiling := _make_wall(
 		Vector3(0.0, 2.25, -0.25),
 		Vector3(3.0, 0.2, 2.0)
@@ -312,6 +583,24 @@ func _make_wall(position: Vector3, size: Vector3) -> StaticBody3D:
 	collision.shape = shape
 	wall.add_child(collision)
 	return wall
+
+func _make_area(position: Vector3, size: Vector3) -> Area3D:
+	var area := Area3D.new()
+	area.position = position
+	area.collision_layer = 1
+	area.collision_mask = 0
+	var collision := CollisionShape3D.new()
+	var shape := BoxShape3D.new()
+	shape.size = size
+	collision.shape = shape
+	area.add_child(collision)
+	return area
+
+func _tracer_start(tracer: ShotTracer) -> Vector3:
+	return tracer.to_global(Vector3(0.0, 0.0, 0.5))
+
+func _tracer_end(tracer: ShotTracer) -> Vector3:
+	return tracer.to_global(Vector3(0.0, 0.0, -0.5))
 
 func _test_side_facing_visual_and_restore_margin(
 	failures: Array[String],

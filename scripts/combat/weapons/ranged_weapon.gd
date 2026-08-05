@@ -35,7 +35,7 @@ func bind_context(
 	muzzle.position = ranged_definition.muzzle_anchor_offset
 	if visual_anchor != null:
 		top_level = true
-		global_transform = visual_anchor.global_transform
+		_sync_to_visual_anchor()
 
 func _physics_process(delta: float) -> void:
 	weapon_trigger.tick(delta)
@@ -44,8 +44,7 @@ func _physics_process(delta: float) -> void:
 	trigger_just_pressed = false
 
 func _process(_delta: float) -> void:
-	if visual_anchor != null and is_instance_valid(visual_anchor):
-		global_transform = visual_anchor.global_transform
+	_sync_to_visual_anchor()
 
 func cancel_attack() -> void:
 	super.cancel_attack()
@@ -58,6 +57,7 @@ func get_ray_origin() -> Vector3:
 	return wielder.global_position if wielder != null else global_position
 
 func _fire(shot_direction: Vector3) -> void:
+	_sync_to_visual_anchor()
 	var ranged_definition := definition as RangedWeaponDefinition
 	var ray_origin := get_ray_origin()
 	var ray_direction := WeaponMath.flat_direction(shot_direction)
@@ -100,6 +100,10 @@ func _fire(shot_direction: Vector3) -> void:
 		ranged_definition.visual_recoil_kick,
 		ranged_definition.camera_impulse_strength
 	)
+
+func _sync_to_visual_anchor() -> void:
+	if visual_anchor != null and is_instance_valid(visual_anchor):
+		global_transform = visual_anchor.global_transform
 
 func _intersect_shot(from: Vector3, to: Vector3) -> Dictionary:
 	var ranged_definition := definition as RangedWeaponDefinition

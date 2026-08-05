@@ -37,7 +37,7 @@ func try_bind_weapon(weapon: WeaponBase) -> bool:
 		_restore_visual_immediately()
 		_disable_clearance()
 		return true
-	if weapon.visual_anchor == null:
+	if not _has_usable_visual_anchor(weapon):
 		push_warning("Weapon %s has no visual anchor" % String(weapon.definition.weapon_id))
 		return false
 	if (
@@ -60,8 +60,9 @@ func try_bind_weapon(weapon: WeaponBase) -> bool:
 	var normal_clear := _probe_pose(normal_probe, false, Vector3.ZERO, wielder.rotation.y)
 	var raised_clear := _probe_pose(raised_probe, true, Vector3.ZERO, wielder.rotation.y)
 	if not normal_clear and not raised_clear:
-		normal_probe.enabled = false
-		raised_probe.enabled = false
+		if current_definition == null or state.pose == WeaponClearanceState.Pose.DISABLED:
+			normal_probe.enabled = false
+			raised_probe.enabled = false
 		return false
 	_restore_visual_immediately()
 	current_weapon = weapon
@@ -74,6 +75,9 @@ func try_bind_weapon(weapon: WeaponBase) -> bool:
 	weapon_collision.disabled = false
 	_commit_pose(state.pose)
 	return true
+
+func _has_usable_visual_anchor(weapon: WeaponBase) -> bool:
+	return weapon.visual_anchor != null and is_instance_valid(weapon.visual_anchor)
 
 func _current_pose_is_clear() -> bool:
 	var raised := state.pose == WeaponClearanceState.Pose.RAISED
