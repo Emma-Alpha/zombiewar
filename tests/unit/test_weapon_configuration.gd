@@ -21,6 +21,24 @@ func run() -> Array[String]:
 	if pistol == null or rifle == null or knife == null:
 		return failures
 
+	_append(failures, Assertions.expect_true(
+		not _has_property(pistol, &"wall_capsule_length") and
+			not _has_property(pistol, &"wall_capsule_radius") and
+			not _has_property(pistol, &"wall_capsule_offset") and
+			not _has_property(pistol, &"wall_raise_angle_degrees"),
+		"Ranged definitions do not expose per-weapon wall-clearance overrides"
+	))
+	_append(failures, Assertions.expect_equal(
+		pistol.hit_collision_mask & 1,
+		1,
+		"Pistol hit mask includes solid world layer one"
+	))
+	_append(failures, Assertions.expect_equal(
+		rifle.hit_collision_mask & 1,
+		1,
+		"Rifle hit mask includes solid world layer one"
+	))
+
 	_append(failures, Assertions.expect_equal(
 		pistol.trigger_mode,
 		WeaponDefinition.TriggerMode.PRESS,
@@ -102,3 +120,9 @@ func run() -> Array[String]:
 func _append(failures: Array[String], failure: String) -> void:
 	if not failure.is_empty():
 		failures.append(failure)
+
+func _has_property(value: Object, property_name: StringName) -> bool:
+	for property: Dictionary in value.get_property_list():
+		if StringName(property.get("name", "")) == property_name:
+			return true
+	return false

@@ -106,8 +106,158 @@ func run() -> Array[String]:
 		&"knife",
 		"Rejected fourth slot keeps the knife equipped"
 	))
+	_test_switch_guard_transaction(failures, player, equipment)
 	player.free()
+	_test_double_blocked_ranged_equip_rejection(failures)
+	_test_initial_double_blocked_loadout_is_collision_safe(failures)
 	return failures
+
+func _test_switch_guard_transaction(
+	failures: Array[String],
+	player: PlayerController,
+	equipment: EquipmentController
+) -> void:
+	if not equipment.has_method("set_switch_guard"):
+		_append(failures, Assertions.expect_true(
+			false,
+			"Equipment exposes a switch guard setter"
+		))
+		return
+	equipment.call("set_switch_guard", func(candidate: WeaponBase) -> bool:
+		return candidate.definition.weapon_id != &"pistol"
+	)
+	var before_weapon := equipment.get_current_weapon()
+	before_weapon.set_attack_input(true, true, Vector3.FORWARD)
+	var before_slot := equipment.current_slot
+	var before_trigger_pressed := before_weapon.trigger_pressed
+	var before_trigger_just_pressed := before_weapon.trigger_just_pressed
+	_append(failures, Assertions.expect_true(
+		not equipment.equip_slot(0),
+		"Rejected switch guard returns false"
+	))
+	_append(failures, Assertions.expect_true(
+		equipment.get_current_weapon() == before_weapon and
+			equipment.current_slot == before_slot and
+			before_weapon.visible and
+			before_weapon.trigger_pressed == before_trigger_pressed and
+			before_weapon.trigger_just_pressed == before_trigger_just_pressed,
+		"Rejected switch keeps weapon identity, slot, attack state, and visibility"
+	))
+	equipment.call("set_switch_guard", Callable())
+
+func _test_double_blocked_ranged_equip_rejection(failures: Array[String]) -> void:
+	var tree := Engine.get_main_loop() as SceneTree
+	var melee_player := PLAYER_SCENE.instantiate() as PlayerController
+	var front_wall := _make_wall(
+		Vector3(0.0, 1.12, -1.1),
+		Vector3(3.0, 0.3, 0.2)
+	)
+	var low_ceiling := _make_wall(
+		Vector3(0.0, 2.25, -0.25),
+		Vector3(3.0, 0.2, 2.0)
+	)
+	tree.root.add_child(melee_player)
+	var melee_equipment := melee_player.equipment
+	var melee_collision := melee_player.get_node_or_null("WeaponCollision") as CollisionShape3D
+	var melee_rifle := melee_equipment.weapons[1]
+	var melee_knife := melee_equipment.weapons[2]
+	melee_equipment.equip_slot(2)
+	melee_knife.set_attack_input(true, true, Vector3.FORWARD)
+	tree.root.add_child(front_wall)
+	tree.root.add_child(low_ceiling)
+	_append(failures, Assertions.expect_true(
+		not melee_equipment.equip_slot(1),
+		"Double-blocked rifle is rejected before it replaces an equipped knife"
+	))
+	_append(failures, Assertions.expect_true(
+		melee_equipment.current_slot == 2 and
+			melee_equipment.get_current_weapon() == melee_knife and
+			melee_knife.visual_anchor.visible and not melee_rifle.visual_anchor.visible and
+			melee_knife.trigger_pressed and melee_knife.trigger_just_pressed,
+		"Rejected rifle preserves the knife slot, visibility, and attack state"
+	))
+	_append(failures, Assertions.expect_true(
+		melee_collision != null and melee_collision.disabled,
+		"Weapon collision stays disabled only because the preserved weapon is melee"
+	))
+	front_wall.free()
+	low_ceiling.free()
+	melee_player.free()
+
+	var ranged_player := PLAYER_SCENE.instantiate() as PlayerController
+	var ranged_front_wall := _make_wall(
+		Vector3(0.0, 1.12, -1.1),
+		Vector3(3.0, 0.3, 0.2)
+	)
+	var ranged_low_ceiling := _make_wall(
+		Vector3(0.0, 2.25, -0.25),
+		Vector3(3.0, 0.2, 2.0)
+	)
+	tree.root.add_child(ranged_player)
+	var ranged_equipment := ranged_player.equipment
+	var ranged_collision := ranged_player.get_node_or_null("WeaponCollision") as CollisionShape3D
+	var pistol := ranged_equipment.weapons[0]
+	var rifle := ranged_equipment.weapons[1]
+	ranged_equipment.equip_slot(0)
+	pistol.set_attack_input(true, true, Vector3.FORWARD)
+	tree.root.add_child(ranged_front_wall)
+	tree.root.add_child(ranged_low_ceiling)
+	_append(failures, Assertions.expect_true(
+		not ranged_equipment.equip_slot(1),
+		"Double-blocked rifle is rejected before it replaces an equipped pistol"
+	))
+	_append(failures, Assertions.expect_true(
+		ranged_equipment.current_slot == 0 and
+			ranged_equipment.get_current_weapon() == pistol and
+			pistol.visual_anchor.visible and not rifle.visual_anchor.visible and
+			pistol.trigger_pressed and pistol.trigger_just_pressed and
+			ranged_collision != null and not ranged_collision.disabled,
+		"Rejected rifle keeps the active pistol collision enabled instead of disabling it"
+	))
+	ranged_front_wall.free()
+	ranged_low_ceiling.free()
+	ranged_player.free()
+
+func _test_initial_double_blocked_loadout_is_collision_safe(
+	failures: Array[String]
+) -> void:
+	var tree := Engine.get_main_loop() as SceneTree
+	var host := Node3D.new()
+	var front_wall := _make_wall(
+		Vector3(0.0, 1.12, -1.1),
+		Vector3(3.0, 0.3, 0.2)
+	)
+	var low_ceiling := _make_wall(
+		Vector3(0.0, 2.25, -0.25),
+		Vector3(3.0, 0.2, 2.0)
+	)
+	var player := PLAYER_SCENE.instantiate() as PlayerController
+	tree.root.add_child(host)
+	host.add_child(front_wall)
+	host.add_child(low_ceiling)
+	host.add_child(player)
+	var equipment := player.equipment
+	var weapon_collision := player.get_node_or_null(
+		"WeaponCollision"
+	) as CollisionShape3D
+	_append(failures, Assertions.expect_true(
+		equipment.get_current_weapon() == null and
+			weapon_collision != null and weapon_collision.disabled,
+		"Initial double-blocked equip leaves no weapon and no active weapon collision"
+	))
+	host.free()
+
+func _make_wall(position: Vector3, size: Vector3) -> StaticBody3D:
+	var wall := StaticBody3D.new()
+	wall.position = position
+	wall.collision_layer = 1
+	wall.collision_mask = 0
+	var collision := CollisionShape3D.new()
+	var shape := BoxShape3D.new()
+	shape.size = size
+	collision.shape = shape
+	wall.add_child(collision)
+	return wall
 
 func _on_weapon_changed(_definition: WeaponDefinition) -> void:
 	weapon_changed_emissions += 1

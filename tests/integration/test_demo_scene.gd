@@ -72,6 +72,16 @@ func run() -> Array[String]:
 			"Demo defaults to normal zombie perception speed"
 		))
 	_append(failures, Assertions.expect_true(player != null, "Demo has Player"))
+	var weapon_collision := arena.get_node_or_null(
+		"Player/WeaponCollision"
+	) as CollisionShape3D
+	var weapon_clearance := arena.get_node_or_null(
+		"Player/WeaponClearanceController"
+	)
+	_append(failures, Assertions.expect_true(
+		weapon_collision != null and weapon_clearance != null,
+		"Demo player owns fitted weapon wall clearance"
+	))
 	if player != null:
 		_append(failures, Assertions.expect_float_near(
 			float(player.get("move_speed")), 5.0, 0.0001, "Player tuned move speed"
