@@ -47,43 +47,44 @@ func run() -> Array[String]:
 		"Raised rifle keeps an active capsule aimed upward"
 	))
 
-	clearance.observe_trigger(true)
+	wall.position.z = -1.1
+	wall.force_update_transform()
+	var start_position := player.global_position
+	var collision := player.move_and_collide(Vector3(0.0, 0.0, -0.80), true)
 	_append(failures, Assertions.expect_true(
-		not clearance.can_fire(),
-		"Held trigger cannot fire while the rifle is raised"
+		collision != null and player.global_position.is_equal_approx(start_position),
+		"Direct WeaponCollision blocks forward motion before the body capsule reaches the wall"
+	))
+	_append(failures, Assertions.expect_true(
+		player.move_and_collide(Vector3(0.0, 0.0, 0.20), true) == null,
+		"Player can test a backward escape motion away from the wall"
 	))
 	var cursor_before := rifle.tracer_pool_cursor
 	Input.action_press(player.primary_attack_action)
 	player._physics_process(0.016)
 	rifle._physics_process(0.20)
-	_append(failures, Assertions.expect_equal(
-		rifle.tracer_pool_cursor,
-		cursor_before,
-		"Held fire input does not create a tracer while raised"
+	_append(failures, Assertions.expect_true(
+		clearance.is_raised() and rifle.tracer_pool_cursor != cursor_before,
+		"Raised rifle keeps firing at the existing cadence"
 	))
 
 	wall.position.z = -4.0
 	wall.force_update_transform()
 	clearance.resolve_facing_yaw(0.15, Vector3.ZERO, 0.0)
-	clearance._process(clearance.transition_duration)
 	_append(failures, Assertions.expect_true(
-		not clearance.is_raised() and not clearance.can_fire(),
-		"Lowered rifle still requires trigger release"
+		not clearance.is_raised() and rifle.visual_anchor.transform.is_equal_approx(rifle_rest_transform),
+		"Clearance restores normal pose and the exact visual rest transform after 0.15 seconds"
 	))
 	Input.action_release(player.primary_attack_action)
-	player._physics_process(0.016)
+	var accepted_yaw := clearance.resolve_facing_yaw(0.016, Vector3.ZERO, PI * 0.5)
+	player.rotation.y = accepted_yaw
+	var expected_axis := Basis(Vector3.UP, accepted_yaw) * Vector3.BACK
+	var actual_axis := weapon_collision.global_basis.y.normalized()
 	_append(failures, Assertions.expect_true(
-		clearance.can_fire(),
-		"Trigger release re-enables the lowered rifle"
+		absf(actual_axis.dot(expected_axis.normalized())) > 0.999,
+		"WeaponCollision inherits accepted player yaw exactly once"
 	))
-	Input.action_press(player.primary_attack_action)
-	player._physics_process(0.016)
-	rifle._physics_process(0.20)
-	_append(failures, Assertions.expect_true(
-		rifle.tracer_pool_cursor != cursor_before,
-		"A fresh press fires after clearance is restored"
-	))
-	Input.action_release(player.primary_attack_action)
+	player.rotation.y = 0.0
 
 	wall.position.z = -0.95
 	wall.force_update_transform()
@@ -169,9 +170,7 @@ func _test_side_facing_visual_and_restore_margin(
 	wall.position = Vector3(0.0, 1.12, -4.0)
 	shape.size = Vector3(3.0, 2.0, 0.20)
 	wall.force_update_transform()
-	clearance.observe_trigger(false)
 	player.rotation.y = clearance.resolve_facing_yaw(0.15, Vector3.ZERO, 0.0)
-	clearance._process(clearance.transition_duration)
 
 	var side_yaw := -PI * 0.5
 	player.rotation.y = side_yaw
@@ -185,7 +184,6 @@ func _test_side_facing_visual_and_restore_margin(
 		Vector3.ZERO,
 		side_yaw
 	)
-	clearance._process(clearance.transition_duration)
 	var raised_barrel_axis := rifle.visual_anchor.global_basis.x.normalized()
 	var raised_angle := acos(clampf(
 		rest_barrel_axis.dot(raised_barrel_axis),

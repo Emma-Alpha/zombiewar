@@ -20,7 +20,3 @@ attack_range = 28.0
 hit_collision_mask = 5
 tracer_pool_size = 8
 muzzle_anchor_offset = Vector3(0, 0, -0.55)
-wall_capsule_length = 1.55
-wall_capsule_radius = 0.12
-wall_capsule_offset = Vector3(0, 1.12, -0.62)
-wall_raise_angle_degrees = 65.0

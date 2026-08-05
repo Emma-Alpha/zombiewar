@@ -21,119 +21,22 @@ func run() -> Array[String]:
 	if pistol == null or rifle == null or knife == null:
 		return failures
 
-	_append(failures, Assertions.expect_float_near(
-		pistol.wall_capsule_length,
-		0.94,
-		0.0001,
-		"Pistol wall capsule length follows its visible model"
-	))
-	_append(failures, Assertions.expect_float_near(
-		pistol.wall_capsule_radius,
-		0.10,
-		0.0001,
-		"Pistol wall capsule stays narrow"
-	))
-	_append(failures, Assertions.expect_float_near(
-		rifle.wall_capsule_length,
-		1.55,
-		0.0001,
-		"Rifle wall capsule length follows its visible model"
-	))
-	_append(failures, Assertions.expect_float_near(
-		rifle.wall_capsule_radius,
-		0.12,
-		0.0001,
-		"Rifle wall capsule stays narrow"
-	))
 	_append(failures, Assertions.expect_true(
-		pistol.has_wall_clearance_profile() and
-		rifle.has_wall_clearance_profile(),
-		"Ranged weapons expose valid wall-clearance profiles"
+		not _has_property(pistol, &"wall_capsule_length") and
+			not _has_property(pistol, &"wall_capsule_radius") and
+			not _has_property(pistol, &"wall_capsule_offset") and
+			not _has_property(pistol, &"wall_raise_angle_degrees"),
+		"Ranged definitions do not expose per-weapon wall-clearance overrides"
 	))
-	_append(failures, Assertions.expect_true(
-		pistol.wall_capsule_offset != rifle.wall_capsule_offset,
-		"Each firearm owns its fitted capsule center"
+	_append(failures, Assertions.expect_equal(
+		pistol.hit_collision_mask & 1,
+		1,
+		"Pistol hit mask includes solid world layer one"
 	))
-	var clearance_definition := RangedWeaponDefinition.new()
-	clearance_definition.wall_capsule_length = 1.0
-	clearance_definition.wall_capsule_radius = 0.1
-	clearance_definition.wall_capsule_offset = Vector3.ZERO
-	clearance_definition.wall_raise_angle_degrees = 65.0
-	clearance_definition.wall_capsule_length = NAN
-	_append(failures, Assertions.expect_true(
-		not clearance_definition.has_wall_clearance_profile(),
-		"Wall clearance rejects a NaN capsule length"
-	))
-	clearance_definition.wall_capsule_length = INF
-	_append(failures, Assertions.expect_true(
-		not clearance_definition.has_wall_clearance_profile(),
-		"Wall clearance rejects an infinite capsule length"
-	))
-	clearance_definition.wall_capsule_length = 1.0
-	clearance_definition.wall_capsule_radius = NAN
-	_append(failures, Assertions.expect_true(
-		not clearance_definition.has_wall_clearance_profile(),
-		"Wall clearance rejects a NaN capsule radius"
-	))
-	clearance_definition.wall_capsule_radius = INF
-	_append(failures, Assertions.expect_true(
-		not clearance_definition.has_wall_clearance_profile(),
-		"Wall clearance rejects an infinite capsule radius"
-	))
-	clearance_definition.wall_capsule_radius = 0.0
-	_append(failures, Assertions.expect_true(
-		not clearance_definition.has_wall_clearance_profile(),
-		"Wall clearance rejects a zero capsule radius"
-	))
-	clearance_definition.wall_capsule_radius = 0.6
-	clearance_definition.wall_capsule_length = 1.1
-	_append(failures, Assertions.expect_true(
-		not clearance_definition.has_wall_clearance_profile(),
-		"Wall clearance rejects a capsule shorter than its diameter"
-	))
-	clearance_definition.wall_capsule_length = 1.2
-	clearance_definition.wall_capsule_offset = Vector3(NAN, 0.0, 0.0)
-	_append(failures, Assertions.expect_true(
-		not clearance_definition.has_wall_clearance_profile(),
-		"Wall clearance rejects a NaN capsule offset"
-	))
-	clearance_definition.wall_capsule_offset = Vector3(INF, 0.0, 0.0)
-	_append(failures, Assertions.expect_true(
-		not clearance_definition.has_wall_clearance_profile(),
-		"Wall clearance rejects an infinite capsule offset"
-	))
-	clearance_definition.wall_capsule_offset = Vector3.ZERO
-	clearance_definition.wall_capsule_radius = 0.1
-	clearance_definition.wall_capsule_length = 1.0
-	clearance_definition.wall_raise_angle_degrees = NAN
-	_append(failures, Assertions.expect_true(
-		not clearance_definition.has_wall_clearance_profile(),
-		"Wall clearance rejects a NaN raise angle"
-	))
-	clearance_definition.wall_raise_angle_degrees = INF
-	_append(failures, Assertions.expect_true(
-		not clearance_definition.has_wall_clearance_profile(),
-		"Wall clearance rejects an infinite raise angle"
-	))
-	clearance_definition.wall_raise_angle_degrees = -0.1
-	_append(failures, Assertions.expect_true(
-		not clearance_definition.has_wall_clearance_profile(),
-		"Wall clearance rejects a raise angle below zero"
-	))
-	clearance_definition.wall_raise_angle_degrees = 90.1
-	_append(failures, Assertions.expect_true(
-		not clearance_definition.has_wall_clearance_profile(),
-		"Wall clearance rejects a raise angle above ninety degrees"
-	))
-	clearance_definition.wall_raise_angle_degrees = 0.0
-	_append(failures, Assertions.expect_true(
-		clearance_definition.has_wall_clearance_profile(),
-		"Wall clearance accepts the zero-degree raise angle boundary"
-	))
-	clearance_definition.wall_raise_angle_degrees = 90.0
-	_append(failures, Assertions.expect_true(
-		clearance_definition.has_wall_clearance_profile(),
-		"Wall clearance accepts the ninety-degree raise angle boundary"
+	_append(failures, Assertions.expect_equal(
+		rifle.hit_collision_mask & 1,
+		1,
+		"Rifle hit mask includes solid world layer one"
 	))
 
 	_append(failures, Assertions.expect_equal(
@@ -217,3 +120,9 @@ func run() -> Array[String]:
 func _append(failures: Array[String], failure: String) -> void:
 	if not failure.is_empty():
 		failures.append(failure)
+
+func _has_property(value: Object, property_name: StringName) -> bool:
+	for property: Dictionary in value.get_property_list():
+		if StringName(property.get("name", "")) == property_name:
+			return true
+	return false

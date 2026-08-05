@@ -2,6 +2,9 @@ extends RefCounted
 
 const Assertions = preload("res://tests/helpers/assertions.gd")
 const PLAYER_SCENE := preload("res://scenes/player/Player.tscn")
+const WeaponClearanceState = preload(
+	"res://scripts/player/weapon_clearance_state.gd"
+)
 
 func run() -> Array[String]:
 	var failures: Array[String] = []
@@ -61,13 +64,13 @@ func run() -> Array[String]:
 			capsule.height,
 			1.55,
 			0.0001,
-			"Starting rifle applies its fitted capsule length"
+			"Every runtime clearance capsule uses rifle length"
 		))
 		_append(failures, Assertions.expect_float_near(
 			capsule.radius,
 			0.12,
 			0.0001,
-			"Starting rifle applies its fitted capsule radius"
+			"Every runtime clearance capsule uses rifle radius"
 		))
 	_append(failures, Assertions.expect_true(
 		not weapon_collision.disabled,
@@ -90,54 +93,51 @@ func run() -> Array[String]:
 		return failures
 	var rest_transform := rifle_visual.transform
 
-	var raised_yaw := controller.resolve_facing_yaw(0.0, Vector3.ZERO, 0.0)
-	_append(failures, Assertions.expect_float_near(
-		raised_yaw,
-		0.0,
-		0.0001,
-		"Normal obstruction permits the safe raised facing"
-	))
+	var accepted_yaw := controller.resolve_facing_yaw(0.016, Vector3(0.0, 0.0, -0.15), 0.0)
 	_append(failures, Assertions.expect_true(
-		controller.is_raised(),
-		"Normal obstruction transitions the controller to its raised pose"
-	))
-	_append(failures, Assertions.expect_true(
-		not controller.can_fire(),
-		"Raised weapon cannot fire while clearance is constrained"
-	))
-	controller._process(controller.transition_duration)
-	_append(failures, Assertions.expect_true(
-		not rifle_visual.transform.is_equal_approx(rest_transform),
-		"Public clearance resolution rotates the existing hand-mounted rifle"
+		controller.is_raised() and accepted_yaw == 0.0 and
+			not rifle_visual.transform.is_equal_approx(rest_transform),
+		"Safe raised request snaps physical and visual pose in the obstruction frame"
 	))
 
-	wall.position = Vector3(0.0, 1.12, -5.0)
+	var ceiling := _new_clearance_wall(
+		Vector3(0.0, 2.25, -0.25),
+		Vector3(3.0, 0.2, 2.0)
+	)
+	host.add_child(ceiling)
+	var previous_pose := controller.state.pose
+	var previous_collision := weapon_collision.transform
+	var previous_visual := rifle_visual.transform
+	var previous_yaw := player.rotation.y
+	_append(failures, Assertions.expect_true(
+		controller.resolve_facing_yaw(0.016, Vector3.ZERO, PI * 0.5) == previous_yaw,
+		"Blocked normal and raised requests reject the target yaw"
+	))
+	_append(failures, Assertions.expect_true(
+		controller.state.pose == previous_pose and
+			weapon_collision.transform.is_equal_approx(previous_collision) and
+			rifle_visual.transform.is_equal_approx(previous_visual),
+		"Rejected pose preserves committed state, collision, and visual"
+	))
+
+	wall.position.z = -4.0
 	wall.force_update_transform()
-	controller.observe_trigger(false)
-	controller.resolve_facing_yaw(0.10, Vector3.ZERO, 0.0)
-	controller.resolve_facing_yaw(0.05, Vector3.ZERO, 0.0)
+	controller.resolve_facing_yaw(0.10, Vector3.ZERO, PI * 0.5)
 	_append(failures, Assertions.expect_true(
-		not controller.is_raised(),
-		"Clear space for 0.15 seconds restores the normal pose"
+		controller.state.pose == previous_pose and
+			weapon_collision.transform.is_equal_approx(previous_collision) and
+			rifle_visual.transform.is_equal_approx(previous_visual) and
+			player.rotation.y == previous_yaw,
+		"Raised pose stays committed while a blocked raised probe prevents the yaw"
 	))
+	var restored_yaw := controller.resolve_facing_yaw(0.05, Vector3.ZERO, PI * 0.5)
 	_append(failures, Assertions.expect_true(
-		not controller.can_fire(),
-		"Restoring visual pose keeps fire gated until interpolation finishes"
+		controller.state.pose == WeaponClearanceState.Pose.NORMAL and
+			rifle_visual.transform.is_equal_approx(rest_transform) and
+			restored_yaw == PI * 0.5,
+		"A full 0.15 seconds of normal clearance atomically commits normal pose"
 	))
-	controller._process(controller.transition_duration * 0.5)
-	_append(failures, Assertions.expect_true(
-		not controller.can_fire(),
-		"Half-complete visual restoration still keeps fire gated"
-	))
-	controller._process(controller.transition_duration)
-	_append(failures, Assertions.expect_true(
-		rifle_visual.transform.is_equal_approx(rest_transform),
-		"Completed normal restoration returns the rifle to its exact rest transform"
-	))
-	_append(failures, Assertions.expect_true(
-		controller.can_fire(),
-		"Released trigger can fire after visual restoration finishes"
-	))
+	ceiling.free()
 
 	var saved_anchor := rifle.visual_anchor
 	rifle.visual_anchor = null
@@ -162,7 +162,6 @@ func run() -> Array[String]:
 	wall.position = Vector3(0.0, 1.12, -1.1)
 	wall.force_update_transform()
 	controller.resolve_facing_yaw(0.0, Vector3.ZERO, 0.0)
-	controller._process(controller.transition_duration)
 	_append(failures, Assertions.expect_true(
 		controller.is_raised() and not rifle_visual.transform.is_equal_approx(rest_transform),
 		"A second real wall obstruction raises the rifle before lethal damage"
@@ -179,14 +178,17 @@ func run() -> Array[String]:
 	host.free()
 	return failures
 
-func _new_clearance_wall() -> StaticBody3D:
+func _new_clearance_wall(
+	position := Vector3(0.0, 1.12, -1.1),
+	size := Vector3(1.0, 0.3, 0.2)
+) -> StaticBody3D:
 	var wall := StaticBody3D.new()
 	wall.collision_layer = 1
 	wall.collision_mask = 0
-	wall.position = Vector3(0.0, 1.12, -1.1)
+	wall.position = position
 	var collision := CollisionShape3D.new()
 	var shape := BoxShape3D.new()
-	shape.size = Vector3(1.0, 0.3, 0.2)
+	shape.size = size
 	collision.shape = shape
 	wall.add_child(collision)
 	return wall

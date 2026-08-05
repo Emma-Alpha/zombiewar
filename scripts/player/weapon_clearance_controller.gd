@@ -4,8 +4,11 @@ class_name WeaponClearanceController
 const WeaponClearanceState = preload(
 	"res://scripts/player/weapon_clearance_state.gd"
 )
+const WALL_CAPSULE_LENGTH := 1.55
+const WALL_CAPSULE_RADIUS := 0.12
+const WALL_CAPSULE_OFFSET := Vector3(0.0, 1.12, -0.62)
+const WALL_RAISE_ANGLE_DEGREES := 65.0
 
-@export var transition_duration := 0.15
 @export var restore_delay := 0.15
 @export var restore_margin := 0.08
 
@@ -18,15 +21,10 @@ var current_weapon: WeaponBase
 var current_definition: RangedWeaponDefinition
 var current_visual: Node3D
 var visual_rest_transform := Transform3D.IDENTITY
-var visual_from_transform := Transform3D.IDENTITY
-var visual_target_transform := Transform3D.IDENTITY
-var visual_elapsed := 0.0
-var visual_transitioning := false
 var state: WeaponClearanceState
 
 func _ready() -> void:
 	state = WeaponClearanceState.new(restore_delay)
-	set_process(false)
 
 func setup(value_wielder: CharacterBody3D) -> void:
 	wielder = value_wielder
@@ -42,29 +40,29 @@ func bind_weapon(weapon: WeaponBase) -> void:
 		_disable_clearance()
 		return
 	var ranged := weapon.definition as RangedWeaponDefinition
-	if not ranged.has_wall_clearance_profile() or weapon.visual_anchor == null:
-		push_warning(
-			"Weapon %s has no valid wall-clearance profile or visual anchor" %
-			String(ranged.weapon_id)
-		)
+	if weapon.visual_anchor == null:
 		_disable_clearance()
 		return
 	current_definition = ranged
 	current_visual = weapon.visual_anchor
 	visual_rest_transform = current_visual.transform
-	_configure_shapes(ranged)
-	state.reset()
+	_configure_shapes()
+	normal_probe.enabled = true
+	raised_probe.enabled = true
 	var normal_clear := _probe_pose(normal_probe, false, Vector3.ZERO, wielder.rotation.y)
 	var raised_clear := _probe_pose(raised_probe, true, Vector3.ZERO, wielder.rotation.y)
 	if not normal_clear and not raised_clear:
-		push_warning(
-			"Weapon %s has no safe normal or raised pose" %
-			String(ranged.weapon_id)
-		)
+		push_warning("Weapon %s has no safe normal or raised pose" % String(ranged.weapon_id))
 		_disable_clearance()
 		return
-	state.configure(true, normal_clear, raised_clear)
-	_apply_pose(state.pose)
+	var initial_pose := (
+		WeaponClearanceState.Pose.NORMAL
+		if normal_clear
+		else WeaponClearanceState.Pose.RAISED
+	)
+	state.configure(initial_pose)
+	weapon_collision.disabled = false
+	_commit_pose(initial_pose)
 
 func resolve_facing_yaw(
 	delta: float,
@@ -85,21 +83,17 @@ func resolve_facing_yaw(
 		desired_motion,
 		target_yaw
 	)
-	var changed := state.update(delta, normal_clear, raised_clear)
-	if changed:
-		_apply_pose(state.pose)
-	if not normal_clear and not raised_clear:
+	var requested_pose := state.request_pose(delta, normal_clear)
+	var requested_clear := (
+		normal_clear
+		if requested_pose == WeaponClearanceState.Pose.NORMAL
+		else raised_clear
+	)
+	if not requested_clear:
 		return wielder.rotation.y
-	weapon_collision.transform = _pose_transform(is_raised(), target_yaw)
+	if requested_pose != state.pose:
+		_commit_pose(requested_pose)
 	return target_yaw
-
-func observe_trigger(trigger_pressed: bool) -> void:
-	state.observe_trigger(trigger_pressed)
-
-func can_fire() -> bool:
-	if current_definition == null or state.pose == WeaponClearanceState.Pose.DISABLED:
-		return true
-	return state.can_fire(not visual_transitioning)
 
 func is_raised() -> bool:
 	return state.pose == WeaponClearanceState.Pose.RAISED
@@ -108,46 +102,43 @@ func reset() -> void:
 	_restore_visual_immediately()
 	_disable_clearance()
 
-func _configure_shapes(definition: RangedWeaponDefinition) -> void:
-	var collision_capsule := weapon_collision.shape as CapsuleShape3D
-	var normal_capsule := normal_probe.shape as CapsuleShape3D
-	var raised_capsule := raised_probe.shape as CapsuleShape3D
-	for capsule in [collision_capsule, normal_capsule, raised_capsule]:
-		capsule.height = definition.wall_capsule_length
-		capsule.radius = definition.wall_capsule_radius
-	weapon_collision.disabled = false
-	normal_probe.enabled = true
-	raised_probe.enabled = true
+func _configure_shapes() -> void:
+	var capsules: Array[CapsuleShape3D] = [
+		weapon_collision.shape as CapsuleShape3D,
+		normal_probe.shape as CapsuleShape3D,
+		raised_probe.shape as CapsuleShape3D,
+	]
+	for capsule: CapsuleShape3D in capsules:
+		capsule.height = WALL_CAPSULE_LENGTH
+		capsule.radius = WALL_CAPSULE_RADIUS
 
-func _apply_pose(pose: int) -> void:
-	if current_definition == null:
-		return
-	var raised := pose == WeaponClearanceState.Pose.RAISED
-	weapon_collision.transform = _pose_transform(raised, wielder.rotation.y)
+func _commit_pose(requested_pose: int) -> void:
+	state.commit_pose(requested_pose)
+	var raised := state.pose == WeaponClearanceState.Pose.RAISED
+	weapon_collision.transform = _local_pose_transform(raised)
 	var target := visual_rest_transform
 	if raised:
 		target.basis = target.basis * Basis(
 			Vector3.UP,
-			-deg_to_rad(current_definition.wall_raise_angle_degrees)
+			-deg_to_rad(WALL_RAISE_ANGLE_DEGREES)
 		)
-	_begin_visual_transition(target)
+	current_visual.transform = target
 
-func _pose_transform(raised: bool, target_yaw: float) -> Transform3D:
-	var offset := current_definition.wall_capsule_offset
-	var raise_radians := (
-		deg_to_rad(current_definition.wall_raise_angle_degrees)
-		if raised else 0.0
-	)
-	var pivot := Vector3(offset.x, offset.y, 0.0)
+func _local_pose_transform(raised: bool) -> Transform3D:
+	var raise_radians := deg_to_rad(WALL_RAISE_ANGLE_DEGREES) if raised else 0.0
+	var pivot := Vector3(WALL_CAPSULE_OFFSET.x, WALL_CAPSULE_OFFSET.y, 0.0)
 	var raise_basis := Basis(Vector3.RIGHT, raise_radians)
-	var center := pivot + raise_basis * (offset - pivot)
+	var center := pivot + raise_basis * (WALL_CAPSULE_OFFSET - pivot)
+	return Transform3D(
+		Basis(Vector3.RIGHT, PI * 0.5 + raise_radians),
+		center
+	)
+
+func _probe_pose_transform(raised: bool, target_yaw: float) -> Transform3D:
+	var local_pose := _local_pose_transform(raised)
 	var facing_delta := wrapf(target_yaw - wielder.rotation.y, -PI, PI)
 	var facing_basis := Basis(Vector3.UP, facing_delta)
-	var capsule_basis := facing_basis * Basis(
-		Vector3.RIGHT,
-		PI * 0.5 + raise_radians
-	)
-	return Transform3D(capsule_basis, facing_basis * center)
+	return Transform3D(facing_basis * local_pose.basis, facing_basis * local_pose.origin)
 
 func _probe_pose(
 	probe: ShapeCast3D,
@@ -155,7 +146,7 @@ func _probe_pose(
 	desired_motion: Vector3,
 	target_yaw: float
 ) -> bool:
-	probe.transform = _pose_transform(raised, target_yaw)
+	probe.transform = _probe_pose_transform(raised, target_yaw)
 	var cast_motion := desired_motion
 	if not raised and state.pose == WeaponClearanceState.Pose.RAISED:
 		cast_motion += Basis(Vector3.UP, target_yaw) * Vector3.FORWARD * restore_margin
@@ -163,47 +154,9 @@ func _probe_pose(
 	probe.force_shapecast_update()
 	return not probe.is_colliding()
 
-func _begin_visual_transition(target: Transform3D) -> void:
-	if current_visual == null:
-		return
-	if not current_visual.visible:
-		current_visual.transform = target
-		visual_transitioning = false
-		set_process(false)
-		return
-	if current_visual.transform.is_equal_approx(target):
-		current_visual.transform = target
-		visual_transitioning = false
-		set_process(false)
-		return
-	visual_from_transform = current_visual.transform
-	visual_target_transform = target
-	visual_elapsed = 0.0
-	visual_transitioning = true
-	set_process(true)
-
-func _process(delta: float) -> void:
-	if not visual_transitioning or current_visual == null:
-		set_process(false)
-		return
-	visual_elapsed += maxf(delta, 0.0)
-	var weight := minf(visual_elapsed / maxf(transition_duration, 0.001), 1.0)
-	var eased := smoothstep(0.0, 1.0, weight)
-	current_visual.transform = visual_from_transform.interpolate_with(
-		visual_target_transform,
-		eased
-	)
-	if weight >= 1.0:
-		current_visual.transform = visual_target_transform
-		visual_transitioning = false
-		set_process(false)
-
 func _restore_visual_immediately() -> void:
 	if current_visual != null and is_instance_valid(current_visual):
 		current_visual.transform = visual_rest_transform
-	visual_transitioning = false
-	visual_elapsed = 0.0
-	set_process(false)
 
 func _disable_clearance() -> void:
 	if state != null:

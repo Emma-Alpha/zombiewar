@@ -139,8 +139,7 @@ func _physics_process(delta: float) -> void:
 	)
 	var trigger_pressed := Input.is_action_pressed(primary_attack_action)
 	var trigger_just_pressed := Input.is_action_just_pressed(primary_attack_action)
-	weapon_clearance.observe_trigger(trigger_pressed)
-	if hit_reaction_remaining > 0.0 or not weapon_clearance.can_fire():
+	if hit_reaction_remaining > 0.0:
 		trigger_pressed = false
 		trigger_just_pressed = false
 		equipment.cancel_attack()

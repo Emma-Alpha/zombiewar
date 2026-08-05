@@ -9,90 +9,43 @@ func run() -> Array[String]:
 	var failures: Array[String] = []
 	var state := WeaponClearanceState.new(0.15)
 
-	state.configure(true, true, true)
+	if not state.has_method("request_pose") or not state.has_method("commit_pose"):
+		_append(failures, Assertions.expect_true(
+			false,
+			"Clearance state exposes separate request and commit APIs"
+		))
+		return failures
+	state.call("configure", WeaponClearanceState.Pose.NORMAL)
+	var requested := int(state.call("request_pose", 0.016, false))
+	_append(failures, Assertions.expect_equal(
+		requested,
+		WeaponClearanceState.Pose.RAISED,
+		"Blocked normal pose requests raised without mutating committed pose"
+	))
 	_append(failures, Assertions.expect_equal(
 		state.pose,
 		WeaponClearanceState.Pose.NORMAL,
-		"Clear firearm starts in the normal pose"
-	))
-
-	var changed := state.update(0.016, false, true)
-	_append(failures, Assertions.expect_true(
-		changed and state.pose == WeaponClearanceState.Pose.RAISED,
-		"Blocked normal pose raises when raised space is clear"
+		"Requested pose stays separate from committed pose"
 	))
 	_append(failures, Assertions.expect_true(
-		not state.can_fire(true),
-		"Raised pose blocks firing"
+		bool(state.call("commit_pose", requested)) and state.pose == WeaponClearanceState.Pose.RAISED,
+		"Safe requested pose becomes the committed raised pose"
 	))
-
-	state.observe_trigger(true)
-	state.update(0.14, true, true)
 	_append(failures, Assertions.expect_equal(
-		state.pose,
+		int(state.call("request_pose", 0.14, true)),
 		WeaponClearanceState.Pose.RAISED,
-		"Normal space must remain clear for the full restore delay"
+		"Raised pose waits for the full restore delay"
 	))
-	state.update(0.016, false, true)
-	state.update(0.01, true, true)
 	_append(failures, Assertions.expect_equal(
-		state.pose,
-		WeaponClearanceState.Pose.RAISED,
-		"A renewed collision resets the normal-clear restore delay"
-	))
-	state.update(0.14, true, true)
-	_append(failures, Assertions.expect_equal(
-		state.pose,
+		int(state.call("request_pose", 0.016, true)),
 		WeaponClearanceState.Pose.NORMAL,
-		"Normal pose restores after a new full clear delay"
-	))
-	_append(failures, Assertions.expect_true(
-		not state.can_fire(true),
-		"Held trigger remains latched after lowering"
-	))
-	state.observe_trigger(false)
-	_append(failures, Assertions.expect_true(
-		not state.can_fire(false),
-		"Normal pose blocks firing until the visual lowering settles"
-	))
-	_append(failures, Assertions.expect_true(
-		state.can_fire(true),
-		"Trigger release unlocks firing after lowering settles"
-	))
-
-	state.update(0.016, false, false)
-	_append(failures, Assertions.expect_equal(
-		state.pose,
-		WeaponClearanceState.Pose.NORMAL,
-		"State keeps the last legal pose when neither target pose is clear"
-	))
-	state.configure(true, false, true)
-	_append(failures, Assertions.expect_equal(
-		state.pose,
-		WeaponClearanceState.Pose.RAISED,
-		"Blocked firearm equips directly into the raised pose"
-	))
-	_append(failures, Assertions.expect_true(
-		not state.can_fire(true),
-		"Directly raised firearm requires trigger release before firing"
+		"Raised pose requests normal after 0.15 seconds of clearance"
 	))
 	state.reset()
-	state.configure(true, true, true)
-	_append(failures, Assertions.expect_true(
-		state.can_fire(true),
-		"Reset clears the fire-release latch before a normal reconfigure"
-	))
-	state.configure(true, false, true)
-	state.configure(false, false, false)
 	_append(failures, Assertions.expect_equal(
 		state.pose,
 		WeaponClearanceState.Pose.DISABLED,
-		"Melee weapon disables firearm clearance"
-	))
-	state.configure(true, true, true)
-	_append(failures, Assertions.expect_true(
-		state.can_fire(true),
-		"Disabling clearance clears the fire-release latch before re-equipping"
+		"Reset disables clearance"
 	))
 	return failures
 
