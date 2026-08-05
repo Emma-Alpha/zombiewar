@@ -82,9 +82,8 @@ func spawn_trail_splat(
 	if surface.is_empty():
 		return null
 	var resolved_progress := clampf(progress, 0.0, 1.0)
-	var resolved_intensity := clampf(intensity, 0.75, 1.35)
-	var width := lerpf(0.45, 0.28, resolved_progress) * resolved_intensity
-	var length := lerpf(0.8, 0.5, resolved_progress) * resolved_intensity
+	var width := lerpf(0.45, 0.28, resolved_progress)
+	var length := lerpf(0.8, 0.5, resolved_progress)
 	var rotation_radians := atan2(move_direction.x, move_direction.z)
 	rotation_radians += randf_range(-0.12, 0.12)
 	return place_splat(
@@ -106,9 +105,9 @@ func spawn_death_pool(
 		return null
 	var resolved_intensity := clampf(intensity, 0.8, 1.35)
 	var size := Vector2(
-		randf_range(1.15, 1.4),
-		randf_range(1.15, 1.4)
-	) * resolved_intensity
+		clampf(randf_range(1.15, 1.4) * resolved_intensity, 1.15, 1.4),
+		clampf(randf_range(1.15, 1.4) * resolved_intensity, 1.15, 1.4)
+	)
 	return place_splat(
 		surface["position"],
 		surface["normal"],

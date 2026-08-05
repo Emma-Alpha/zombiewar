@@ -10,6 +10,8 @@ func run() -> Array[String]:
 	_test_two_layers_and_limited_merging(failures)
 	_test_fifo_reuse_updates_spatial_index(failures)
 	_test_hit_splat_keeps_requested_horizontal_position(failures)
+	_test_trail_size_endpoints_ignore_intensity(failures)
+	_test_death_pool_size_stays_bounded_at_high_intensity(failures)
 	return failures
 
 func _test_lit_mesh_contract(failures: Array[String]) -> void:
@@ -174,6 +176,107 @@ func _test_hit_splat_keeps_requested_horizontal_position(failures: Array[String]
 			"Hit splat keeps the requested world Z coordinate"
 		))
 	host.free()
+
+func _test_trail_size_endpoints_ignore_intensity(failures: Array[String]) -> void:
+	var tree := Engine.get_main_loop() as SceneTree
+	var host := _create_blood_surface_host()
+	var manager := MANAGER_SCRIPT.new() as Node3D
+	host.add_child(manager)
+	tree.root.add_child(host)
+	var cases: Array[Dictionary] = [
+		{
+			"position": Vector3(-1.5, 1.2, 0.0),
+			"intensity": 0.75,
+			"progress": 0.0,
+			"expected_size": Vector2(0.45, 0.8),
+		},
+		{
+			"position": Vector3(-0.5, 1.2, 0.0),
+			"intensity": 1.35,
+			"progress": 0.0,
+			"expected_size": Vector2(0.45, 0.8),
+		},
+		{
+			"position": Vector3(0.5, 1.2, 0.0),
+			"intensity": 0.75,
+			"progress": 1.0,
+			"expected_size": Vector2(0.28, 0.5),
+		},
+		{
+			"position": Vector3(1.5, 1.2, 0.0),
+			"intensity": 1.35,
+			"progress": 1.0,
+			"expected_size": Vector2(0.28, 0.5),
+		},
+	]
+	for trail_case in cases:
+		var splat := manager.call(
+			"spawn_trail_splat",
+			trail_case["position"],
+			Vector3.RIGHT,
+			trail_case["intensity"],
+			trail_case["progress"]
+		) as GroundBloodSplat
+		_append(failures, Assertions.expect_true(
+			splat != null,
+			"Trail endpoint creates a persistent splat"
+		))
+		if splat == null:
+			continue
+		var current_size := splat.get("current_size") as Vector2
+		var expected_size := trail_case["expected_size"] as Vector2
+		_append(failures, Assertions.expect_float_near(
+			current_size.x,
+			expected_size.x,
+			0.0001,
+			"Trail width follows progress endpoints regardless of intensity"
+		))
+		_append(failures, Assertions.expect_float_near(
+			current_size.y,
+			expected_size.y,
+			0.0001,
+			"Trail length follows progress endpoints regardless of intensity"
+		))
+	host.free()
+
+func _test_death_pool_size_stays_bounded_at_high_intensity(
+	failures: Array[String]
+) -> void:
+	var tree := Engine.get_main_loop() as SceneTree
+	var host := _create_blood_surface_host()
+	var manager := MANAGER_SCRIPT.new() as Node3D
+	host.add_child(manager)
+	tree.root.add_child(host)
+	var splat := manager.call(
+		"spawn_death_pool",
+		Vector3(0.0, 1.2, 0.0),
+		1.35
+	) as GroundBloodSplat
+	_append(failures, Assertions.expect_true(
+		splat != null,
+		"High-intensity death creates a persistent pool"
+	))
+	if splat != null:
+		var current_size := splat.get("current_size") as Vector2
+		_append(failures, Assertions.expect_true(
+			current_size.x >= 1.15 and current_size.x <= 1.4 and
+			current_size.y >= 1.15 and current_size.y <= 1.4,
+			"High-intensity death pool keeps both axes within 1.15 to 1.4 meters"
+		))
+	host.free()
+
+func _create_blood_surface_host() -> Node3D:
+	var host := Node3D.new()
+	var surface := StaticBody3D.new()
+	surface.add_to_group(&"blood_surface")
+	var collision := CollisionShape3D.new()
+	var shape := BoxShape3D.new()
+	shape.size = Vector3(8.0, 0.1, 8.0)
+	collision.shape = shape
+	surface.position.y = -0.05
+	surface.add_child(collision)
+	host.add_child(surface)
+	return host
 
 func _place_test_splat(manager: Node3D, position: Vector3) -> GroundBloodSplat:
 	return manager.call(
