@@ -30,12 +30,21 @@ jobs:
         env:
           GODOT_ARCHIVE: Godot_v4.7.1-stable_linux.x86_64.zip
           GODOT_BINARY: Godot_v4.7.1-stable_linux.x86_64
+          GODOT_EXPORT_TEMPLATES: Godot_v4.7.1-stable_export_templates.tpz
         run: |
           curl --fail --location --silent --show-error \
             --output "$RUNNER_TEMP/$GODOT_ARCHIVE" \
             "https://github.com/godotengine/godot/releases/download/4.7.1-stable/$GODOT_ARCHIVE"
+          curl --fail --location --silent --show-error \
+            --output "$RUNNER_TEMP/$GODOT_EXPORT_TEMPLATES" \
+            "https://github.com/godotengine/godot/releases/download/4.7.1-stable/$GODOT_EXPORT_TEMPLATES"
           unzip -q "$RUNNER_TEMP/$GODOT_ARCHIVE" -d "$RUNNER_TEMP/godot"
+          GODOT_EXPORT_TEMPLATE_DIR="$HOME/.local/share/godot/export_templates/4.7.1.stable"
+          mkdir -p "$GODOT_EXPORT_TEMPLATE_DIR"
+          unzip -q "$RUNNER_TEMP/$GODOT_EXPORT_TEMPLATES" -d "$RUNNER_TEMP/godot-export-templates"
+          mv "$RUNNER_TEMP/godot-export-templates/templates/"* "$GODOT_EXPORT_TEMPLATE_DIR/"
           chmod +x "$RUNNER_TEMP/godot/$GODOT_BINARY"
+          echo "GODOT_BIN=$RUNNER_TEMP/godot/$GODOT_BINARY" >> "$GITHUB_ENV"
           echo "ZOMBIEWAR_GODOT_BIN=$RUNNER_TEMP/godot/$GODOT_BINARY" >> "$GITHUB_ENV"
 
       - name: Run the full Godot test suite

@@ -38,3 +38,26 @@ test("Cloudflare deployment uses least privilege and serial production releases"
 	assert.match(workflow, /permissions:\s*\n\s*contents:\s*read/);
 	assert.match(workflow, /concurrency:\s*\n\s*group:\s*cloudflare-production-deploy\s*\n\s*cancel-in-progress:\s*false/);
 });
+
+test("Cloudflare deployment installs the matching Godot Web export templates", async () => {
+	const workflow = await readWorkflow();
+	assert.match(workflow, /GODOT_EXPORT_TEMPLATES:\s*Godot_v4\.7\.1-stable_export_templates\.tpz/);
+	assert.match(
+		workflow,
+		/https:\/\/github\.com\/godotengine\/godot\/releases\/download\/4\.7\.1-stable\/\$GODOT_EXPORT_TEMPLATES/,
+	);
+	assert.match(
+		workflow,
+		/\$HOME\/\.local\/share\/godot\/export_templates\/4\.7\.1\.stable/,
+	);
+	assert.match(
+		workflow,
+		/mv "\$RUNNER_TEMP\/godot-export-templates\/templates\/"\* "\$GODOT_EXPORT_TEMPLATE_DIR\//,
+	);
+});
+
+test("Cloudflare deployment exposes the Linux Godot binary to test and deploy steps", async () => {
+	const workflow = await readWorkflow();
+	assert.match(workflow, /echo "GODOT_BIN=\$RUNNER_TEMP\/godot\/\$GODOT_BINARY" >> "\$GITHUB_ENV"/);
+	assert.match(workflow, /echo "ZOMBIEWAR_GODOT_BIN=\$RUNNER_TEMP\/godot\/\$GODOT_BINARY" >> "\$GITHUB_ENV"/);
+});
