@@ -109,11 +109,10 @@ CLOUDFLARE_ACCOUNT_ID
 
 ```text
 CLOUDFLARE_PAGES_PROJECT
-CLOUDFLARE_R2_BUCKET
 CLOUDFLARE_BRANCH
 ```
 
-默认值分别为 `zombiewar`、`zombiewar-assets` 和 `main`。
+默认值分别为 `zombiewar` 和 `main`。R2 bucket 固定为 `wrangler.jsonc` 中的 `zombiewar-assets`，避免上传目标与 Pages binding 不一致。
 
 ## 部署脚本
 
