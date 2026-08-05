@@ -86,11 +86,13 @@ Export, upload the versioned WASM to R2, and deploy Pages:
 bash tools/cloudflare/deploy_r2_pages.sh
 ```
 
-CI/CD must provide:
+GitHub Actions only deploys after a GitHub Release is published. Configure the following repository Actions secrets before publishing a release:
 
 ```text
 CLOUDFLARE_API_TOKEN
 CLOUDFLARE_ACCOUNT_ID
 ```
+
+The workflow checks out the release tag, runs ./tests/run_tests.sh, then deploys to the Cloudflare Pages main production branch. Ordinary pushes do not deploy.
 
 Optional overrides are `GODOT_BIN`, `CLOUDFLARE_PAGES_PROJECT`, and `CLOUDFLARE_BRANCH`. The Pages project and branch defaults are `zombiewar` and `main`. The deployment script reads the single `GAME_ASSETS` bucket from `wrangler.jsonc`; that file fixes it as `zombiewar-assets`. The bucket remains private, and old hash-addressed WASM objects are intentionally retained for historical Pages deployments.
