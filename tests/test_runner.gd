@@ -10,6 +10,7 @@ const TEST_PATHS: Array[String] = [
 	"res://tests/unit/test_directional_fire.gd",
 	"res://tests/unit/test_weapon_spread_state.gd",
 	"res://tests/unit/test_weapon_configuration.gd",
+	"res://tests/unit/test_weapon_penetration.gd",
 	"res://tests/unit/test_weapon_clearance_state.gd",
 	"res://tests/unit/test_weapon_clearance_controller.gd",
 	"res://tests/unit/test_weapon_loadout.gd",

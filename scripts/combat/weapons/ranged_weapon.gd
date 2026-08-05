@@ -4,6 +4,7 @@ class_name RangedWeapon
 const TRACER_SCENE := preload("res://scenes/fx/ShotTracer.tscn")
 const MuzzleFlash = preload("res://scripts/fx/muzzle_flash.gd")
 const WeaponTrigger = preload("res://scripts/combat/weapons/weapon_trigger.gd")
+const MAX_PENETRATION_QUERY_COUNT := 64
 const WeaponSpreadState = preload(
 	"res://scripts/combat/weapons/weapon_spread_state.gd"
 )
@@ -95,27 +96,9 @@ func _fire(shot_direction: Vector3) -> void:
 		ray_direction,
 		ranged_definition.attack_range
 	)
-	var result := _intersect_shot(ray_origin, ray_end)
-	var collider: Object = result.get("collider", null)
-	var hit_position: Vector3 = result.get("position", ray_end)
-	var hit_result := HitResult.miss(hit_position)
-	if collider != null and collider.has_method("apply_hit"):
-		var resolved: Variant = collider.call(
-			"apply_hit",
-			ranged_definition.damage,
-			hit_position,
-			ray_direction
-		)
-		if resolved is HitResult:
-			hit_result = resolved as HitResult
-	elif collider != null and collider.has_method("apply_damage"):
-		var resolved: Variant = collider.call(
-			"apply_damage",
-			ranged_definition.damage,
-			hit_position
-		)
-		if resolved is HitResult:
-			hit_result = resolved as HitResult
+	var resolution := _resolve_shot(ray_origin, ray_end, ray_direction)
+	var hit_position: Vector3 = resolution["end_position"]
+	var hit_result: HitResult = resolution["hit_result"]
 
 	var tracer := _acquire_tracer()
 	tracer.setup(ray_origin, hit_position)
@@ -139,14 +122,128 @@ func _sync_muzzle_to_capsule() -> Vector3:
 	muzzle.global_position = origin
 	return origin
 
-func _intersect_shot(from: Vector3, to: Vector3) -> Dictionary:
+func _resolve_shot(
+	from: Vector3,
+	to: Vector3,
+	shot_direction: Vector3
+) -> Dictionary:
+	var ranged_definition := definition as RangedWeaponDefinition
+	var excluded: Array[RID] = [wielder.get_rid()]
+	var visited_targets: Dictionary = {}
+	var maximum_zombie_hits := clampi(
+		ranged_definition.max_penetration_count,
+		0,
+		16
+	) + 1
+	var coefficient := clampf(
+		ranged_definition.penetration_damage_coefficient,
+		0.0,
+		1.0
+	)
+	var zombie_hit_count := 0
+	var current_damage := maxf(ranged_definition.damage, 0.0)
+	var end_position := to
+	var summary := HitResult.miss(to)
+
+	for _query_index in range(MAX_PENETRATION_QUERY_COUNT):
+		var collision := _intersect_shot(from, to, excluded)
+		var collider: Object = collision.get("collider", null)
+		if collider == null:
+			end_position = to
+			break
+		end_position = collision.get("position", to)
+		var collision_object := collider as CollisionObject3D
+		if collision_object != null:
+			excluded.append(collision_object.get_rid())
+
+		var target := _find_damage_target(collider)
+		if target == null:
+			_merge_hit_result(
+				summary,
+				_apply_damage(collider, ranged_definition.damage, end_position, shot_direction)
+			)
+			break
+
+		var target_id := target.get_instance_id()
+		if visited_targets.has(target_id):
+			if collision_object == null:
+				break
+			continue
+		visited_targets[target_id] = true
+		zombie_hit_count += 1
+		_merge_hit_result(
+			summary,
+			_apply_damage(collider, current_damage, end_position, shot_direction)
+		)
+		if zombie_hit_count >= maximum_zombie_hits or coefficient <= 0.0:
+			break
+		current_damage *= coefficient
+
+	if not summary.did_hit:
+		summary.position = end_position
+	return {
+		"end_position": end_position,
+		"hit_result": summary,
+	}
+
+func _find_damage_target(collider: Object) -> Node3D:
+	var current := collider as Node
+	while current != null:
+		if current is Node3D and current.is_in_group(&"damageable_targets"):
+			return current as Node3D
+		current = current.get_parent()
+	return null
+
+func _apply_damage(
+	collider: Object,
+	amount: float,
+	hit_position: Vector3,
+	shot_direction: Vector3
+) -> HitResult:
+	if collider != null and collider.has_method("apply_hit"):
+		var resolved: Variant = collider.call(
+			"apply_hit",
+			amount,
+			hit_position,
+			shot_direction
+		)
+		if resolved is HitResult:
+			return resolved as HitResult
+	elif collider != null and collider.has_method("apply_damage"):
+		var resolved: Variant = collider.call(
+			"apply_damage",
+			amount,
+			hit_position
+		)
+		if resolved is HitResult:
+			return resolved as HitResult
+	return HitResult.miss(hit_position)
+
+func _merge_hit_result(summary: HitResult, resolved: HitResult) -> void:
+	if resolved == null or not resolved.did_hit:
+		return
+	summary.did_hit = true
+	summary.damage_applied += resolved.damage_applied
+	summary.hit_zone = resolved.hit_zone
+	summary.critical = summary.critical or resolved.critical
+	summary.killed = summary.killed or resolved.killed
+	summary.position = resolved.position
+
+func _intersect_shot(
+	from: Vector3,
+	to: Vector3,
+	excluded: Array[RID] = []
+) -> Dictionary:
 	var ranged_definition := definition as RangedWeaponDefinition
 	var hit_mask := ranged_definition.hit_collision_mask | 1
+	var effective_excluded := excluded
+	if effective_excluded.is_empty() and wielder != null:
+		effective_excluded = [wielder.get_rid()]
 	var query := PhysicsRayQueryParameters3D.create(
 		from,
 		to,
 		hit_mask,
-		[wielder.get_rid()]
+		effective_excluded
 	)
 	query.collide_with_areas = true
 	query.hit_from_inside = true
