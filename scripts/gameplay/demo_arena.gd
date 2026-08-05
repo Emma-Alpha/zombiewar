@@ -144,6 +144,10 @@ func _wire_target_blood(target: Node) -> void:
 	var zombie := target as ZombieTarget
 	if not zombie.ground_blood_requested.is_connected(_on_ground_blood_requested):
 		zombie.ground_blood_requested.connect(_on_ground_blood_requested)
+	if not zombie.ground_blood_trail_requested.is_connected(
+		_on_ground_blood_trail_requested
+	):
+		zombie.ground_blood_trail_requested.connect(_on_ground_blood_trail_requested)
 
 func _on_ground_blood_requested(
 	origin: Vector3,
@@ -156,6 +160,15 @@ func _on_ground_blood_requested(
 		manager.spawn_death_pool(origin, intensity)
 	else:
 		manager.spawn_hit_splat(origin, direction, intensity)
+
+func _on_ground_blood_trail_requested(
+	position: Vector3,
+	direction: Vector3,
+	intensity: float,
+	progress: float
+) -> void:
+	var manager := get_node("GroundBloodManager") as GroundBloodManager
+	manager.spawn_trail_splat(position, direction, intensity, progress)
 
 func _on_player_attack(
 	direction: Vector3,
