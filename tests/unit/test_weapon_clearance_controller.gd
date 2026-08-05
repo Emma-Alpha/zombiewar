@@ -177,7 +177,75 @@ func run() -> Array[String]:
 		"Player death immediately restores a raised rifle visual"
 	))
 	host.free()
+	_test_side_facing_visual_and_restore_margin(failures, tree)
 	return failures
+
+func _test_side_facing_visual_and_restore_margin(
+	failures: Array[String],
+	tree: SceneTree
+) -> void:
+	var host := Node3D.new()
+	var player := PLAYER_SCENE.instantiate() as PlayerController
+	var wall := _new_side_clearance_wall(1.35)
+	tree.root.add_child(host)
+	host.add_child(player)
+	host.add_child(wall)
+
+	var controller := player.get_node_or_null(
+		"WeaponClearanceController"
+	) as WeaponClearanceController
+	var rifle := player.equipment.get_current_weapon() as RangedWeapon
+	var rifle_visual := rifle.visual_anchor if rifle != null else null
+	if controller == null or rifle_visual == null:
+		_append(failures, Assertions.expect_true(
+			false,
+			"Side-facing player exposes real clearance and rifle visual"
+		))
+		host.free()
+		return
+
+	player.aim_direction = Vector3.RIGHT
+	var side_yaw := -PI * 0.5
+	var rest_barrel_axis := rifle_visual.global_basis.x.normalized()
+	controller.resolve_facing_yaw(0.0, Vector3.ZERO, side_yaw)
+	controller._process(controller.transition_duration)
+	var raised_barrel_axis := rifle_visual.global_basis.x.normalized()
+	var raised_angle := acos(clampf(
+		rest_barrel_axis.dot(raised_barrel_axis),
+		-1.0,
+		1.0
+	))
+	_append(failures, Assertions.expect_true(
+		controller.is_raised(),
+		"Side wall blocks the normal rifle while the raised pose remains usable"
+	))
+	_append(failures, Assertions.expect_float_near(
+		raised_angle,
+		deg_to_rad(65.0),
+		0.05,
+		"Raised rifle rotates its visible local-X barrel axis by 65 degrees"
+	))
+	_append(failures, Assertions.expect_true(
+		raised_barrel_axis.y > rest_barrel_axis.y + 0.75,
+		"Raised rifle visibly lifts its barrel axis above the normal pose"
+	))
+
+	wall.position.x = 1.45
+	wall.force_update_transform()
+	controller.resolve_facing_yaw(0.15, Vector3.ZERO, side_yaw)
+	_append(failures, Assertions.expect_true(
+		controller.is_raised(),
+		"Side-facing restore margin keeps the rifle raised inside its 0.08 meter buffer"
+	))
+
+	wall.position.x = 1.57
+	wall.force_update_transform()
+	controller.resolve_facing_yaw(0.15, Vector3.ZERO, side_yaw)
+	_append(failures, Assertions.expect_true(
+		not controller.is_raised(),
+		"Side-facing rifle lowers only after clearing the 0.08 meter restore margin"
+	))
+	host.free()
 
 func _new_clearance_wall() -> StaticBody3D:
 	var wall := StaticBody3D.new()
@@ -187,6 +255,18 @@ func _new_clearance_wall() -> StaticBody3D:
 	var collision := CollisionShape3D.new()
 	var shape := BoxShape3D.new()
 	shape.size = Vector3(1.0, 0.3, 0.2)
+	collision.shape = shape
+	wall.add_child(collision)
+	return wall
+
+func _new_side_clearance_wall(near_face_x: float) -> StaticBody3D:
+	var wall := StaticBody3D.new()
+	wall.collision_layer = 1
+	wall.collision_mask = 0
+	wall.position = Vector3(near_face_x + 0.01, 1.12, 0.0)
+	var collision := CollisionShape3D.new()
+	var shape := BoxShape3D.new()
+	shape.size = Vector3(0.02, 0.3, 1.0)
 	collision.shape = shape
 	wall.add_child(collision)
 	return wall

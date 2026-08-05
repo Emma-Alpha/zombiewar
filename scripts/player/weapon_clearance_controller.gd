@@ -127,8 +127,8 @@ func _apply_pose(pose: int) -> void:
 	var target := visual_rest_transform
 	if raised:
 		target.basis = target.basis * Basis(
-			Vector3.RIGHT,
-			deg_to_rad(current_definition.wall_raise_angle_degrees)
+			Vector3.UP,
+			-deg_to_rad(current_definition.wall_raise_angle_degrees)
 		)
 	_begin_visual_transition(target)
 
@@ -158,11 +158,7 @@ func _probe_pose(
 	probe.transform = _pose_transform(raised, target_yaw)
 	var cast_motion := desired_motion
 	if not raised and state.pose == WeaponClearanceState.Pose.RAISED:
-		cast_motion += Vector3(
-			sin(target_yaw),
-			0.0,
-			-cos(target_yaw)
-		) * restore_margin
+		cast_motion += Basis(Vector3.UP, target_yaw) * Vector3.FORWARD * restore_margin
 	probe.target_position = probe.global_basis.inverse() * cast_motion
 	probe.force_shapecast_update()
 	return not probe.is_colliding()
