@@ -15,6 +15,7 @@ const TEST_PATHS: Array[String] = [
 	"res://tests/unit/test_hit_response_math.gd",
 	"res://tests/unit/test_zombie_hitboxes.gd",
 	"res://tests/unit/test_blood_impact.gd",
+	"res://tests/unit/test_blood_trail_state.gd",
 	"res://tests/unit/test_ground_blood_manager.gd",
 	"res://tests/unit/test_tracer_pool.gd",
 	"res://tests/unit/test_melee_attack_cycle.gd",
