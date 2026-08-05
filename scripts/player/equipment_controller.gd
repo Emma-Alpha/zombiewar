@@ -60,8 +60,9 @@ func equip_slot(slot_index: int) -> bool:
 		current_weapon.set_equipped(false)
 	current_slot = slot_index
 	current_weapon = weapons[current_slot]
-	current_weapon.set_equipped(true)
+	current_weapon.set_equipped(false)
 	weapon_changed.emit(current_weapon.definition)
+	current_weapon.set_equipped(true)
 	return true
 
 func set_attack_input(

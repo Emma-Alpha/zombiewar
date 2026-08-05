@@ -166,6 +166,11 @@ func _probe_pose(
 func _begin_visual_transition(target: Transform3D) -> void:
 	if current_visual == null:
 		return
+	if not current_visual.visible:
+		current_visual.transform = target
+		visual_transitioning = false
+		set_process(false)
+		return
 	if current_visual.transform.is_equal_approx(target):
 		current_visual.transform = target
 		visual_transitioning = false

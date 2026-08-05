@@ -28,6 +28,9 @@ func run() -> Array[String]:
 		))
 		_cleanup(player, wall, zombie)
 		return failures
+	var rifle_rest_transform := rifle.visual_anchor.transform
+	var pistol := player.equipment.weapons[0] as RangedWeapon
+	var pistol_rest_transform := pistol.visual_anchor.transform
 
 	clearance.resolve_facing_yaw(
 		0.016,
@@ -89,6 +92,34 @@ func run() -> Array[String]:
 		clearance.is_raised(),
 		"Wall-side pistol switch chooses the raised pose immediately"
 	))
+	_append(failures, Assertions.expect_true(
+		pistol.visual_anchor.visible and not pistol.visual_anchor.transform.is_equal_approx(
+			pistol_rest_transform
+		),
+		"Wall-side pistol switch shows a raised visual on its first visible frame"
+	))
+
+	wall.position.z = -1.45
+	wall.force_update_transform()
+	player.equipment.equip_slot(1)
+	_append(failures, Assertions.expect_true(
+		clearance.is_raised(),
+		"Wall-side rifle switch chooses the raised pose immediately"
+	))
+	_append(failures, Assertions.expect_true(
+		rifle.visual_anchor.visible and not rifle.visual_anchor.transform.is_equal_approx(
+			rifle_rest_transform
+		),
+		"Wall-side rifle switch shows a raised visual on its first visible frame"
+	))
+
+	_test_side_facing_visual_and_restore_margin(
+		failures,
+		player,
+		wall,
+		clearance,
+		rifle
+	)
 
 	player.equipment.equip_slot(2)
 	_append(failures, Assertions.expect_true(
@@ -122,6 +153,83 @@ func _make_wall(position: Vector3, size: Vector3) -> StaticBody3D:
 	collision.shape = shape
 	wall.add_child(collision)
 	return wall
+
+func _test_side_facing_visual_and_restore_margin(
+	failures: Array[String],
+	player: PlayerController,
+	wall: StaticBody3D,
+	clearance: WeaponClearanceController,
+	rifle: RangedWeapon
+) -> void:
+	var collision := wall.get_child(0) as CollisionShape3D
+	var shape := collision.shape as BoxShape3D
+	player.position.y = 0.0
+	player.velocity = Vector3.ZERO
+	player.rotation.y = 0.0
+	wall.position = Vector3(0.0, 1.12, -4.0)
+	shape.size = Vector3(3.0, 2.0, 0.20)
+	wall.force_update_transform()
+	clearance.observe_trigger(false)
+	player.rotation.y = clearance.resolve_facing_yaw(0.15, Vector3.ZERO, 0.0)
+	clearance._process(clearance.transition_duration)
+
+	var side_yaw := -PI * 0.5
+	player.rotation.y = side_yaw
+	var rest_barrel_axis := rifle.visual_anchor.global_basis.x.normalized()
+	player.rotation.y = 0.0
+	wall.position = Vector3(1.36, 1.12, 0.0)
+	shape.size = Vector3(0.02, 0.3, 1.0)
+	wall.force_update_transform()
+	player.rotation.y = clearance.resolve_facing_yaw(
+		0.0,
+		Vector3.ZERO,
+		side_yaw
+	)
+	clearance._process(clearance.transition_duration)
+	var raised_barrel_axis := rifle.visual_anchor.global_basis.x.normalized()
+	var raised_angle := acos(clampf(
+		rest_barrel_axis.dot(raised_barrel_axis),
+		-1.0,
+		1.0
+	))
+	_append(failures, Assertions.expect_true(
+		clearance.is_raised(),
+		"Side wall blocks the normal rifle while the raised pose remains usable"
+	))
+	_append(failures, Assertions.expect_float_near(
+		raised_angle,
+		deg_to_rad(65.0),
+		0.05,
+		"Raised rifle rotates its visible local-X barrel axis by 65 degrees at a real non-zero yaw"
+	))
+	_append(failures, Assertions.expect_true(
+		raised_barrel_axis.y > rest_barrel_axis.y + 0.75,
+		"Raised rifle visibly lifts its barrel axis above the normal pose at a real non-zero yaw"
+	))
+
+	wall.position.x = 1.45
+	wall.force_update_transform()
+	player.rotation.y = clearance.resolve_facing_yaw(
+		0.15,
+		Vector3.ZERO,
+		side_yaw
+	)
+	_append(failures, Assertions.expect_true(
+		clearance.is_raised(),
+		"Side-facing restore margin keeps the rifle raised inside its 0.08 meter buffer"
+	))
+
+	wall.position.x = 1.57
+	wall.force_update_transform()
+	player.rotation.y = clearance.resolve_facing_yaw(
+		0.15,
+		Vector3.ZERO,
+		side_yaw
+	)
+	_append(failures, Assertions.expect_true(
+		not clearance.is_raised(),
+		"Side-facing rifle lowers only after clearing the 0.08 meter restore margin"
+	))
 
 func _cleanup(
 	player: PlayerController,
