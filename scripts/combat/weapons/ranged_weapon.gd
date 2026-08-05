@@ -36,8 +36,6 @@ func bind_context(
 	if visual_anchor != null:
 		top_level = true
 		global_transform = visual_anchor.global_transform
-	if functional_ray_origin != null:
-		functional_ray_origin.global_position = muzzle.global_position
 
 func _physics_process(delta: float) -> void:
 	weapon_trigger.tick(delta)
@@ -48,11 +46,6 @@ func _physics_process(delta: float) -> void:
 func _process(_delta: float) -> void:
 	if visual_anchor != null and is_instance_valid(visual_anchor):
 		global_transform = visual_anchor.global_transform
-
-func set_equipped(value: bool) -> void:
-	super.set_equipped(value)
-	if value and functional_ray_origin != null:
-		functional_ray_origin.global_position = muzzle.global_position
 
 func cancel_attack() -> void:
 	super.cancel_attack()

@@ -28,6 +28,7 @@ rotation_degrees = Vector3(0, 180, 0)
 [node name="Characters_Lis_SingleWeapon" parent="VisualRoot" instance=ExtResource("2_model")]
 
 [node name="FunctionalRayOrigin" type="Marker3D" parent="."]
+position = Vector3(0, 1.1, 0)
 
 [node name="EquipmentController" type="Node" parent="."]
 script = ExtResource("6_equipment")
