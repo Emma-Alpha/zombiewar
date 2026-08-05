@@ -141,9 +141,56 @@ func run() -> Array[String]:
 		"Zombie bodies and hit areas do not trigger firearm clearance"
 	))
 	_cleanup(player, active_wall, zombie)
+	_test_rejected_turn_uses_accepted_facing(failures)
 	_test_switching_contract(failures)
 	_test_normal_rebind_restores_stale_raised_visual(failures)
 	return failures
+
+func _test_rejected_turn_uses_accepted_facing(failures: Array[String]) -> void:
+	var tree := Engine.get_main_loop() as SceneTree
+	var player := PLAYER_SCENE.instantiate() as PlayerController
+	var side_blocker := _make_wall(
+		Vector3(1.1, 0.98, 0.0),
+		Vector3(0.2, 0.14, 1.2)
+	)
+	var low_ceiling := _make_wall(
+		Vector3(0.6, 2.25, 0.0),
+		Vector3(2.0, 0.2, 2.0)
+	)
+	var right_side_target := ZOMBIE_SCENE.instantiate() as ZombieTarget
+	right_side_target.position = Vector3(4.0, 0.0, 0.0)
+	right_side_target.set_physics_process(false)
+	_release_player_input(player)
+	tree.root.add_child(player)
+	tree.root.add_child(side_blocker)
+	tree.root.add_child(low_ceiling)
+	tree.root.add_child(right_side_target)
+	player.aim_direction = Vector3.RIGHT
+	var resolved_directions: Array[Vector3] = [Vector3.ZERO]
+	player.attack_resolved.connect(func(direction: Vector3, _result, _strength: float) -> void:
+		resolved_directions[0] = direction
+	)
+	Input.action_press(player.primary_attack_action)
+	player._physics_process(0.016)
+	var rifle := player.equipment.get_current_weapon() as RangedWeapon
+	rifle._physics_process(0.20)
+	var actual_forward := -player.global_basis.z.normalized()
+	var resolved_direction := resolved_directions[0]
+	_append(failures, Assertions.expect_true(
+		resolved_direction.dot(actual_forward) > 0.999,
+		"Rejected turn fires along the player's accepted facing"
+	))
+	_append(failures, Assertions.expect_float_near(
+		right_side_target.health.current,
+		right_side_target.health.maximum,
+		0.0001,
+		"Rejected target yaw cannot damage a target only in that direction"
+	))
+	_release_player_input(player)
+	right_side_target.free()
+	low_ceiling.free()
+	side_blocker.free()
+	player.free()
 
 func _test_switching_contract(failures: Array[String]) -> void:
 	var tree := Engine.get_main_loop() as SceneTree

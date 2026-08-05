@@ -62,6 +62,46 @@ func run() -> Array[String]:
 			"Functional ray origin is unchanged by VisualRoot recoil"
 		))
 
+	var wall := _make_wall(
+		Vector3(0.0, 1.1, -2.0),
+		Vector3(2.0, 2.0, 0.2)
+	)
+	var target := ZOMBIE_SCENE.instantiate() as ZombieTarget
+	target.position = Vector3(0.0, 0.0, -4.0)
+	target.set_physics_process(false)
+	tree.root.add_child(wall)
+	tree.root.add_child(target)
+	var ranged_definition := weapon.definition as RangedWeaponDefinition
+	var original_hit_mask: int = ranged_definition.hit_collision_mask
+	ranged_definition.hit_collision_mask = original_hit_mask & ~1
+	wall.force_update_transform()
+	var ray_origin := weapon.get_ray_origin()
+	var ray_result: Dictionary = weapon.call(
+		"_intersect_shot",
+		ray_origin,
+		ray_origin + Vector3.FORWARD * ranged_definition.attack_range
+	)
+	_append(failures, Assertions.expect_true(
+		ray_result.get("collider", null) == wall,
+		"Layer-one wall is the first functional ray hit even when the resource mask omits it"
+	))
+	var health_before := target.health.current
+	weapon.call("_fire", Vector3.FORWARD)
+	_append(failures, Assertions.expect_float_near(
+		target.health.current,
+		health_before,
+		0.0001,
+		"Layer-one wall prevents damage to the target behind it"
+	))
+	wall.free()
+	weapon.call("_fire", Vector3.FORWARD)
+	_append(failures, Assertions.expect_true(
+		target.health.current < health_before,
+		"The same unobstructed shot still damages the target"
+	))
+	ranged_definition.hit_collision_mask = original_hit_mask
+	target.free()
+
 	var offset_target := ZOMBIE_SCENE.instantiate() as ZombieTarget
 	offset_target.position = Vector3(1.4, 0.0, -17.0)
 	offset_target.set_physics_process(false)
@@ -93,6 +133,18 @@ func run() -> Array[String]:
 	player.free()
 	follow_camera.free()
 	return failures
+
+func _make_wall(position: Vector3, size: Vector3) -> StaticBody3D:
+	var wall := StaticBody3D.new()
+	wall.position = position
+	wall.collision_layer = 1
+	wall.collision_mask = 0
+	var collision := CollisionShape3D.new()
+	var shape := BoxShape3D.new()
+	shape.size = size
+	collision.shape = shape
+	wall.add_child(collision)
+	return wall
 
 func _append(failures: Array[String], failure: String) -> void:
 	if not failure.is_empty():

@@ -4,6 +4,10 @@ class_name PlayerController
 const PlayerMotion = preload("res://scripts/player/player_motion.gd")
 const HitResult = preload("res://scripts/combat/hit_result.gd")
 const Health = preload("res://scripts/combat/health.gd")
+const WeaponMath = preload("res://scripts/combat/weapon_math.gd")
+const RangedWeaponDefinition = preload(
+	"res://scripts/combat/weapons/ranged_weapon_definition.gd"
+)
 
 signal attack_resolved(
 	direction: Vector3,
@@ -148,9 +152,15 @@ func _physics_process(delta: float) -> void:
 		trigger_pressed = false
 		trigger_just_pressed = false
 		equipment.cancel_attack()
-	equipment.set_attack_input(trigger_pressed, trigger_just_pressed, aim_direction)
+	var attack_direction := aim_direction
+	if equipment.get_current_definition() is RangedWeaponDefinition:
+		attack_direction = _actual_ranged_attack_direction()
+	equipment.set_attack_input(trigger_pressed, trigger_just_pressed, attack_direction)
 	move_and_slide()
 	_update_animation(Vector2(velocity.x, velocity.z).length())
+
+func _actual_ranged_attack_direction() -> Vector3:
+	return WeaponMath.flat_direction(-global_basis.z)
 
 func _update_animation(horizontal_speed: float) -> void:
 	if animation_player == null or defeated:

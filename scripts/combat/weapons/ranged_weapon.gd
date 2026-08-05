@@ -103,10 +103,11 @@ func _fire(shot_direction: Vector3) -> void:
 
 func _intersect_shot(from: Vector3, to: Vector3) -> Dictionary:
 	var ranged_definition := definition as RangedWeaponDefinition
+	var hit_mask := ranged_definition.hit_collision_mask | 1
 	var query := PhysicsRayQueryParameters3D.create(
 		from,
 		to,
-		ranged_definition.hit_collision_mask,
+		hit_mask,
 		[wielder.get_rid()]
 	)
 	query.collide_with_areas = true
