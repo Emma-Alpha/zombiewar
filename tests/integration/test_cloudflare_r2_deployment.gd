@@ -18,6 +18,13 @@ func run() -> Array[String]:
 	var deploy_script := ProjectSettings.globalize_path("res://tools/cloudflare/deploy_r2_pages.sh")
 	_append(failures, Assertions.expect_true(FileAccess.file_exists(deploy_script), "Missing R2 Pages deployment script"))
 	if FileAccess.file_exists(deploy_script):
+		var stale_wasm_path := ProjectSettings.globalize_path("res://build/cloudflare-pages/index.wasm")
+		DirAccess.make_dir_recursive_absolute(stale_wasm_path.get_base_dir())
+		var stale_wasm := FileAccess.open(stale_wasm_path, FileAccess.WRITE)
+		_append(failures, Assertions.expect_true(stale_wasm != null, "Create stale Pages WASM fixture"))
+		if stale_wasm != null:
+			stale_wasm.store_string("stale WASM fixture")
+			stale_wasm.close()
 		var prepare_output: Array = []
 		var prepare_exit := OS.execute("bash", [deploy_script, "--prepare-only"], prepare_output, true)
 		_append(failures, Assertions.expect_equal(prepare_exit, 0, "R2 Pages prepare-only: %s" % "\n".join(prepare_output)))

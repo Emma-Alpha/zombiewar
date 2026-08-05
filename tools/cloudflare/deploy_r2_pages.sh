@@ -35,7 +35,7 @@ WASM_HASH="$(shasum -a 256 "$WASM_PATH" | awk '{print $1}')"
 WASM_KEY="wasm/index-${WASM_HASH}.wasm"
 
 mkdir -p "$PAGES_DIR"
-rsync -a --delete --exclude index.wasm "$WEB_DIR/" "$PAGES_DIR/"
+rsync -a --delete --delete-excluded --exclude index.wasm "$WEB_DIR/" "$PAGES_DIR/"
 sed "s|__WASM_OBJECT_KEY__|${WASM_KEY}|g" \
 	"$ROOT_DIR/tools/cloudflare/pages_worker.template.js" \
 	> "$PAGES_DIR/_worker.js"
