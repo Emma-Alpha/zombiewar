@@ -140,8 +140,11 @@ func update_clearance(
 Godot `CapsuleShape3D` 的长轴为形状局部 `Y`。当前胶囊变换约定让 `-global_basis.y` 指向枪口一端，因此控制器提供唯一的世界枪口端点：
 
 ```gdscript
-func get_weapon_muzzle_origin() -> Vector3:
+func get_weapon_muzzle_origin(fallback: Vector3) -> Vector3:
 	var capsule := weapon_collision.shape as CapsuleShape3D
+	if capsule == null:
+		push_warning("WeaponCollision requires CapsuleShape3D")
+		return fallback
 	var barrel_direction := -weapon_collision.global_basis.y.normalized()
 	return weapon_collision.global_position + barrel_direction * capsule.height * 0.5
 ```
@@ -159,7 +162,7 @@ func get_weapon_muzzle_origin() -> Vector3:
 远程武器开火时按以下顺序处理：
 
 1. 同步可见武器的已提交姿态。
-2. 从 `WeaponClearanceController.get_weapon_muzzle_origin()` 取得胶囊枪口端点。
+2. 从 `WeaponClearanceController.get_weapon_muzzle_origin(functional_ray_origin.global_position)` 取得胶囊枪口端点；传入值只用于场景契约损坏时的安全降级。
 3. 从人物实际前方取得水平单位射击方向。
 4. 以胶囊端点为射线起点，以武器原有射程计算终点。
 5. 使用 `hit_collision_mask | 1` 查询首次命中，并排除人物自身 RID。
