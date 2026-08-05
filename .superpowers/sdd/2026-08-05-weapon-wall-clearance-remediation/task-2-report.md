@@ -104,3 +104,54 @@ git diff --check
 ## Concerns
 
 无未解决 concern。缺少 `visual_anchor` 时的 warning 是指定失败路径的诊断输出，且由测试有意触发。
+
+## Fix round 1/5 — stale raised visual restore
+
+### 改动
+
+- 在 `WeaponClearanceController.try_bind_weapon()` 的双姿态预检成功后、覆盖 `current_weapon` / `current_visual` 前调用 `_restore_visual_immediately()`。
+- 因此旧远程武器即使处于已失效的 RAISED 姿态，也会先恢复保存的 local rest transform，再被隐藏和替换；候选武器不会把旧武器的 raised transform 当作自己的流程状态。
+- 在 `tests/integration/test_weapon_wall_clearance.gd` 新增真实场景回归：前墙先使 rifle RAISED，移开前墙并加入低顶以使仅 RAISED 不安全、NORMAL 安全，切到 pistol 后再切回 rifle，两个阶段都断言 rifle transform 等于原始 rest transform。
+
+### 覆盖测试文件
+
+- `tests/integration/test_weapon_wall_clearance.gd`
+
+### RED
+
+执行：
+
+```text
+./tests/run_tests.sh
+exit 1
+ERROR: ...test_weapon_wall_clearance.gd: Normal-only rebind restores the old raised rifle transform before hiding it
+ERROR: ...test_weapon_wall_clearance.gd: Returning to the rifle retains its original normal rest transform
+FAIL: 2 failure(s)
+```
+
+失败为预期行为断言，不是解析错误：基线在 alternate normal pose 成功后直接覆盖 `current_visual`，没有复位旧 rifle 的 raised local transform。
+
+### GREEN
+
+执行：
+
+```text
+./tests/run_tests.sh
+PASS: 33 test file(s)
+```
+
+测试中仍有两条既有的预期 warning：刻意移除 rifle `visual_anchor` 来验证拒绝路径。
+
+### 附加验证
+
+```text
+/Applications/Godot.app/Contents/MacOS/Godot --headless --editor --path . --quit
+exit 0
+
+git diff --check
+<no output>
+```
+
+### 提交
+
+`fix: restore stale weapon visual before rebind`

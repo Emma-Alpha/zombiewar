@@ -142,6 +142,7 @@ func run() -> Array[String]:
 	))
 	_cleanup(player, active_wall, zombie)
 	_test_switching_contract(failures)
+	_test_normal_rebind_restores_stale_raised_visual(failures)
 	return failures
 
 func _test_switching_contract(failures: Array[String]) -> void:
@@ -206,6 +207,47 @@ func _test_switching_contract(failures: Array[String]) -> void:
 			player.equipment.get_current_definition().weapon_id == &"knife" and
 			not player.equipment.weapons[1].visible,
 		"Melee-to-ranged switch fails closed when neither initial pose is safe"
+	))
+	_release_player_input(player)
+	low_ceiling.free()
+	front_wall.free()
+	player.free()
+
+func _test_normal_rebind_restores_stale_raised_visual(
+	failures: Array[String]
+) -> void:
+	var tree := Engine.get_main_loop() as SceneTree
+	var player := PLAYER_SCENE.instantiate() as PlayerController
+	var front_wall := _make_wall(
+		Vector3(0.0, 1.12, -1.1),
+		Vector3(3.0, 0.3, 0.2)
+	)
+	tree.root.add_child(player)
+	tree.root.add_child(front_wall)
+	var clearance := player.get_node("WeaponClearanceController") as WeaponClearanceController
+	var rifle := player.equipment.weapons[1] as RangedWeapon
+	var rifle_rest_transform := rifle.visual_anchor.transform
+	clearance.resolve_facing_yaw(0.016, Vector3.ZERO, 0.0)
+	_append(failures, Assertions.expect_true(
+		clearance.is_raised(),
+		"Front wall raises the old rifle before its pose becomes stale"
+	))
+	front_wall.position.z = -4.0
+	front_wall.force_update_transform()
+	var low_ceiling := _make_wall(
+		Vector3(0.0, 2.25, -0.25),
+		Vector3(3.0, 0.2, 2.0)
+	)
+	tree.root.add_child(low_ceiling)
+	_append(failures, Assertions.expect_true(
+		player.equipment.equip_slot(0) and not clearance.is_raised() and
+			rifle.visual_anchor.transform.is_equal_approx(rifle_rest_transform),
+		"Normal-only rebind restores the old raised rifle transform before hiding it"
+	))
+	_append(failures, Assertions.expect_true(
+		player.equipment.equip_slot(1) and not clearance.is_raised() and
+			rifle.visual_anchor.transform.is_equal_approx(rifle_rest_transform),
+		"Returning to the rifle retains its original normal rest transform"
 	))
 	_release_player_input(player)
 	low_ceiling.free()

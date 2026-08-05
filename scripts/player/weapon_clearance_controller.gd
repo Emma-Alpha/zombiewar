@@ -63,6 +63,7 @@ func try_bind_weapon(weapon: WeaponBase) -> bool:
 		normal_probe.enabled = false
 		raised_probe.enabled = false
 		return false
+	_restore_visual_immediately()
 	current_weapon = weapon
 	current_definition = weapon.definition as RangedWeaponDefinition
 	current_visual = weapon.visual_anchor
