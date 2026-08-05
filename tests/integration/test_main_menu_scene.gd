@@ -84,6 +84,9 @@ func run() -> Array[String]:
 	var cancel_button := menu.get_node_or_null(
 		"MenuLayer/MenuRoot/ExitDialog/DialogPanel/DialogMargin/DialogContent/DialogActions/CancelExitButton"
 	) as Button
+	var orientation_guard := menu.get_node_or_null(
+		"MobileOrientationGuard"
+	) as MobileOrientationGuard
 
 	_append(failures, Assertions.expect_true(
 		start_button != null and start_button.text == "开始游戏",
@@ -100,6 +103,11 @@ func run() -> Array[String]:
 	_append(failures, Assertions.expect_true(
 		menu.get("game_scene_path") == "res://scenes/gameplay/DemoArena.tscn",
 		"Start action targets DemoArena"
+	))
+	_append(failures, Assertions.expect_true(
+		orientation_guard != null and
+		orientation_guard.input_cancel_target_path.is_empty(),
+		"Main menu blocks portrait interaction without a gameplay input target"
 	))
 	_append(failures, Assertions.expect_true(
 		ResourceLoader.exists(menu.get("game_scene_path")),

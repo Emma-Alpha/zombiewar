@@ -1,4 +1,4 @@
-[gd_scene load_steps=13 format=3]
+[gd_scene load_steps=14 format=3]
 
 [ext_resource type="Script" path="res://scripts/menu/main_menu.gd" id="1_menu"]
 [ext_resource type="PackedScene" path="res://scenes/menu/MenuBackdrop.tscn" id="2_backdrop"]
@@ -6,6 +6,7 @@
 [ext_resource type="AudioStream" path="res://docs/game_resources_zombie_prototype/assets/sfx/interface/Audio/confirmation_001.ogg" id="4_confirm"]
 [ext_resource type="AudioStream" path="res://docs/game_resources_zombie_prototype/assets/sfx/interface/Audio/back_001.ogg" id="5_back"]
 [ext_resource type="FontFile" path="res://assets/fonts/NotoSansSC-UI.ttf" id="6_cjk_font"]
+[ext_resource type="PackedScene" path="res://scenes/ui/MobileOrientationGuard.tscn" id="7_orientation_guard"]
 
 [sub_resource type="Gradient" id="Gradient_left_shade"]
 offsets = PackedFloat32Array(0, 0.48, 0.72, 1)
@@ -84,6 +85,8 @@ stream = ExtResource("4_confirm")
 
 [node name="BackAudio" type="AudioStreamPlayer" parent="."]
 stream = ExtResource("5_back")
+
+[node name="MobileOrientationGuard" parent="." instance=ExtResource("7_orientation_guard")]
 
 [node name="MenuLayer" type="CanvasLayer" parent="."]
 

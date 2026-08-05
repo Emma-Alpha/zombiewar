@@ -5,6 +5,7 @@ const ZombieDifficultyProfile = preload("res://scripts/gameplay/zombie_difficult
 const EquipmentController = preload("res://scripts/player/equipment_controller.gd")
 const RangedWeapon = preload("res://scripts/combat/weapons/ranged_weapon.gd")
 const MeleeWeapon = preload("res://scripts/combat/weapons/melee_weapon.gd")
+const HitResult = preload("res://scripts/combat/hit_result.gd")
 
 func run() -> Array[String]:
 	var failures: Array[String] = []
@@ -41,6 +42,7 @@ func run() -> Array[String]:
 	var spawn_wave_button := arena.get_node_or_null("HUD/SpawnWaveButton") as Button
 	var restart_button := arena.get_node_or_null("HUD/RestartButton") as Button
 	var mobile_controls := arena.get_node_or_null("MobileControls")
+	var orientation_guard := arena.get_node_or_null("MobileOrientationGuard") as MobileOrientationGuard
 	var virtual_joystick := arena.get_node_or_null(
 		"MobileControls/Layout/VirtualJoystick"
 	) as VirtualJoystick
@@ -69,6 +71,18 @@ func run() -> Array[String]:
 			"Demo defaults to normal zombie perception speed"
 		))
 	_append(failures, Assertions.expect_true(player != null, "Demo has Player"))
+	if player != null:
+		_append(failures, Assertions.expect_float_near(
+			float(player.get("move_speed")), 5.0, 0.0001, "Player tuned move speed"
+		))
+		_append(failures, Assertions.expect_float_near(
+			float(player.get("ground_acceleration")), 30.0, 0.0001,
+			"Player tuned ground acceleration"
+		))
+		_append(failures, Assertions.expect_float_near(
+			float(player.get("ground_deceleration")), 42.0, 0.0001,
+			"Player tuned ground deceleration"
+		))
 	_append(failures, Assertions.expect_true(
 		player != null and player.has_method("set_movement_camera"),
 		"Player accepts movement camera"
@@ -93,7 +107,7 @@ func run() -> Array[String]:
 	_append(failures, Assertions.expect_true(camera != null, "Demo has Camera3D"))
 	if camera != null:
 		_append(failures, Assertions.expect_equal(camera.projection, Camera3D.PROJECTION_ORTHOGONAL, "Camera is orthographic"))
-		_append(failures, Assertions.expect_float_near(camera.size, 18.0, 0.0001, "Camera orthographic size"))
+		_append(failures, Assertions.expect_float_near(camera.size, 15.0, 0.0001, "Camera orthographic size"))
 		_append(failures, Assertions.expect_vector3_near(
 			camera.position,
 			Vector3(0.0, 12.0, sqrt(200.0)),
@@ -167,8 +181,15 @@ func run() -> Array[String]:
 		"Demo owns a mobile controls layer"
 	))
 	_append(failures, Assertions.expect_true(
-		virtual_joystick != null and virtual_joystick.joystick_size >= 144.0,
-		"Demo has a thumb-sized native movement joystick"
+		orientation_guard != null and
+		orientation_guard.input_cancel_target_path == NodePath("../MobileControls"),
+		"Demo blocks portrait play and releases mobile controls"
+	))
+	_append(failures, Assertions.expect_true(
+		virtual_joystick != null and virtual_joystick.size == Vector2(252.0, 252.0) and
+		is_equal_approx(virtual_joystick.joystick_size, 204.0) and
+		is_equal_approx(virtual_joystick.tip_size, 88.0),
+		"Demo has an enlarged native movement joystick"
 	))
 	_append(failures, Assertions.expect_true(
 		virtual_joystick != null and
@@ -180,9 +201,9 @@ func run() -> Array[String]:
 	))
 	_append(failures, Assertions.expect_float_near(
 		virtual_joystick.deadzone_ratio if virtual_joystick != null else -1.0,
-		0.15,
+		0.12,
 		0.0001,
-		"Native joystick owns the radial deadzone"
+		"Native joystick uses the tuned radial deadzone"
 	))
 	_append(failures, Assertions.expect_true(
 		fire_button != null and fire_button.action == &"primary_attack" and
@@ -281,6 +302,23 @@ func run() -> Array[String]:
 		hit_confirm != null,
 		"Arena has shot result confirmation UI"
 	))
+	if hit_confirm != null:
+		arena.call(
+			"_on_player_attack",
+			Vector3.FORWARD,
+			HitResult.resolved(10.0, &"body", true, false, Vector3.ZERO),
+			0.0
+		)
+		_append(failures, Assertions.expect_equal(
+			hit_confirm.text,
+			"HIT",
+			"HUD shows a normal hit even when it receives a legacy critical result"
+		))
+		_append(failures, Assertions.expect_equal(
+			hit_confirm.modulate,
+			Color.WHITE,
+			"HUD keeps normal-hit confirmation white"
+		))
 	_append(failures, Assertions.expect_true(
 		health_label != null and health_label.text == "HP 100 / 100",
 		"Demo HUD starts with full player health"

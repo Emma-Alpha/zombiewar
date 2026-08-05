@@ -19,6 +19,4 @@ camera_impulse_strength = 0.06
 attack_range = 28.0
 hit_collision_mask = 5
 tracer_pool_size = 8
-aim_assist_angle_degrees = 5.0
-aim_assist_range = 18.0
 muzzle_anchor_offset = Vector3(0, 0, -0.55)

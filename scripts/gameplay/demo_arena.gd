@@ -167,10 +167,8 @@ func _on_player_attack(
 	if not result.did_hit:
 		return
 	var label := get_node("HUD/HitConfirm") as Label
-	label.text = "KILL" if result.killed else (
-		"CRITICAL" if result.critical else "HIT"
-	)
-	label.modulate = Color(1.0, 0.3, 0.22, 1.0) if result.critical else Color.WHITE
+	label.text = "KILL" if result.killed else "HIT"
+	label.modulate = Color.WHITE
 	if hit_confirm_tween != null and hit_confirm_tween.is_valid():
 		hit_confirm_tween.kill()
 	hit_confirm_tween = create_tween()

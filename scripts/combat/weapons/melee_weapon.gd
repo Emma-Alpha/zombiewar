@@ -3,6 +3,7 @@ class_name MeleeWeapon
 
 const WeaponTrigger = preload("res://scripts/combat/weapons/weapon_trigger.gd")
 const MAX_MELEE_INTERSECTIONS := 64
+const LEGACY_MELEE_HITBOX_HALF_DEPTH := 0.45
 
 var weapon_trigger: WeaponTrigger
 var attack_pending := false
@@ -94,10 +95,23 @@ func _resolve_melee_hit() -> HitResult:
 	var closest_target: Node3D
 	var closest_distance := INF
 	var visited: Dictionary = {}
+	var wielder_forward := -wielder.global_transform.basis.z
+	wielder_forward.y = 0.0
+	wielder_forward = wielder_forward.normalized()
+	var max_forward_reach := (
+		-melee_definition.hitbox_offset.z +
+		melee_definition.hitbox_size.z * 0.5 +
+		LEGACY_MELEE_HITBOX_HALF_DEPTH
+	)
 	for intersection in intersections:
 		var collider: Object = intersection.get("collider")
 		var target := _find_damage_target(collider)
 		if target == null:
+			continue
+		var target_offset := target.global_position - wielder.global_position
+		target_offset.y = 0.0
+		var forward_distance := target_offset.dot(wielder_forward)
+		if forward_distance <= 0.0 or forward_distance > max_forward_reach:
 			continue
 		var target_id := target.get_instance_id()
 		if visited.has(target_id):

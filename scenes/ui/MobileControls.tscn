@@ -18,20 +18,20 @@ grow_vertical = 2
 mouse_filter = 2
 
 [node name="VirtualJoystick" type="VirtualJoystick" parent="Layout"]
-custom_minimum_size = Vector2(208, 208)
+custom_minimum_size = Vector2(252, 252)
 layout_mode = 1
 anchors_preset = 2
 anchor_top = 1.0
 anchor_bottom = 1.0
 offset_left = 40.0
-offset_top = -248.0
-offset_right = 248.0
+offset_top = -292.0
+offset_right = 292.0
 offset_bottom = -40.0
 grow_vertical = 0
 joystick_mode = 0
-joystick_size = 164.0
-tip_size = 76.0
-deadzone_ratio = 0.15
+joystick_size = 204.0
+tip_size = 88.0
+deadzone_ratio = 0.12
 clampzone_ratio = 1.0
 initial_offset_ratio = Vector2(0.5, 0.5)
 action_left = &"move_left"

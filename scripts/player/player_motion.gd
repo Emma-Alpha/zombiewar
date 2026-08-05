@@ -50,7 +50,7 @@ static func next_planar_velocity(
 	var target := Vector3.ZERO
 	var rate := maxf(deceleration, 0.0)
 	if flat_direction.length_squared() > 0.000001:
-		target = flat_direction.normalized() * maxf(move_speed, 0.0)
+		target = flat_direction.limit_length(1.0) * maxf(move_speed, 0.0)
 		rate = maxf(acceleration, 0.0)
 	return current_planar.move_toward(target, rate * maxf(delta, 0.0))
 

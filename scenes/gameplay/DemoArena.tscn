@@ -1,4 +1,4 @@
-[gd_scene load_steps=25 format=3]
+[gd_scene load_steps=26 format=3]
 
 [ext_resource type="Script" path="res://scripts/gameplay/demo_arena.gd" id="1_arena"]
 [ext_resource type="PackedScene" path="res://scenes/player/Player.tscn" id="2_player"]
@@ -10,6 +10,7 @@
 [ext_resource type="Resource" path="res://resources/difficulty/zombie_normal.tres" id="8_zombie_difficulty"]
 [ext_resource type="PackedScene" path="res://scenes/ui/MobileControls.tscn" id="9_mobile_controls"]
 [ext_resource type="FontFile" path="res://assets/fonts/NotoSansSC-UI.ttf" id="10_cjk_font"]
+[ext_resource type="PackedScene" path="res://scenes/ui/MobileOrientationGuard.tscn" id="11_orientation_guard"]
 
 [sub_resource type="Environment" id="Environment_arena"]
 background_mode = 1
@@ -274,6 +275,9 @@ text = "重新开始"
 
 [node name="MobileControls" parent="." instance=ExtResource("9_mobile_controls")]
 desktop_help_path = NodePath("../HUD/ControlsPanel")
+
+[node name="MobileOrientationGuard" parent="." instance=ExtResource("11_orientation_guard")]
+input_cancel_target_path = NodePath("../MobileControls")
 
 [node name="DamageFlash" type="ColorRect" parent="HUD"]
 anchors_preset = 15
