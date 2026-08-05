@@ -157,18 +157,47 @@ DEPLOY_OUTPUT="$(
 printf '%s\n' "$DEPLOY_OUTPUT"
 
 if ! DEPLOYMENT_URL="$(
-	printf '%s\n' "$DEPLOY_OUTPUT" | PAGES_PROJECT="$PAGES_PROJECT" node -e '
+	printf '%s\n' "$DEPLOY_OUTPUT" | PAGES_PROJECT="$PAGES_PROJECT" DEPLOY_BRANCH="$DEPLOY_BRANCH" node -e '
 		let output = "";
 		process.stdin.setEncoding("utf8");
 		process.stdin.on("data", (chunk) => { output += chunk; });
 		process.stdin.on("end", () => {
-			const productionUrl = `https://${process.env.PAGES_PROJECT}.pages.dev`;
-			const urls = output.match(/https:\/\/[A-Za-z0-9.-]+\.pages\.dev\/?/g) ?? [];
-			const deploymentUrl = urls
-				.map((url) => url.replace(/\/$/, ""))
-				.find((url) => url !== productionUrl);
-			if (!deploymentUrl) process.exit(1);
-			process.stdout.write(deploymentUrl);
+			const resultPattern = /^\s*(?:✨\s*)?Deployment complete!\s+Take a peek over at\s+(https:\/\/\S+)\s*$/;
+			const resultUrls = output
+				.split(/\r?\n/)
+				.map((line) => line.match(resultPattern)?.[1])
+				.filter(Boolean);
+			if (resultUrls.length !== 1) {
+				console.error("Expected exactly one Pages deployment-complete URL");
+				process.exit(1);
+			}
+			try {
+				const deploymentUrl = new URL(resultUrls[0]);
+				const project = process.env.PAGES_PROJECT.toLowerCase();
+				const branch = process.env.DEPLOY_BRANCH.toLowerCase();
+				const suffix = `.${project}.pages.dev`;
+				const hostname = deploymentUrl.hostname;
+				const deploymentLabel = hostname.endsWith(suffix)
+					? hostname.slice(0, -suffix.length)
+					: "";
+				if (
+					deploymentUrl.protocol !== "https:"
+					|| deploymentUrl.username !== ""
+					|| deploymentUrl.password !== ""
+					|| deploymentUrl.port !== ""
+					|| deploymentUrl.pathname !== "/"
+					|| deploymentUrl.search !== ""
+					|| deploymentUrl.hash !== ""
+					|| !/^[a-z0-9-]+$/.test(deploymentLabel)
+					|| deploymentLabel === branch
+				) {
+					throw new Error("deployment URL is not a deployment-specific URL for the current project");
+				}
+				process.stdout.write(deploymentUrl.origin);
+			} catch (error) {
+				console.error(`Invalid Pages deployment URL: ${error.message}`);
+				process.exit(1);
+			}
 		});
 	'
 )"; then

@@ -92,7 +92,7 @@ const args = process.argv.slice(2);
 fs.appendFileSync(process.env.FAKE_REMOTE_LOG, "npx " + args.join(" ") + "\\n");
 if (args.includes("put") && process.env.FAKE_R2_PUT_FAIL === "1") process.exit(41);
 if (args.includes("deploy")) {
-	console.log("✨ Deployment complete! Take a peek over at " + process.env.FAKE_DEPLOYMENT_URL);
+	console.log(process.env.FAKE_DEPLOY_OUTPUT ?? "✨ Deployment complete! Take a peek over at " + process.env.FAKE_DEPLOYMENT_URL);
 }
 `);
 	await chmod(fakeNpx, 0o755);
@@ -236,6 +236,61 @@ test("preview deployment verifies only its deployment-specific URL", async (t) =
 	assert.match(log, new RegExp(`curl GET ${DEPLOYMENT_URL}/index\\.wasm\\n`));
 	assert.doesNotMatch(log, new RegExp(PRODUCTION_URL.replaceAll(".", "\\.")));
 });
+
+test("deploy extracts only the deployment-complete URL amid unrelated Pages URLs", async (t) => {
+	const fixture = await createFixture(t);
+	const result = runDeploy(fixture, {
+		CLOUDFLARE_BRANCH: "feature-preview",
+		FAKE_DEPLOY_OUTPUT: [
+			"See https://unrelated.other-project.pages.dev for another project.",
+			"Preview alias: https://feature-preview.zombiewar.pages.dev",
+			"Production alias: https://zombiewar.pages.dev",
+			`✨ Deployment complete! Take a peek over at ${DEPLOYMENT_URL}`,
+		].join("\n"),
+	});
+	assert.equal(result.status, 0, result.stderr || result.stdout);
+	const log = await readRemoteLog(fixture);
+	assert.match(log, new RegExp(`curl HEAD ${DEPLOYMENT_URL}/\\n`));
+	assert.doesNotMatch(log, /curl .+unrelated\.other-project\.pages\.dev/);
+	assert.doesNotMatch(log, /curl .+feature-preview\.zombiewar\.pages\.dev/);
+	assert.doesNotMatch(log, /curl .+https:\/\/zombiewar\.pages\.dev(?:\/|$)/);
+});
+
+for (const [name, deployOutput] of [
+	[
+		"invalid project URL",
+		"✨ Deployment complete! Take a peek over at https://unrelated.other-project.pages.dev",
+	],
+	[
+		"preview alias URL",
+		"✨ Deployment complete! Take a peek over at https://feature-preview.zombiewar.pages.dev",
+	],
+	[
+		"production alias URL",
+		"✨ Deployment complete! Take a peek over at https://zombiewar.pages.dev",
+	],
+	[
+		"missing deployment-complete result",
+		`Uploaded successfully: ${DEPLOYMENT_URL}`,
+	],
+	[
+		"ambiguous result URLs",
+		[
+			`✨ Deployment complete! Take a peek over at ${DEPLOYMENT_URL}`,
+			"✨ Deployment complete! Take a peek over at https://def456.zombiewar.pages.dev",
+		].join("\n"),
+	],
+]) {
+	test(`${name} in a deployment result fails before verification`, async (t) => {
+		const fixture = await createFixture(t);
+		const result = runDeploy(fixture, {
+			CLOUDFLARE_BRANCH: "feature-preview",
+			FAKE_DEPLOY_OUTPUT: deployOutput,
+		});
+		assert.notEqual(result.status, 0, result.stdout);
+		assert.doesNotMatch(await readRemoteLog(fixture), /curl /);
+	});
+}
 
 for (const [name, configure] of [
 	["missing", (config) => ({ ...config, r2_buckets: [] })],
