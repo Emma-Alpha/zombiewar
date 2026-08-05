@@ -26,6 +26,7 @@ const TEST_PATHS: Array[String] = [
 	"res://tests/unit/test_zombie_behavior.gd",
 	"res://tests/unit/test_zombie_difficulty_profile.gd",
 	"res://tests/unit/test_health.gd",
+	"res://tests/unit/test_health_bar_3d.gd",
 	"res://tests/unit/test_player_damage.gd",
 	"res://tests/unit/test_weapon_feedback.gd",
 	"res://tests/integration/test_weapon_wall_clearance.gd",

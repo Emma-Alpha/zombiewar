@@ -34,7 +34,8 @@ func run() -> Array[String]:
 	var hit_confirm := arena.get_node_or_null("HUD/HitConfirm") as Label
 	var ground := arena.get_node_or_null("World/Ground") as StaticBody3D
 	var ground_blood := arena.get_node_or_null("GroundBloodManager")
-	var health_label := arena.get_node_or_null("HUD/PlayerHealth") as Label
+	var legacy_health_label := arena.get_node_or_null("HUD/PlayerHealth") as Label
+	var health_bar := arena.get_node_or_null("Player/HealthBar3D") as HealthBar3D
 	var damage_flash := arena.get_node_or_null("HUD/DamageFlash") as ColorRect
 	var game_over := arena.get_node_or_null("HUD/GameOver") as Label
 	var wave_status := arena.get_node_or_null("HUD/WaveStatus") as Label
@@ -350,8 +351,12 @@ func run() -> Array[String]:
 			"HUD keeps normal-hit confirmation white"
 		))
 	_append(failures, Assertions.expect_true(
-		health_label != null and health_label.text == "HP 100 / 100",
-		"Demo HUD starts with full player health"
+		legacy_health_label == null,
+		"Demo removes the legacy player-health HUD"
+	))
+	_append(failures, Assertions.expect_true(
+		health_bar != null,
+		"Demo player has an overhead health bar"
 	))
 	_append(failures, Assertions.expect_true(
 		damage_flash != null and damage_flash.color.a == 0.0,
@@ -467,14 +472,21 @@ func run() -> Array[String]:
 			"Arena rifle ray clears the floor and damages a centered Zombie"
 		))
 		direct_target.free()
-	if player != null and health_label != null and game_over != null:
+	if player != null and health_bar != null and game_over != null:
 		player.call("apply_damage", 10.0, Vector3.ZERO)
-		_append(failures, Assertions.expect_equal(
-			health_label.text,
-			"HP 90 / 100",
-			"HUD follows player damage"
+		_append(failures, Assertions.expect_float_near(
+			health_bar.get_target_ratio(),
+			0.9,
+			0.0001,
+			"Overhead health bar follows player damage"
 		))
 		player.call("apply_damage", 1000.0, Vector3.ZERO)
+		_append(failures, Assertions.expect_float_near(
+			health_bar.get_target_ratio(),
+			0.0,
+			0.0001,
+			"Overhead health bar empties on player death"
+		))
 		_append(failures, Assertions.expect_true(
 			game_over.visible and game_over.text == "PLAYER DOWN",
 			"Lethal damage reveals game-over feedback"
