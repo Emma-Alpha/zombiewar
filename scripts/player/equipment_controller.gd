@@ -24,6 +24,10 @@ var weapons: Array[WeaponBase] = []
 var current_slot := -1
 var current_weapon: WeaponBase
 var initialized := false
+var weapon_switch_guard: Callable
+
+func set_weapon_switch_guard(value_guard: Callable) -> void:
+	weapon_switch_guard = value_guard
 
 func setup(
 	wielder: CharacterBody3D,
@@ -56,6 +60,8 @@ func equip_slot(slot_index: int) -> bool:
 		return false
 	if slot_index == current_slot:
 		return true
+	if weapon_switch_guard.is_valid() and not bool(weapon_switch_guard.call(weapons[slot_index])):
+		return false
 	if current_weapon != null:
 		current_weapon.set_equipped(false)
 	current_slot = slot_index

@@ -140,11 +140,13 @@ func run() -> Array[String]:
 	ceiling.free()
 
 	var saved_anchor := rifle.visual_anchor
+	var collision_before_rejected_bind := weapon_collision.transform
 	rifle.visual_anchor = null
-	controller.bind_weapon(rifle)
+	var rejected_bind := controller.bind_weapon(rifle)
 	_append(failures, Assertions.expect_true(
-		weapon_collision.disabled,
-		"Missing visual anchor safely disables weapon clearance"
+		not rejected_bind and not weapon_collision.disabled and
+			weapon_collision.transform.is_equal_approx(collision_before_rejected_bind),
+		"Rejected ranged bind preserves the active weapon collision"
 	))
 	rifle.visual_anchor = saved_anchor
 	controller.bind_weapon(rifle)

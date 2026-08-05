@@ -31,38 +31,71 @@ func setup(value_wielder: CharacterBody3D) -> void:
 	normal_probe.add_exception(wielder)
 	raised_probe.add_exception(wielder)
 
-func bind_weapon(weapon: WeaponBase) -> void:
+func try_bind_weapon(weapon: WeaponBase) -> bool:
+	if weapon == null or not weapon.definition is RangedWeaponDefinition:
+		return true
+	if weapon.visual_anchor == null:
+		return false
+	return _candidate_initial_pose() != WeaponClearanceState.Pose.DISABLED
+
+func _candidate_initial_pose() -> int:
+	var normal_was_enabled := normal_probe.enabled
+	var raised_was_enabled := raised_probe.enabled
+	normal_probe.enabled = true
+	raised_probe.enabled = true
+	var normal_clear := _probe_pose(
+		normal_probe,
+		false,
+		Vector3.ZERO,
+		wielder.rotation.y,
+		false
+	)
+	var raised_clear := _probe_pose(
+		raised_probe,
+		true,
+		Vector3.ZERO,
+		wielder.rotation.y,
+		false
+	)
+	normal_probe.enabled = normal_was_enabled
+	raised_probe.enabled = raised_was_enabled
+	if normal_clear:
+		return WeaponClearanceState.Pose.NORMAL
+	if raised_clear:
+		return WeaponClearanceState.Pose.RAISED
+	return WeaponClearanceState.Pose.DISABLED
+
+func bind_weapon(weapon: WeaponBase) -> bool:
+	var initial_pose := WeaponClearanceState.Pose.DISABLED
+	if (
+		weapon != null and
+		weapon.definition is RangedWeaponDefinition
+	):
+		if weapon.visual_anchor == null:
+			return false
+		initial_pose = _candidate_initial_pose()
+		if initial_pose == WeaponClearanceState.Pose.DISABLED:
+			return false
 	_restore_visual_immediately()
 	current_weapon = weapon
 	current_definition = null
 	current_visual = null
 	if weapon == null or not weapon.definition is RangedWeaponDefinition:
 		_disable_clearance()
-		return
+		return true
 	var ranged := weapon.definition as RangedWeaponDefinition
 	if weapon.visual_anchor == null:
-		_disable_clearance()
-		return
+		return false
 	current_definition = ranged
 	current_visual = weapon.visual_anchor
 	visual_rest_transform = current_visual.transform
 	_configure_shapes()
 	normal_probe.enabled = true
 	raised_probe.enabled = true
-	var normal_clear := _probe_pose(normal_probe, false, Vector3.ZERO, wielder.rotation.y)
-	var raised_clear := _probe_pose(raised_probe, true, Vector3.ZERO, wielder.rotation.y)
-	if not normal_clear and not raised_clear:
-		push_warning("Weapon %s has no safe normal or raised pose" % String(ranged.weapon_id))
-		_disable_clearance()
-		return
-	var initial_pose := (
-		WeaponClearanceState.Pose.NORMAL
-		if normal_clear
-		else WeaponClearanceState.Pose.RAISED
-	)
 	state.configure(initial_pose)
 	weapon_collision.disabled = false
 	_commit_pose(initial_pose)
+	return true
 
 func resolve_facing_yaw(
 	delta: float,
@@ -144,11 +177,16 @@ func _probe_pose(
 	probe: ShapeCast3D,
 	raised: bool,
 	desired_motion: Vector3,
-	target_yaw: float
+	target_yaw: float,
+	include_restore_margin := true
 ) -> bool:
 	probe.transform = _probe_pose_transform(raised, target_yaw)
 	var cast_motion := desired_motion
-	if not raised and state.pose == WeaponClearanceState.Pose.RAISED:
+	if (
+		include_restore_margin and
+		not raised and
+		state.pose == WeaponClearanceState.Pose.RAISED
+	):
 		cast_motion += Basis(Vector3.UP, target_yaw) * Vector3.FORWARD * restore_margin
 	probe.target_position = probe.global_basis.inverse() * cast_motion
 	probe.force_shapecast_update()

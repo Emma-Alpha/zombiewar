@@ -62,6 +62,9 @@ func _ready() -> void:
 	animation_player = visual_root.find_child("AnimationPlayer", true, false) as AnimationPlayer
 	visual_rest_position = visual_root.position
 	weapon_clearance.setup(self)
+	equipment.set_weapon_switch_guard(
+		Callable(weapon_clearance, "try_bind_weapon")
+	)
 	equipment.attack_started.connect(_on_weapon_attack_started)
 	equipment.attack_resolved.connect(_on_weapon_attack_resolved)
 	equipment.weapon_changed.connect(_on_weapon_changed)
