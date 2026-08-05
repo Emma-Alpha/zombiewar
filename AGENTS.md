@@ -8,7 +8,7 @@ This is a Godot 4.7.1 2.5D game prototype. Keep runtime code in `scripts/`, grou
 
 - `/Applications/Godot.app/Contents/MacOS/Godot --path .` launches the configured main scene.
 - `/Applications/Godot.app/Contents/MacOS/Godot --headless --editor --path . --quit` imports assets and catches scene or script parse errors.
-- `/Applications/Godot.app/Contents/MacOS/Godot --headless --path . --script tests/test_runner.gd` runs the full custom test suite.
+- `./tests/run_tests.sh` runs the full custom test suite with strict Godot error capture. Use the direct Godot test-runner invocation only for low-level debugging.
 - `mkdir -p build/web && /Applications/Godot.app/Contents/MacOS/Godot --headless --path . --export-release Web build/web/index.html` creates the Web export.
 
 ## Coding Style & Naming Conventions

@@ -53,7 +53,7 @@ Navigation-mesh pathfinding and obstacle avoidance, spawn waves, experience, upg
 ## Tests
 
 ```bash
-/Applications/Godot.app/Contents/MacOS/Godot --headless --path . --script tests/test_runner.gd
+./tests/run_tests.sh
 ```
 
 ## Export and mobile verification

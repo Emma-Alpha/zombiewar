@@ -141,6 +141,38 @@ func run() -> Array[String]:
 		"Normal movement without a hit does not request a blood trail"
 	))
 
+	var fallback_target := ZOMBIE_SCENE.instantiate() as ZombieTarget
+	host.add_child(fallback_target)
+	fallback_target.set_physics_process(false)
+	fallback_target.rotation.y = PI * 0.5
+	var fallback_requests: Array[Dictionary] = []
+	fallback_target.ground_blood_requested.connect(func(
+		origin: Vector3, direction: Vector3, intensity: float, death_pool: bool
+	) -> void:
+		fallback_requests.append({
+			"origin": origin,
+			"direction": direction,
+			"intensity": intensity,
+			"death_pool": death_pool,
+		})
+	)
+	var stable_facing := -fallback_target.global_transform.basis.z
+	stable_facing.y = 0.0
+	stable_facing = stable_facing.normalized()
+	fallback_target.call("apply_hit", 10.0, Vector3(0.4, 1.2, 0.3), Vector3.UP)
+	_append(failures, Assertions.expect_equal(
+		fallback_requests.size(),
+		1,
+		"A vertical hit still requests one main splat"
+	))
+	if fallback_requests.size() == 1:
+		_append(failures, Assertions.expect_vector3_near(
+			fallback_requests[0]["direction"],
+			stable_facing,
+			0.0001,
+			"A vertical hit sends the zombie facing direction as the stable splat fallback"
+		))
+
 	var lethal_target := ZOMBIE_SCENE.instantiate() as ZombieTarget
 	host.add_child(lethal_target)
 	lethal_target.set_physics_process(false)

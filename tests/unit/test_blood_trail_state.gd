@@ -83,6 +83,43 @@ func run() -> Array[String]:
 		not expired.active,
 		"Trail session expires after 0.75 seconds"
 	))
+
+	var blocked_before_first_mark := BloodTrailState.new()
+	blocked_before_first_mark.start(Vector3.ZERO, 1.0)
+	_append(failures, Assertions.expect_equal(
+		blocked_before_first_mark.advance(Vector3(0.2, 0, 0), 0.05, 4.0, 1.3).size(),
+		0,
+		"A blocked knockback can stop before the first trail spacing"
+	))
+	_append(failures, Assertions.expect_equal(
+		blocked_before_first_mark.advance(Vector3(0.2, 0, 0), 0.05, 0.0, 1.3).size(),
+		0,
+		"Stopping against an obstacle emits no zero-distance trail mark"
+	))
+	_append(failures, Assertions.expect_true(
+		not blocked_before_first_mark.active,
+		"A knockback stopped before its first mark closes the trail session"
+	))
+	_append(failures, Assertions.expect_equal(
+		blocked_before_first_mark.advance(Vector3(1.2, 0, 0), 0.5, 1.3, 1.3).size(),
+		0,
+		"Normal movement after a blocked knockback cannot emit a delayed trail mark"
+	))
+
+	var cutoff := BloodTrailState.new()
+	cutoff.start(Vector3.ZERO, 1.0)
+	cutoff.advance(Vector3(1.0, 0, 0), 0.70, 4.0, 1.3)
+	var cutoff_samples := cutoff.advance(Vector3(2.0, 0, 0), 0.10, 4.0, 1.3)
+	_append(failures, Assertions.expect_equal(
+		cutoff_samples.size(),
+		2,
+		"The 0.75-second cutoff excludes sample points after the deadline"
+	))
+	for sample in cutoff_samples:
+		_append(failures, Assertions.expect_true(
+			(sample["position"] as Vector3).x <= 1.5001,
+			"The cutoff frame samples only the movement reached by 0.75 seconds"
+		))
 	return failures
 
 func _append(failures: Array[String], failure: String) -> void:

@@ -8,6 +8,7 @@ func run() -> Array[String]:
 	var failures: Array[String] = []
 	_test_lit_mesh_contract(failures)
 	_test_two_layers_and_limited_merging(failures)
+	_test_saturated_cell_merges_into_size_matched_layer(failures)
 	_test_fifo_reuse_updates_spatial_index(failures)
 	_test_hit_splat_keeps_requested_horizontal_position(failures)
 	_test_trail_size_endpoints_ignore_intensity(failures)
@@ -44,6 +45,13 @@ func _test_lit_mesh_contract(failures: Array[String]) -> void:
 			material.cull_mode == BaseMaterial3D.CULL_DISABLED,
 			"Blood uses alpha-scissored double-sided depth handling"
 		))
+		_append(failures, Assertions.expect_true(
+			material != null and
+			is_equal_approx(material.alpha_scissor_threshold, 0.25) and
+			material.shading_mode == BaseMaterial3D.SHADING_MODE_PER_PIXEL and
+			is_zero_approx(material.metallic),
+			"Blood material keeps the precise lit alpha-scissor non-metal contract"
+		))
 		_append(failures, Assertions.expect_equal(
 			first.cast_shadow,
 			GeometryInstance3D.SHADOW_CASTING_SETTING_OFF,
@@ -55,6 +63,36 @@ func _test_lit_mesh_contract(failures: Array[String]) -> void:
 			0.0001,
 			"Blood mesh normal aligns to the hit surface"
 		))
+	manager.free()
+
+func _test_saturated_cell_merges_into_size_matched_layer(failures: Array[String]) -> void:
+	var manager := MANAGER_SCRIPT.new() as Node3D
+	var small_trail := manager.call(
+		"place_splat", Vector3(0.10, 0.0, 0.10), Vector3.UP, Vector2(0.30, 0.65),
+		0.0, Color.WHITE, SPLAT_TEXTURE, 0.55
+	) as GroundBloodSplat
+	var large_main_splat := manager.call(
+		"place_splat", Vector3(0.12, 0.0, 0.12), Vector3.UP, Vector2(1.10, 1.10),
+		0.0, Color.WHITE, SPLAT_TEXTURE, 0.38
+	) as GroundBloodSplat
+	var merged := manager.call(
+		"place_splat", Vector3(0.14, 0.0, 0.14), Vector3.UP, Vector2(1.05, 1.15),
+		0.0, Color.WHITE, SPLAT_TEXTURE, 0.38
+	) as GroundBloodSplat
+	_append(failures, Assertions.expect_equal(
+		manager.get_child_count(),
+		2,
+		"A saturated cell still keeps exactly two blood layers"
+	))
+	_append(failures, Assertions.expect_equal(
+		merged.get_instance_id(),
+		large_main_splat.get_instance_id(),
+		"A large request merges into the large matching layer instead of the small trail"
+	))
+	_append(failures, Assertions.expect_true(
+		small_trail.get_instance_id() != merged.get_instance_id(),
+		"Size-matched merging leaves the unrelated small trail layer intact"
+	))
 	manager.free()
 
 func _test_two_layers_and_limited_merging(failures: Array[String]) -> void:
@@ -175,6 +213,27 @@ func _test_hit_splat_keeps_requested_horizontal_position(failures: Array[String]
 			0.0001,
 			"Hit splat keeps the requested world Z coordinate"
 		))
+		seed(20260805)
+		var right_facing_splat := manager.call(
+			"spawn_hit_splat",
+			Vector3(1.25, 1.2, -0.4),
+			Vector3.RIGHT,
+			1.0
+		) as GroundBloodSplat
+		_append(failures, Assertions.expect_true(
+			right_facing_splat != null,
+			"A horizontal hit direction creates a directed main splat"
+		))
+		if right_facing_splat != null:
+			var orientation_error := absf(wrapf(
+				float(right_facing_splat.get("current_rotation")) - PI * 0.5,
+				-PI,
+				PI
+			))
+			_append(failures, Assertions.expect_true(
+				orientation_error <= 0.13,
+				"Main splat rotation follows shot direction with only a small random offset"
+			))
 	host.free()
 
 func _test_trail_size_endpoints_ignore_intensity(failures: Array[String]) -> void:

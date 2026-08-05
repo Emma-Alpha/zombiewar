@@ -34,7 +34,7 @@ func place_splat(
 	var cell := _cell_for_position(surface_position)
 	var existing_layers: Array = cell_splats.get(cell, [])
 	if existing_layers.size() >= maxi(max_layers_per_cell, 1):
-		var merged := existing_layers[0] as GroundBloodSplat
+		var merged := _size_matched_layer(existing_layers, size)
 		merged.merge_limited(1.15, 0.015)
 		return merged
 
@@ -62,11 +62,16 @@ func spawn_hit_splat(
 		return null
 	var resolved_intensity := clampf(intensity, 0.75, 1.35)
 	var diameter := minf(randf_range(0.9, 1.25) * resolved_intensity, 1.4)
+	var horizontal_direction := Vector3(shot_direction.x, 0.0, shot_direction.z)
+	var rotation_radians := 0.0
+	if horizontal_direction.length_squared() > 0.000001:
+		rotation_radians = atan2(horizontal_direction.x, horizontal_direction.z)
+	rotation_radians += randf_range(-0.12, 0.12)
 	return place_splat(
 		surface["position"],
 		surface["normal"],
 		Vector2.ONE * diameter,
-		randf_range(-PI, PI),
+		rotation_radians,
 		Color(0.42, 0.008, 0.015, randf_range(0.86, 0.96)),
 		HIT_TEXTURES.pick_random(),
 		randf_range(0.32, 0.42)
@@ -140,6 +145,23 @@ func _register_splat(splat: GroundBloodSplat, cell: Vector2i) -> void:
 	layers.append(splat)
 	cell_splats[cell] = layers
 	splat_cells[splat.get_instance_id()] = cell
+
+func _size_matched_layer(
+	existing_layers: Array,
+	requested_size: Vector2
+) -> GroundBloodSplat:
+	var matched := existing_layers[0] as GroundBloodSplat
+	var smallest_difference := INF
+	for layer in existing_layers:
+		var splat := layer as GroundBloodSplat
+		var layer_size := splat.base_size
+		var difference := absf(layer_size.x - requested_size.x) + absf(
+			layer_size.y - requested_size.y
+		)
+		if difference < smallest_difference:
+			smallest_difference = difference
+			matched = splat
+	return matched
 
 func _unregister_splat(splat: GroundBloodSplat) -> void:
 	var splat_id := splat.get_instance_id()

@@ -30,9 +30,12 @@ func advance(
 	var samples: Array[Dictionary] = []
 	if not active:
 		return samples
-	elapsed += maxf(delta, 0.0)
+	var frame_duration := maxf(delta, 0.0)
+	var sample_duration := minf(frame_duration, maxf(MAX_DURATION - elapsed, 0.0))
+	var sample_fraction := sample_duration / frame_duration if frame_duration > 0.000001 else 0.0
 	var start := Vector3(previous_position.x, current_position.y, previous_position.z)
-	var finish := Vector3(current_position.x, current_position.y, current_position.z)
+	var full_finish := Vector3(current_position.x, current_position.y, current_position.z)
+	var finish := start.lerp(full_finish, sample_fraction)
 	var segment := finish - start
 	var segment_length := segment.length()
 	if segment_length > 0.000001:
@@ -53,10 +56,11 @@ func advance(
 			distance_to_next = SAMPLE_SPACING
 		distance_to_next -= maxf(segment_length - travelled, 0.0)
 	previous_position = current_position
+	elapsed = minf(elapsed + frame_duration, MAX_DURATION)
 	if (
 		elapsed >= MAX_DURATION or
 		marks_emitted >= MAX_MARKS or
-		(marks_emitted > 0 and planar_speed <= normal_move_speed + STOP_SPEED_MARGIN)
+		planar_speed <= normal_move_speed + STOP_SPEED_MARGIN
 	):
 		active = false
 	return samples

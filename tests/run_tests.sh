@@ -17,11 +17,18 @@ set +e
 	--headless \
 	--path . \
 	--script tests/test_runner.gd 2>&1 | tee "$zombiewar_test_output"
-zombiewar_runner_status=${PIPESTATUS[0]}
+zombiewar_pipeline_status=("${PIPESTATUS[@]}")
+zombiewar_runner_status=${zombiewar_pipeline_status[0]}
+zombiewar_tee_status=${zombiewar_pipeline_status[1]}
 set -e
 
 if (( zombiewar_runner_status != 0 )); then
 	exit "$zombiewar_runner_status"
+fi
+
+if (( zombiewar_tee_status != 0 )); then
+	printf '%s\n' "FAIL: Unable to capture Godot test output." >&2
+	exit "$zombiewar_tee_status"
 fi
 
 if LC_ALL=C grep -Eq \

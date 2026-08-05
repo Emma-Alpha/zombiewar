@@ -143,9 +143,10 @@ func apply_hit(
 	_spawn_blood_impact(hit_position, shot_direction, 1.0)
 	visual_root.scale = Vector3.ONE * 1.08
 	var killed := health.current <= 0.0
-	ground_blood_requested.emit(hit_position, shot_direction, knockback_multiplier, false)
+	var ground_blood_direction := _ground_blood_direction(shot_direction)
+	ground_blood_requested.emit(hit_position, ground_blood_direction, knockback_multiplier, false)
 	if killed:
-		ground_blood_requested.emit(knockback_origin, shot_direction, 1.25, true)
+		ground_blood_requested.emit(knockback_origin, ground_blood_direction, 1.25, true)
 	if not killed:
 		_play_hit_reaction()
 	return HitResult.resolved(
@@ -350,6 +351,15 @@ func _spawn_blood_impact(
 	var effect := BLOOD_IMPACT_SCENE.instantiate() as BloodImpact
 	effect_parent.add_child(effect)
 	effect.setup(hit_position, shot_direction, intensity)
+
+func _ground_blood_direction(shot_direction: Vector3) -> Vector3:
+	var horizontal_direction := Vector3(shot_direction.x, 0.0, shot_direction.z)
+	if horizontal_direction.length_squared() <= 0.000001:
+		horizontal_direction = -global_transform.basis.z
+		horizontal_direction.y = 0.0
+	if horizontal_direction.length_squared() <= 0.000001:
+		return Vector3.FORWARD
+	return horizontal_direction.normalized()
 
 func _on_health_changed(_current: float, _maximum: float) -> void:
 	_refresh_label()
