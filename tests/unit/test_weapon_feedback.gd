@@ -28,12 +28,8 @@ func run() -> Array[String]:
 		weapon.visual_anchor != null,
 		"Weapon binds its muzzle to the animated rifle"
 	))
-	_append(failures, Assertions.expect_vector3_near(
-		weapon.muzzle.position,
-		Vector3(0.0, 0.0, -0.55),
-		0.0001,
-		"Visual muzzle uses the Rifle local barrel-tip offset"
-	))
+	var expected_origin := Vector3(0.0, 1.12, -1.395)
+	var functional_origin := player.get_node("FunctionalRayOrigin") as Marker3D
 
 	weapon.set_attack_input(false, false, Vector3.RIGHT)
 	weapon._process(0.0)
@@ -42,9 +38,11 @@ func run() -> Array[String]:
 	visual_root.position += Vector3(0.0, 0.0, 0.12)
 	weapon._process(0.0)
 	var visual_muzzle_after := weapon.muzzle.global_position
-	_append(failures, Assertions.expect_true(
-		visual_muzzle_after.distance_to(visual_muzzle_before) > 0.11,
-		"Visual muzzle follows the recoil-driven rifle"
+	_append(failures, Assertions.expect_vector3_near(
+		visual_muzzle_after,
+		visual_muzzle_before,
+		0.0001,
+		"Capsule muzzle origin is unchanged by VisualRoot recoil"
 	))
 	_append(failures, Assertions.expect_true(
 		weapon.has_method("get_ray_origin"),
@@ -52,6 +50,12 @@ func run() -> Array[String]:
 	))
 	if weapon.has_method("get_ray_origin"):
 		var functional_origin_before: Vector3 = weapon.call("get_ray_origin")
+		_append(failures, Assertions.expect_vector3_near(
+			functional_origin_before,
+			expected_origin,
+			0.001,
+			"Functional ray origin uses the weapon capsule end"
+		))
 		visual_root.position += Vector3(0.0, 0.0, -0.12)
 		weapon._process(0.0)
 		var functional_origin_after: Vector3 = weapon.call("get_ray_origin")
@@ -59,8 +63,46 @@ func run() -> Array[String]:
 			functional_origin_after,
 			functional_origin_before,
 			0.0001,
-			"Functional ray origin is unchanged by VisualRoot recoil"
+			"Capsule ray origin is unchanged by VisualRoot recoil"
 		))
+
+	var feedback_origins: Array[Vector3] = []
+	weapon.attack_resolved.connect(func(
+		origin: Vector3,
+		_direction: Vector3,
+		_result: HitResult,
+		_visual_recoil_kick: float,
+		_camera_impulse_strength: float
+	) -> void:
+		feedback_origins.append(origin)
+)
+	var tracer_index := weapon.tracer_pool_cursor
+	weapon._fire(-player.global_basis.z)
+	var tracer := weapon.tracer_pool[tracer_index] as ShotTracer
+	_append(failures, Assertions.expect_vector3_near(
+		weapon.muzzle.global_position,
+		expected_origin,
+		0.001,
+		"Muzzle flash anchor uses the weapon capsule end"
+	))
+	_append(failures, Assertions.expect_vector3_near(
+		weapon.get_ray_origin(),
+		expected_origin,
+		0.001,
+		"Functional ray starts at the weapon capsule end"
+	))
+	_append(failures, Assertions.expect_vector3_near(
+		_tracer_start(tracer),
+		expected_origin,
+		0.001,
+		"Tracer starts at the weapon capsule end"
+	))
+	_append(failures, Assertions.expect_vector3_near(
+		feedback_origins.back(),
+		expected_origin,
+		0.001,
+		"Attack feedback origin uses the weapon capsule end"
+	))
 
 	var wall := _make_wall(
 		Vector3(0.0, 1.1, -2.0),
@@ -106,7 +148,6 @@ func run() -> Array[String]:
 	offset_target.position = Vector3(1.4, 0.0, -17.0)
 	offset_target.set_physics_process(false)
 	tree.root.add_child(offset_target)
-	var functional_origin := player.get_node("FunctionalRayOrigin") as Marker3D
 	functional_origin.global_position = Vector3(0.0, 1.1, 0.0)
 	weapon.call("_fire", Vector3.FORWARD)
 	_append(failures, Assertions.expect_float_near(
@@ -145,6 +186,9 @@ func _make_wall(position: Vector3, size: Vector3) -> StaticBody3D:
 	collision.shape = shape
 	wall.add_child(collision)
 	return wall
+
+func _tracer_start(tracer: ShotTracer) -> Vector3:
+	return tracer.to_global(Vector3(0.0, 0.0, 0.5))
 
 func _append(failures: Array[String], failure: String) -> void:
 	if not failure.is_empty():

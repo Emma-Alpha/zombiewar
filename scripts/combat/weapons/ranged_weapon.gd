@@ -31,8 +31,6 @@ func bind_context(
 		value_visual_root,
 		value_functional_ray_origin
 	)
-	var ranged_definition := definition as RangedWeaponDefinition
-	muzzle.position = ranged_definition.muzzle_anchor_offset
 	if visual_anchor != null:
 		top_level = true
 		_sync_to_visual_anchor()
@@ -45,6 +43,7 @@ func _physics_process(delta: float) -> void:
 
 func _process(_delta: float) -> void:
 	_sync_to_visual_anchor()
+	_sync_muzzle_to_capsule()
 
 func cancel_attack() -> void:
 	super.cancel_attack()
@@ -52,14 +51,23 @@ func cancel_attack() -> void:
 		weapon_trigger.reset()
 
 func get_ray_origin() -> Vector3:
+	var fallback := global_position
 	if functional_ray_origin != null and is_instance_valid(functional_ray_origin):
-		return functional_ray_origin.global_position
-	return wielder.global_position if wielder != null else global_position
+		fallback = functional_ray_origin.global_position
+	elif wielder != null:
+		fallback = wielder.global_position
+	if wielder != null:
+		var clearance := wielder.get_node_or_null(
+			"WeaponClearanceController"
+		) as WeaponClearanceController
+		if clearance != null:
+			return clearance.get_weapon_muzzle_origin(fallback)
+	return fallback
 
 func _fire(shot_direction: Vector3) -> void:
 	_sync_to_visual_anchor()
 	var ranged_definition := definition as RangedWeaponDefinition
-	var ray_origin := get_ray_origin()
+	var ray_origin := _sync_muzzle_to_capsule()
 	var ray_direction := WeaponMath.flat_direction(shot_direction)
 	var ray_end := WeaponMath.ray_end_from_direction(
 		ray_origin,
@@ -89,7 +97,7 @@ func _fire(shot_direction: Vector3) -> void:
 			hit_result = resolved as HitResult
 
 	var tracer := _acquire_tracer()
-	tracer.setup(muzzle.global_position, hit_position)
+	tracer.setup(ray_origin, hit_position)
 	muzzle_flash.flash()
 	shot_audio.pitch_scale = randf_range(0.97, 1.03)
 	shot_audio.play()
@@ -105,6 +113,11 @@ func _sync_to_visual_anchor() -> void:
 	if visual_anchor != null and is_instance_valid(visual_anchor):
 		global_transform = visual_anchor.global_transform
 
+func _sync_muzzle_to_capsule() -> Vector3:
+	var origin := get_ray_origin()
+	muzzle.global_position = origin
+	return origin
+
 func _intersect_shot(from: Vector3, to: Vector3) -> Dictionary:
 	var ranged_definition := definition as RangedWeaponDefinition
 	var hit_mask := ranged_definition.hit_collision_mask | 1
@@ -115,6 +128,7 @@ func _intersect_shot(from: Vector3, to: Vector3) -> Dictionary:
 		[wielder.get_rid()]
 	)
 	query.collide_with_areas = true
+	query.hit_from_inside = true
 	return get_world_3d().direct_space_state.intersect_ray(query)
 
 func _prewarm_tracers() -> void:

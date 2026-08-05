@@ -28,6 +28,16 @@ func run() -> Array[String]:
 			not _has_property(pistol, &"wall_raise_angle_degrees"),
 		"Ranged definitions do not expose per-weapon wall-clearance overrides"
 	))
+	for definition: RangedWeaponDefinition in [pistol, rifle]:
+		var exposes_muzzle_offset := false
+		for property: Dictionary in definition.get_property_list():
+			if StringName(property.get("name", &"")) == &"muzzle_anchor_offset":
+				exposes_muzzle_offset = true
+				break
+		_append(failures, Assertions.expect_true(
+			not exposes_muzzle_offset,
+			"Ranged definitions do not duplicate the shared capsule muzzle origin"
+		))
 	_append(failures, Assertions.expect_equal(
 		pistol.hit_collision_mask & 1,
 		1,

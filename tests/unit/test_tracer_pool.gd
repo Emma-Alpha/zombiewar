@@ -21,16 +21,16 @@ func run() -> Array[String]:
 	if not tracers.is_empty():
 		var functional_origin := player.get_node("FunctionalRayOrigin") as Marker3D
 		functional_origin.global_position += Vector3(0.4, 0.0, 0.0)
-		var visual_origin := weapon.muzzle.global_position
-		weapon.call("_fire", Vector3.FORWARD)
+		var expected_origin := Vector3(0.0, 1.12, -1.395)
+		weapon._fire(-player.global_basis.z)
 
 		var fired_tracer := tracers[0] as ShotTracer
 		var tracer_near_end := fired_tracer.to_global(Vector3(0.0, 0.0, 0.5))
 		_append(failures, Assertions.expect_vector3_near(
 			tracer_near_end,
-			visual_origin,
+			expected_origin,
 			0.001,
-			"Fired tracer starts at the live visual muzzle"
+			"Fired tracer starts at the hand-derived capsule muzzle endpoint"
 		))
 		_append(failures, Assertions.expect_true(
 			fired_tracer.visible and fired_tracer.is_processing(),

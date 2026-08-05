@@ -19,4 +19,3 @@ camera_impulse_strength = 0.08
 attack_range = 24.0
 hit_collision_mask = 5
 tracer_pool_size = 6
-muzzle_anchor_offset = Vector3(0, 0, -0.35)

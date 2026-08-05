@@ -69,7 +69,7 @@ func run() -> Array[String]:
 	var cursor_before := rifle.tracer_pool_cursor
 	Input.action_press(player.primary_attack_action)
 	player._physics_process(0.016)
-	var shot_muzzle_position := rifle.visual_anchor.global_transform * rifle.muzzle.position
+	var shot_muzzle_position := _capsule_muzzle_endpoint(weapon_collision)
 	rifle._physics_process(0.20)
 	_append(failures, Assertions.expect_true(
 		clearance.is_raised() and rifle.tracer_pool_cursor != cursor_before,
@@ -151,6 +151,7 @@ func run() -> Array[String]:
 	_test_switching_contract(failures)
 	_test_normal_rebind_restores_stale_raised_visual(failures)
 	_test_real_weapon_collision_motion(failures)
+	_test_capsule_muzzle_origins_and_directions(failures)
 	_test_raised_shot_obstruction_and_feedback(failures)
 	return failures
 
@@ -276,14 +277,19 @@ func _assert_weapon_collision_motion(
 func _test_raised_shot_obstruction_and_feedback(failures: Array[String]) -> void:
 	var tree := Engine.get_main_loop() as SceneTree
 	var player := PLAYER_SCENE.instantiate() as PlayerController
-	var wall := _make_wall(
+	var clearance_wall := _make_wall(
 		Vector3(0.0, 1.12, -1.1),
 		Vector3(3.0, 0.3, 0.2)
 	)
+	var wall := _make_wall(
+		Vector3(0.0, 2.3843, -1.4),
+		Vector3(3.0, 0.3, 0.2)
+	)
 	var wall_target := ZOMBIE_SCENE.instantiate() as ZombieTarget
-	wall_target.position = Vector3(0.0, 0.0, -4.0)
+	wall_target.position = Vector3(0.0, 1.4, -4.0)
 	wall_target.set_physics_process(false)
 	tree.root.add_child(player)
+	tree.root.add_child(clearance_wall)
 	tree.root.add_child(wall)
 	tree.root.add_child(wall_target)
 	var clearance := player.get_node("WeaponClearanceController") as WeaponClearanceController
@@ -316,11 +322,11 @@ func _test_raised_shot_obstruction_and_feedback(failures: Array[String]) -> void
 	wall_target.free()
 
 	var area := _make_area(
-		Vector3(0.0, 1.1, -2.0),
+		Vector3(0.0, 2.3843, -1.4),
 		Vector3(2.0, 2.0, 0.2)
 	)
 	var area_target := ZOMBIE_SCENE.instantiate() as ZombieTarget
-	area_target.position = Vector3(0.0, 0.0, -4.0)
+	area_target.position = Vector3(0.0, 1.4, -4.0)
 	area_target.set_physics_process(false)
 	tree.root.add_child(area)
 	tree.root.add_child(area_target)
@@ -335,6 +341,7 @@ func _test_raised_shot_obstruction_and_feedback(failures: Array[String]) -> void
 	)
 	_release_player_input(player)
 	area_target.free()
+	clearance_wall.free()
 	player.free()
 
 func _assert_raised_blocker_pair(
@@ -354,7 +361,7 @@ func _assert_raised_blocker_pair(
 	var blocked_hit: Vector3 = blocked_result.get("position", ray_end)
 	var blocked_health := target.health.current
 	var blocked_tracer_index := rifle.tracer_pool_cursor
-	rifle.call("_fire", Vector3.FORWARD)
+	rifle._fire(-rifle.wielder.global_basis.z)
 	var blocked_tracer := rifle.tracer_pool[blocked_tracer_index] as ShotTracer
 	_append(failures, Assertions.expect_true(
 		clearance.is_raised() and blocked_result.get("collider", null) == blocker and
@@ -371,7 +378,7 @@ func _assert_raised_blocker_pair(
 	var clear_hit: Vector3 = clear_result.get("position", ray_end)
 	var clear_health := target.health.current
 	var clear_tracer_index := rifle.tracer_pool_cursor
-	rifle.call("_fire", Vector3.FORWARD)
+	rifle._fire(-rifle.wielder.global_basis.z)
 	var clear_tracer := rifle.tracer_pool[clear_tracer_index] as ShotTracer
 	_append(failures, Assertions.expect_true(
 		clearance.is_raised() and target.health.current < clear_health,
@@ -381,6 +388,130 @@ func _assert_raised_blocker_pair(
 		_tracer_end(clear_tracer).distance_to(clear_hit) < 0.001 and
 			feedback_positions.back().distance_to(clear_hit) < 0.001,
 		"Unobstructed RAISED %s control reaches the target hit" % label
+	))
+
+func _test_capsule_muzzle_origins_and_directions(failures: Array[String]) -> void:
+	var tree := Engine.get_main_loop() as SceneTree
+
+	var normal_player := PLAYER_SCENE.instantiate() as PlayerController
+	tree.root.add_child(normal_player)
+	_assert_capsule_shot_contract(
+		failures,
+		normal_player,
+		Vector3(0.0, 1.12, -1.395),
+		"NORMAL"
+	)
+	normal_player.free()
+
+	var raised_player := PLAYER_SCENE.instantiate() as PlayerController
+	var raised_clearance_wall := _make_wall(
+		Vector3(0.0, 1.12, -1.1),
+		Vector3(3.0, 0.3, 0.2)
+	)
+	tree.root.add_child(raised_player)
+	tree.root.add_child(raised_clearance_wall)
+	var raised_clearance := raised_player.get_node(
+		"WeaponClearanceController"
+	) as WeaponClearanceController
+	raised_clearance.update_clearance(0.016, Vector3.ZERO, 0.0)
+	_append(failures, Assertions.expect_true(
+		raised_clearance.state.pose == WeaponClearanceState.Pose.RAISED,
+		"RAISED capsule fixture commits before checking its muzzle endpoint"
+	))
+	_assert_capsule_shot_contract(
+		failures,
+		raised_player,
+		Vector3(0.0, 2.3843, -0.58955),
+		"RAISED"
+	)
+	raised_clearance_wall.free()
+	raised_player.free()
+
+	var tucked_player := PLAYER_SCENE.instantiate() as PlayerController
+	var tucked_front_wall := _make_wall(
+		Vector3(-1.1, 1.12, 0.0),
+		Vector3(0.2, 0.3, 3.0)
+	)
+	var tucked_ceiling := _make_wall(
+		Vector3(0.0, 2.25, 0.0),
+		Vector3(3.0, 0.2, 2.0)
+	)
+	tree.root.add_child(tucked_player)
+	tree.root.add_child(tucked_front_wall)
+	tree.root.add_child(tucked_ceiling)
+	tucked_player.rotation.y = PI * 0.5
+	tucked_player.force_update_transform()
+	var tucked_clearance := tucked_player.get_node(
+		"WeaponClearanceController"
+	) as WeaponClearanceController
+	tucked_clearance.update_clearance(0.016, Vector3.ZERO, PI * 0.5)
+	_append(failures, Assertions.expect_true(
+		tucked_clearance.state.pose == WeaponClearanceState.Pose.TUCKED,
+		"TUCKED capsule fixture commits before checking its muzzle endpoint"
+	))
+	_assert_capsule_shot_contract(
+		failures,
+		tucked_player,
+		Vector3(0.0, 1.675, 0.0),
+		"TUCKED"
+	)
+	tucked_ceiling.free()
+	tucked_front_wall.free()
+	tucked_player.free()
+
+func _assert_capsule_shot_contract(
+	failures: Array[String],
+	player: PlayerController,
+	expected_origin: Vector3,
+	label: String
+) -> void:
+	var rifle := player.equipment.get_current_weapon() as RangedWeapon
+	var attack_origins: Array[Vector3] = []
+	var attack_directions: Array[Vector3] = []
+	rifle.attack_resolved.connect(func(
+		origin: Vector3,
+		direction: Vector3,
+		_result: HitResult,
+		_recoil: float,
+		_impulse: float
+	) -> void:
+		attack_origins.append(origin)
+		attack_directions.append(direction)
+	)
+	rifle._process(0.0)
+	var tracer_index := rifle.tracer_pool_cursor
+	var expected_direction := -player.global_basis.z.normalized()
+	rifle._fire(expected_direction)
+	var tracer := rifle.tracer_pool[tracer_index] as ShotTracer
+	_append(failures, Assertions.expect_vector3_near(
+		rifle.get_ray_origin(),
+		expected_origin,
+		0.001,
+		"%s functional ray uses the hand-derived capsule endpoint" % label
+	))
+	_append(failures, Assertions.expect_vector3_near(
+		rifle.muzzle.global_position,
+		expected_origin,
+		0.001,
+		"%s muzzle flash uses the hand-derived capsule endpoint" % label
+	))
+	_append(failures, Assertions.expect_vector3_near(
+		_tracer_start(tracer),
+		expected_origin,
+		0.001,
+		"%s tracer uses the hand-derived capsule endpoint" % label
+	))
+	_append(failures, Assertions.expect_vector3_near(
+		attack_origins.back(),
+		expected_origin,
+		0.001,
+		"%s attack feedback uses the hand-derived capsule endpoint" % label
+	))
+	_append(failures, Assertions.expect_vector3_near(
+		attack_directions.back(),
+		expected_direction,
+		0.001,
+		"%s shot direction follows the player's actual forward basis" % label
 	))
 
 func _test_tucked_turn_uses_body_facing(failures: Array[String]) -> void:
@@ -616,6 +747,12 @@ func _tracer_start(tracer: ShotTracer) -> Vector3:
 
 func _tracer_end(tracer: ShotTracer) -> Vector3:
 	return tracer.to_global(Vector3(0.0, 0.0, -0.5))
+
+func _capsule_muzzle_endpoint(weapon_collision: CollisionShape3D) -> Vector3:
+	var capsule := weapon_collision.shape as CapsuleShape3D
+	return weapon_collision.global_position - (
+		weapon_collision.global_basis.y.normalized() * capsule.height * 0.5
+	)
 
 func _test_side_facing_visual_and_restore_margin(
 	failures: Array[String],
