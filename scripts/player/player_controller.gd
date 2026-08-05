@@ -50,6 +50,7 @@ signal died
 @onready var equipment: EquipmentController = $EquipmentController
 @onready var functional_ray_origin: Marker3D = $FunctionalRayOrigin
 @onready var weapon_clearance: WeaponClearanceController = $WeaponClearanceController
+@onready var health_bar: HealthBar3D = get_node_or_null("HealthBar3D") as HealthBar3D
 
 var movement_camera: Camera3D
 var animation_player: AnimationPlayer
@@ -60,9 +61,13 @@ var health: Health
 var defeated := false
 var hit_reaction_remaining := 0.0
 var attack_animation_remaining := 0.0
+var health_bar_initialized := false
+var missing_health_bar_warned := false
 
 func _ready() -> void:
 	_ensure_health_initialized()
+	_sync_health_bar(false)
+	health_bar_initialized = true
 	animation_player = visual_root.find_child("AnimationPlayer", true, false) as AnimationPlayer
 	visual_rest_position = visual_root.position
 	weapon_clearance.setup(self)
@@ -254,6 +259,16 @@ func _update_defeated_motion(delta: float) -> void:
 
 func _on_health_changed(current: float, maximum: float) -> void:
 	health_changed.emit(current, maximum)
+	_sync_health_bar(health_bar_initialized)
+
+func _sync_health_bar(animate: bool) -> void:
+	if health_bar == null:
+		if not missing_health_bar_warned:
+			push_warning("Player is missing HealthBar3D")
+			missing_health_bar_warned = true
+		return
+	if health != null:
+		health_bar.set_health(health.current, health.maximum, animate)
 
 func _on_depleted() -> void:
 	equipment.cancel_attack()

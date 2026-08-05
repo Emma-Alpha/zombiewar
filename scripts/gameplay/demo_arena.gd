@@ -114,18 +114,10 @@ func _wire_dependencies() -> void:
 	player.set_movement_camera(movement_camera)
 	if not player.attack_resolved.is_connected(_on_player_attack):
 		player.attack_resolved.connect(_on_player_attack)
-	if not player.health_changed.is_connected(_on_player_health_changed):
-		player.health_changed.connect(_on_player_health_changed)
 	if not player.damaged.is_connected(_on_player_damaged):
 		player.damaged.connect(_on_player_damaged)
 	if not player.died.is_connected(_on_player_died):
 		player.died.connect(_on_player_died)
-	var current_health := player.max_health
-	var maximum_health := player.max_health
-	if player.health != null:
-		current_health = player.health.current
-		maximum_health = player.health.maximum
-	_on_player_health_changed(current_health, maximum_health)
 
 func _wire_target(target: Node) -> void:
 	_wire_target_blood(target)
@@ -186,11 +178,6 @@ func _on_player_attack(
 		hit_confirm_tween.kill()
 	hit_confirm_tween = create_tween()
 	hit_confirm_tween.tween_property(label, "modulate:a", 0.0, 0.18)
-
-func _on_player_health_changed(current: float, maximum: float) -> void:
-	var label := get_node_or_null("HUD/PlayerHealth") as Label
-	if label != null:
-		label.text = "HP %d / %d" % [ceili(current), ceili(maximum)]
 
 func _on_player_damaged(_amount: float) -> void:
 	var flash := get_node_or_null("HUD/DamageFlash") as ColorRect

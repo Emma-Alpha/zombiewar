@@ -296,15 +296,6 @@ theme_override_colors/font_color = Color(0.952941, 0.933333, 0.894118, 1)
 theme_override_font_sizes/font_size = 20
 text = "ZOMBIE WAR — CONTROL DEMO"
 
-[node name="PlayerHealth" type="Label" parent="HUD"]
-offset_left = 24.0
-offset_top = 50.0
-offset_right = 260.0
-offset_bottom = 78.0
-theme_override_colors/font_color = Color(1, 0.78, 0.26, 1)
-theme_override_font_sizes/font_size = 20
-text = "HP 100 / 100"
-
 [node name="HitConfirm" type="Label" parent="HUD"]
 anchors_preset = 10
 anchor_right = 1.0

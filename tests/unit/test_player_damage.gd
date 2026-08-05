@@ -12,6 +12,7 @@ func run() -> Array[String]:
 	var player := PLAYER_SCENE.instantiate()
 	var tree := Engine.get_main_loop() as SceneTree
 	tree.root.add_child(player)
+	var health_bar := player.get_node_or_null("HealthBar3D") as HealthBar3D
 	var equipment := player.get_node_or_null("EquipmentController") as EquipmentController
 	var weapon := equipment.get_current_weapon() if equipment != null else null
 	if weapon != null:
@@ -33,6 +34,10 @@ func run() -> Array[String]:
 		bool(player.call("is_alive")),
 		"Player starts alive"
 	))
+	_append(failures, Assertions.expect_true(
+		health_bar != null and is_equal_approx(health_bar.get_target_ratio(), 1.0),
+		"Player starts with a full overhead health bar"
+	))
 	_append(failures, Assertions.expect_float_near(
 		float(player.call("apply_damage", 10.0, Vector3.RIGHT)),
 		10.0,
@@ -51,6 +56,12 @@ func run() -> Array[String]:
 			0.0001,
 			"Player health decreases after a hit"
 		))
+	_append(failures, Assertions.expect_float_near(
+		health_bar.get_target_ratio() if health_bar != null else -1.0,
+		0.9,
+		0.0001,
+		"Player overhead health bar follows damage"
+	))
 	_append(failures, Assertions.expect_equal(
 		damage_emissions,
 		1,
@@ -66,6 +77,12 @@ func run() -> Array[String]:
 	_append(failures, Assertions.expect_true(
 		not bool(player.call("is_alive")),
 		"Lethal damage defeats player"
+	))
+	_append(failures, Assertions.expect_float_near(
+		health_bar.get_target_ratio() if health_bar != null else -1.0,
+		0.0,
+		0.0001,
+		"Player overhead health bar empties on death"
 	))
 	_append(failures, Assertions.expect_true(
 		weapon_collision.disabled,
