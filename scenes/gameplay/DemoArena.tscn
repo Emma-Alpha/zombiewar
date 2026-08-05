@@ -229,7 +229,6 @@ position = Vector3(0, 0, 6)
 script = ExtResource("7_ground_blood")
 max_splats = 192
 surface_collision_mask = 1
-hit_splat_probability = 0.55
 
 [node name="FollowCamera" parent="." instance=ExtResource("3_camera")]
 position = Vector3(0, 0, 6)

@@ -8,8 +8,8 @@ Reviewed on 2026-08-04 for the shooting-impact and blood-VFX pass.
 
 - Source: https://kenney.nl/assets/splat-pack
 - License: Creative Commons Zero (CC0)
-- Imported file: `assets/fx/blood/kenney_splat29.png`
-- Usage: camera-facing blood impact sprite, tinted dark red and combined with native Godot 3D droplets.
+- Imported files: `assets/fx/blood/kenney_splat20.png`, `assets/fx/blood/kenney_splat26.png`, `assets/fx/blood/kenney_splat29.png`, and `assets/fx/blood/kenney_splat34.png`
+- Usage: camera-facing blood impact sprite plus lit persistent blood meshes, tinted dark red and combined with native Godot 3D droplets. Main blood splats use variants 26/29/34; directional trails use variants 20/29.
 - Local license record: `assets/fx/blood/License.txt`
 
 This was the strongest direct match: the pack provides transparent splat silhouettes that remain readable in the project's low-poly visual style and can be recolored without editing the source bitmap.
