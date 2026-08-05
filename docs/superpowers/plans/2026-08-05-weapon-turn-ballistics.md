@@ -618,13 +618,18 @@ git commit -m "feat: fire ranged weapons from capsule muzzle"
 
 ```gdscript
 var material := tracer.material_override as ShaderMaterial
-var shader_code := material.shader.code if material != null and material.shader != null else ""
+var uniform_names: Array[StringName] = []
+if material != null and material.shader != null:
+	for uniform: Dictionary in material.shader.get_shader_uniform_list():
+		uniform_names.append(StringName(uniform.get("name", &"")))
 _append(failures, Assertions.expect_true(
 	material != null and
-		shader_code.contains("instance uniform float lifetime_alpha") and
-		shader_code.contains("0.5 - VERTEX.z") and
-		shader_code.contains("smoothstep(0.0, 1.0, tracer_progress)"),
-	"Tracer shader fades from local muzzle end toward the hit end"
+		&"lifetime_alpha" in uniform_names and
+		&"muzzle_alpha" in uniform_names and
+		&"hit_alpha" in uniform_names and
+		is_equal_approx(float(material.get_shader_parameter("muzzle_alpha")), 0.0) and
+		is_equal_approx(float(material.get_shader_parameter("hit_alpha")), 1.0),
+	"Tracer material exposes transparent muzzle and opaque hit endpoint contracts"
 ))
 ```
 
@@ -665,6 +670,8 @@ shader_type spatial;
 render_mode unshaded, cull_disabled, blend_add, depth_draw_never;
 
 instance uniform float lifetime_alpha : hint_range(0.0, 1.0) = 1.0;
+uniform float muzzle_alpha : hint_range(0.0, 1.0) = 0.0;
+uniform float hit_alpha : hint_range(0.0, 1.0) = 1.0;
 varying float tracer_progress;
 
 void vertex() {
@@ -672,7 +679,11 @@ void vertex() {
 }
 
 void fragment() {
-	float longitudinal_alpha = smoothstep(0.0, 1.0, tracer_progress);
+	float longitudinal_alpha = mix(
+		muzzle_alpha,
+		hit_alpha,
+		smoothstep(0.0, 1.0, tracer_progress)
+	);
 	vec3 tracer_color = mix(
 		vec3(1.0, 0.45, 0.05),
 		vec3(1.0, 0.78, 0.18),
