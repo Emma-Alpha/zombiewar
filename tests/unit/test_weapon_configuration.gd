@@ -21,6 +21,40 @@ func run() -> Array[String]:
 	if pistol == null or rifle == null or knife == null:
 		return failures
 
+	_append(failures, Assertions.expect_float_near(
+		pistol.wall_capsule_length,
+		0.94,
+		0.0001,
+		"Pistol wall capsule length follows its visible model"
+	))
+	_append(failures, Assertions.expect_float_near(
+		pistol.wall_capsule_radius,
+		0.10,
+		0.0001,
+		"Pistol wall capsule stays narrow"
+	))
+	_append(failures, Assertions.expect_float_near(
+		rifle.wall_capsule_length,
+		1.55,
+		0.0001,
+		"Rifle wall capsule length follows its visible model"
+	))
+	_append(failures, Assertions.expect_float_near(
+		rifle.wall_capsule_radius,
+		0.12,
+		0.0001,
+		"Rifle wall capsule stays narrow"
+	))
+	_append(failures, Assertions.expect_true(
+		pistol.has_wall_clearance_profile() and
+		rifle.has_wall_clearance_profile(),
+		"Ranged weapons expose valid wall-clearance profiles"
+	))
+	_append(failures, Assertions.expect_true(
+		pistol.wall_capsule_offset != rifle.wall_capsule_offset,
+		"Each firearm owns its fitted capsule center"
+	))
+
 	_append(failures, Assertions.expect_equal(
 		pistol.trigger_mode,
 		WeaponDefinition.TriggerMode.PRESS,
