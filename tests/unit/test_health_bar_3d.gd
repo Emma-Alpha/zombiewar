@@ -66,7 +66,19 @@ func run() -> Array[String]:
 			_append(failures, Assertions.expect_true(preserves_model_scale, "%s shader preserves model-axis scale while billboarding" % bar_part_name))
 
 	var fill := health_bar.get_node("Fill") as MeshInstance3D
+	var background := health_bar.get_node("Background") as MeshInstance3D
 	var fill_material := fill.material_override as ShaderMaterial
+	var background_material := background.material_override as ShaderMaterial
+	_append(failures, Assertions.expect_float_near(
+		fill.position.z,
+		0.0,
+		0.0001,
+		"Fill shares the background origin so player yaw cannot change its transparent depth"
+	))
+	_append(failures, Assertions.expect_true(
+		fill_material.render_priority > background_material.render_priority,
+		"Fill renders after Background regardless of player yaw"
+	))
 	health_bar.set_health(25.0, 100.0, false)
 	_append(failures, Assertions.expect_float_near(health_bar.get_target_ratio(), 0.25, 0.0001, "Immediate health update sets target ratio"))
 	_append(failures, Assertions.expect_float_near(fill.scale.x, 0.25, 0.0001, "Immediate health update scales Fill"))

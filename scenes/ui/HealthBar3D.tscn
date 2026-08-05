@@ -63,6 +63,7 @@ void fragment() {
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_fill"]
 resource_local_to_scene = true
+render_priority = 1
 shader = SubResource("Shader_fill")
 
 [sub_resource type="QuadMesh" id="QuadMesh_fill"]
@@ -76,6 +77,5 @@ material_override = SubResource("ShaderMaterial_background")
 mesh = SubResource("QuadMesh_background")
 
 [node name="Fill" type="MeshInstance3D" parent="."]
-position = Vector3(0, 0, 0.001)
 material_override = SubResource("ShaderMaterial_fill")
 mesh = SubResource("QuadMesh_fill")
