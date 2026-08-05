@@ -1,0 +1,50 @@
+name: Deploy Cloudflare on Release
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cloudflare-production-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Test and deploy release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the published Release tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name }}
+
+      - name: Set up Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Install Godot 4.7.1
+        env:
+          GODOT_ARCHIVE: Godot_v4.7.1-stable_linux.x86_64.zip
+          GODOT_BINARY: Godot_v4.7.1-stable_linux.x86_64
+        run: |
+          curl --fail --location --silent --show-error \
+            --output "$RUNNER_TEMP/$GODOT_ARCHIVE" \
+            "https://github.com/godotengine/godot/releases/download/4.7.1-stable/$GODOT_ARCHIVE"
+          unzip -q "$RUNNER_TEMP/$GODOT_ARCHIVE" -d "$RUNNER_TEMP/godot"
+          chmod +x "$RUNNER_TEMP/godot/$GODOT_BINARY"
+          echo "ZOMBIEWAR_GODOT_BIN=$RUNNER_TEMP/godot/$GODOT_BINARY" >> "$GITHUB_ENV"
+
+      - name: Run the full Godot test suite
+        run: ./tests/run_tests.sh
+
+      - name: Deploy the Release to Cloudflare production
+        env:
+          GODOT_BIN: ${{ env.ZOMBIEWAR_GODOT_BIN }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_BRANCH: main
+        run: bash tools/cloudflare/deploy_r2_pages.sh
