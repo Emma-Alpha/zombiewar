@@ -1,5 +1,6 @@
 # Godot 4+ specific ignores
 .godot/
+.wrangler/
 /android/
 /build/
 .DS_Store

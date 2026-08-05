@@ -5,9 +5,14 @@ const Assertions = preload("res://tests/helpers/assertions.gd")
 func run() -> Array[String]:
 	var failures: Array[String] = []
 	var output: Array = []
-	var node_test := ProjectSettings.globalize_path("res://tests/integration/cloudflare_r2_worker.test.mjs")
-	var exit_code := OS.execute("node", ["--test", node_test], output, true)
-	_append(failures, Assertions.expect_equal(exit_code, 0, "Cloudflare Worker Node tests: %s" % "\n".join(output)))
+	var node_tests := [
+		ProjectSettings.globalize_path("res://tests/integration/cloudflare_r2_worker.test.mjs"),
+		ProjectSettings.globalize_path("res://tests/integration/cloudflare_r2_deploy_script.test.mjs"),
+	]
+	var node_args := ["--test"]
+	node_args.append_array(node_tests)
+	var exit_code := OS.execute("node", node_args, output, true)
+	_append(failures, Assertions.expect_equal(exit_code, 0, "Cloudflare deployment Node tests: %s" % "\n".join(output)))
 	for path in [
 		"res://wrangler.jsonc",
 		"res://tools/cloudflare/pages_worker.template.js",

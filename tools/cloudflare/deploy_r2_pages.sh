@@ -4,11 +4,13 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 GODOT_BIN="${GODOT_BIN:-/Applications/Godot.app/Contents/MacOS/Godot}"
 PAGES_PROJECT="${CLOUDFLARE_PAGES_PROJECT:-zombiewar}"
-R2_BUCKET="zombiewar-assets"
 DEPLOY_BRANCH="${CLOUDFLARE_BRANCH:-main}"
 WEB_DIR="$ROOT_DIR/build/web"
 PAGES_DIR="$ROOT_DIR/build/cloudflare-pages"
+WRANGLER_CONFIG="$ROOT_DIR/wrangler.jsonc"
 PREPARE_ONLY=false
+VERIFY_ATTEMPTS=5
+VERIFY_RETRY_DELAY_SECONDS="${DEPLOY_VERIFY_RETRY_DELAY_SECONDS:-2}"
 
 if [[ "${1:-}" == "--prepare-only" ]]; then
 	PREPARE_ONLY=true
@@ -25,7 +27,88 @@ command -v node >/dev/null 2>&1 || { echo "node is required" >&2; exit 1; }
 command -v npx >/dev/null 2>&1 || { echo "npx is required" >&2; exit 1; }
 command -v shasum >/dev/null 2>&1 || { echo "shasum is required" >&2; exit 1; }
 command -v rsync >/dev/null 2>&1 || { echo "rsync is required" >&2; exit 1; }
+command -v curl >/dev/null 2>&1 || { echo "curl is required" >&2; exit 1; }
+[[ -f "$WRANGLER_CONFIG" ]] || { echo "Missing Wrangler config: $WRANGLER_CONFIG" >&2; exit 1; }
 
+R2_BUCKET="$(node - "$WRANGLER_CONFIG" <<'NODE'
+const fs = require("node:fs");
+
+function stripJsonComments(source) {
+	let output = "";
+	let inString = false;
+	let escaped = false;
+	let lineComment = false;
+	let blockComment = false;
+	for (let index = 0; index < source.length; index += 1) {
+		const character = source[index];
+		const nextCharacter = source[index + 1];
+		if (lineComment) {
+			if (character === "\n") {
+				lineComment = false;
+				output += character;
+			}
+			continue;
+		}
+		if (blockComment) {
+			if (character === "*" && nextCharacter === "/") {
+				blockComment = false;
+				index += 1;
+			} else if (character === "\n") {
+				output += character;
+			}
+			continue;
+		}
+		if (inString) {
+			output += character;
+			if (escaped) {
+				escaped = false;
+			} else if (character === "\\") {
+				escaped = true;
+			} else if (character === '"') {
+				inString = false;
+			}
+			continue;
+		}
+		if (character === '"') {
+			inString = true;
+			output += character;
+		} else if (character === "/" && nextCharacter === "/") {
+			lineComment = true;
+			index += 1;
+		} else if (character === "/" && nextCharacter === "*") {
+			blockComment = true;
+			index += 1;
+		} else {
+			output += character;
+		}
+	}
+	return output;
+}
+
+const configPath = process.argv[2];
+try {
+	const source = stripJsonComments(fs.readFileSync(configPath, "utf8"))
+		.replace(/,\s*([}\]])/g, "$1");
+	const config = JSON.parse(source);
+	const bindings = Array.isArray(config.r2_buckets)
+		? config.r2_buckets.filter((entry) => entry?.binding === "GAME_ASSETS")
+		: [];
+	if (bindings.length !== 1) {
+		throw new Error(`expected exactly one GAME_ASSETS R2 binding, found ${bindings.length}`);
+	}
+	const bucketName = bindings[0].bucket_name;
+	if (typeof bucketName !== "string" || bucketName.trim() === "") {
+		throw new Error("GAME_ASSETS bucket_name must be a non-empty string");
+	}
+	process.stdout.write(bucketName.trim());
+} catch (error) {
+	console.error(`Invalid Wrangler GAME_ASSETS configuration in ${configPath}: ${error.message}`);
+	process.exit(1);
+}
+NODE
+)"
+
+rm -rf "$WEB_DIR" "$PAGES_DIR"
 mkdir -p "$WEB_DIR"
 "$GODOT_BIN" --headless --path "$ROOT_DIR" --export-release Web "$WEB_DIR/index.html"
 
@@ -65,11 +148,130 @@ npx --yes wrangler r2 object put "$R2_BUCKET/$WASM_KEY" \
 	--cache-control "no-store, no-cache, must-revalidate, max-age=0" \
 	--remote
 
-npx --yes wrangler pages deploy "$PAGES_DIR" \
-	--project-name "$PAGES_PROJECT" \
-	--branch "$DEPLOY_BRANCH"
-
 PRODUCTION_URL="https://${PAGES_PROJECT}.pages.dev"
-curl --fail --silent --show-error --head "$PRODUCTION_URL/"
-curl --fail --silent --show-error --head "$PRODUCTION_URL/index.wasm"
-echo "Deployment complete: $PRODUCTION_URL"
+DEPLOY_OUTPUT="$(
+	npx --yes wrangler pages deploy "$PAGES_DIR" \
+		--project-name "$PAGES_PROJECT" \
+		--branch "$DEPLOY_BRANCH" 2>&1
+)"
+printf '%s\n' "$DEPLOY_OUTPUT"
+
+if ! DEPLOYMENT_URL="$(
+	printf '%s\n' "$DEPLOY_OUTPUT" | PAGES_PROJECT="$PAGES_PROJECT" node -e '
+		let output = "";
+		process.stdin.setEncoding("utf8");
+		process.stdin.on("data", (chunk) => { output += chunk; });
+		process.stdin.on("end", () => {
+			const productionUrl = `https://${process.env.PAGES_PROJECT}.pages.dev`;
+			const urls = output.match(/https:\/\/[A-Za-z0-9.-]+\.pages\.dev\/?/g) ?? [];
+			const deploymentUrl = urls
+				.map((url) => url.replace(/\/$/, ""))
+				.find((url) => url !== productionUrl);
+			if (!deploymentUrl) process.exit(1);
+			process.stdout.write(deploymentUrl);
+		});
+	'
+)"; then
+	echo "Unable to determine the deployment-specific Pages URL" >&2
+	exit 1
+fi
+
+VERIFY_DIR="$(mktemp -d)"
+trap 'rm -rf "$VERIFY_DIR"' EXIT
+
+header_matches() {
+	local headers_path="$1"
+	local header_name="$2"
+	local expected_value="$3"
+	tr -d '\r' < "$headers_path" \
+		| grep -Eiq "^${header_name}:[[:space:]]*${expected_value}[[:space:]]*$"
+}
+
+validate_common_headers() {
+	local headers_path="$1"
+	local description="$2"
+	if ! tr -d '\r' < "$headers_path" | grep -Eiq '^HTTP/(1\.[01]|2|3)[[:space:]]+200([[:space:]]|$)'; then
+		echo "$description did not return HTTP 200" >&2
+		return 1
+	fi
+	if ! header_matches "$headers_path" "Cache-Control" "no-store, no-cache, must-revalidate, max-age=0"; then
+		echo "$description has an invalid Cache-Control header" >&2
+		return 1
+	fi
+	if ! header_matches "$headers_path" "Cross-Origin-Opener-Policy" "same-origin"; then
+		echo "$description has an invalid Cross-Origin-Opener-Policy header" >&2
+		return 1
+	fi
+	if ! header_matches "$headers_path" "Cross-Origin-Embedder-Policy" "require-corp"; then
+		echo "$description has an invalid Cross-Origin-Embedder-Policy header" >&2
+		return 1
+	fi
+}
+
+validate_wasm_headers() {
+	local headers_path="$1"
+	local description="$2"
+	validate_common_headers "$headers_path" "$description" || return 1
+	if ! header_matches "$headers_path" "Content-Type" "application/wasm"; then
+		echo "$description has an invalid Content-Type header" >&2
+		return 1
+	fi
+}
+
+verify_deployment_once() {
+	local base_url="$1"
+	local root_headers="$VERIFY_DIR/root.headers"
+	local wasm_head_headers="$VERIFY_DIR/wasm-head.headers"
+	local wasm_get_headers="$VERIFY_DIR/wasm-get.headers"
+	local downloaded_wasm="$VERIFY_DIR/index.wasm"
+
+	if ! curl --fail --silent --show-error --head "$base_url/" > "$root_headers"; then
+		return 1
+	fi
+	validate_common_headers "$root_headers" "$base_url/" || return 1
+
+	if ! curl --fail --silent --show-error --head "$base_url/index.wasm" > "$wasm_head_headers"; then
+		return 1
+	fi
+	validate_wasm_headers "$wasm_head_headers" "$base_url/index.wasm HEAD" || return 1
+
+	if ! curl --fail --silent --show-error \
+		--dump-header "$wasm_get_headers" \
+		--output "$downloaded_wasm" \
+		"$base_url/index.wasm"; then
+		return 1
+	fi
+	validate_wasm_headers "$wasm_get_headers" "$base_url/index.wasm GET" || return 1
+
+	local downloaded_hash
+	downloaded_hash="$(shasum -a 256 "$downloaded_wasm" | awk '{print $1}')"
+	if [[ "$downloaded_hash" != "$WASM_HASH" ]]; then
+		echo "$base_url/index.wasm SHA-256 mismatch: expected $WASM_HASH, got $downloaded_hash" >&2
+		return 1
+	fi
+}
+
+verify_deployment() {
+	local base_url="$1"
+	local description="$2"
+	local attempt
+	for ((attempt = 1; attempt <= VERIFY_ATTEMPTS; attempt += 1)); do
+		if verify_deployment_once "$base_url"; then
+			echo "Verified $description: $base_url"
+			return 0
+		fi
+		if ((attempt < VERIFY_ATTEMPTS)); then
+			echo "Verification attempt $attempt/$VERIFY_ATTEMPTS failed for $base_url; retrying" >&2
+			sleep "$VERIFY_RETRY_DELAY_SECONDS"
+		fi
+	done
+	echo "Verification failed after $VERIFY_ATTEMPTS attempts for $base_url" >&2
+	return 1
+}
+
+verify_deployment "$DEPLOYMENT_URL" "deployment URL"
+if [[ "$DEPLOY_BRANCH" == "main" || "$DEPLOY_BRANCH" == "production" ]]; then
+	verify_deployment "$PRODUCTION_URL" "production alias"
+fi
+
+echo "Deployment complete: $DEPLOYMENT_URL"

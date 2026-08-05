@@ -93,4 +93,4 @@ CLOUDFLARE_API_TOKEN
 CLOUDFLARE_ACCOUNT_ID
 ```
 
-Optional overrides are `GODOT_BIN`, `CLOUDFLARE_PAGES_PROJECT`, and `CLOUDFLARE_BRANCH`. The Pages project and branch defaults are `zombiewar` and `main`. The R2 bucket is fixed as `zombiewar-assets` by `wrangler.jsonc`, remains private, and old hash-addressed WASM objects are intentionally retained for historical Pages deployments.
+Optional overrides are `GODOT_BIN`, `CLOUDFLARE_PAGES_PROJECT`, and `CLOUDFLARE_BRANCH`. The Pages project and branch defaults are `zombiewar` and `main`. The deployment script reads the single `GAME_ASSETS` bucket from `wrangler.jsonc`; that file fixes it as `zombiewar-assets`. The bucket remains private, and old hash-addressed WASM objects are intentionally retained for historical Pages deployments.

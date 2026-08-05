@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
+const CACHE_CONTROL = "no-store, no-cache, must-revalidate, max-age=0";
+
 const template = await readFile(
 	new URL("../../tools/cloudflare/pages_worker.template.js", import.meta.url),
 	"utf8",
@@ -49,6 +51,9 @@ test("GET /index.wasm streams the versioned R2 object", async () => {
 	);
 	assert.equal(response.status, 200);
 	assert.equal(response.headers.get("content-type"), "application/wasm");
+	assert.equal(response.headers.get("cache-control"), CACHE_CONTROL);
+	assert.equal(response.headers.get("cross-origin-opener-policy"), "same-origin");
+	assert.equal(response.headers.get("cross-origin-embedder-policy"), "require-corp");
 	assert.equal(response.headers.get("etag"), '"test-etag"');
 	assert.deepEqual(new Uint8Array(await response.arrayBuffer()), new Uint8Array([0, 97, 115, 109]));
 });
@@ -60,7 +65,20 @@ test("HEAD /index.wasm returns metadata without a body", async () => {
 	);
 	assert.equal(response.status, 200);
 	assert.equal(response.headers.get("content-type"), "application/wasm");
+	assert.equal(response.headers.get("cache-control"), CACHE_CONTROL);
+	assert.equal(response.headers.get("cross-origin-opener-policy"), "same-origin");
+	assert.equal(response.headers.get("cross-origin-embedder-policy"), "require-corp");
+	assert.equal(response.headers.get("etag"), '"test-etag"');
 	assert.equal(await response.text(), "");
+});
+
+test("unsupported /index.wasm methods return 405", async () => {
+	const response = await worker.fetch(
+		new Request("https://zombiewar.pages.dev/index.wasm", { method: "POST" }),
+		createEnv(),
+	);
+	assert.equal(response.status, 405);
+	assert.equal(response.headers.get("allow"), "GET, HEAD");
 });
 
 test("missing R2 objects return 503", async () => {
@@ -72,11 +90,17 @@ test("missing R2 objects return 503", async () => {
 });
 
 test("R2 failures return 502", async () => {
-	const response = await worker.fetch(
-		new Request("https://zombiewar.pages.dev/index.wasm"),
-		createEnv({ failure: true }),
-	);
-	assert.equal(response.status, 502);
+	const originalConsoleError = console.error;
+	console.error = () => {};
+	try {
+		const response = await worker.fetch(
+			new Request("https://zombiewar.pages.dev/index.wasm"),
+			createEnv({ failure: true }),
+		);
+		assert.equal(response.status, 502);
+	} finally {
+		console.error = originalConsoleError;
+	}
 });
 
 test("other paths fall back to Pages static assets", async () => {
