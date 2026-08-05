@@ -237,6 +237,15 @@ test("preview deployment verifies only its deployment-specific URL", async (t) =
 	assert.doesNotMatch(log, new RegExp(PRODUCTION_URL.replaceAll(".", "\\.")));
 });
 
+test("only main verifies the configured production alias", async (t) => {
+	const fixture = await createFixture(t);
+	const result = runDeploy(fixture, { CLOUDFLARE_BRANCH: "production" });
+	assert.equal(result.status, 0, result.stderr || result.stdout);
+	const log = await readRemoteLog(fixture);
+	assert.match(log, new RegExp(`curl HEAD ${DEPLOYMENT_URL}/\\n`));
+	assert.doesNotMatch(log, new RegExp(PRODUCTION_URL.replaceAll(".", "\\.")));
+});
+
 test("deploy extracts only the deployment-complete URL amid unrelated Pages URLs", async (t) => {
 	const fixture = await createFixture(t);
 	const result = runDeploy(fixture, {

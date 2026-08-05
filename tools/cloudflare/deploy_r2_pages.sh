@@ -299,7 +299,7 @@ verify_deployment() {
 }
 
 verify_deployment "$DEPLOYMENT_URL" "deployment URL"
-if [[ "$DEPLOY_BRANCH" == "main" || "$DEPLOY_BRANCH" == "production" ]]; then
+if [[ "$DEPLOY_BRANCH" == "main" ]]; then
 	verify_deployment "$PRODUCTION_URL" "production alias"
 fi
 
