@@ -1,0 +1,12 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "zombiewar",
+  "pages_build_output_dir": "./build/cloudflare-pages",
+  "compatibility_date": "2026-08-05",
+  "r2_buckets": [
+    {
+      "binding": "GAME_ASSETS",
+      "bucket_name": "zombiewar-assets"
+    }
+  ]
+}

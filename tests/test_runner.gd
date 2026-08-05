@@ -30,6 +30,7 @@ const TEST_PATHS: Array[String] = [
 	"res://tests/integration/test_demo_wave_controls.gd",
 	"res://tests/integration/test_main_menu_scene.gd",
 	"res://tests/integration/test_menu_cjk_font.gd",
+	"res://tests/integration/test_cloudflare_r2_deployment.gd",
 ]
 
 func _initialize() -> void:

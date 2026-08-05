@@ -6,6 +6,7 @@ const EquipmentController = preload("res://scripts/player/equipment_controller.g
 const RangedWeapon = preload("res://scripts/combat/weapons/ranged_weapon.gd")
 const MeleeWeapon = preload("res://scripts/combat/weapons/melee_weapon.gd")
 const HitResult = preload("res://scripts/combat/hit_result.gd")
+const ZOMBIE_SCENE := preload("res://scenes/targets/ZombieTarget.tscn")
 
 func run() -> Array[String]:
 	var failures: Array[String] = []
@@ -413,6 +414,24 @@ func run() -> Array[String]:
 					float(target.get("attack_damage")) > 0.0,
 					"Every zombie has an enabled melee attack"
 				))
+	if player != null and equipment != null and targets != null:
+		var direct_target := ZOMBIE_SCENE.instantiate() as ZombieTarget
+		direct_target.position = targets.to_local(
+			player.global_position + Vector3.FORWARD * 8.0
+		)
+		direct_target.set_physics_process(false)
+		targets.add_child(direct_target)
+		equipment.equip_slot(1)
+		var rifle := equipment.get_current_weapon() as RangedWeapon
+		if rifle != null:
+			rifle.call("_fire", Vector3.FORWARD)
+		_append(failures, Assertions.expect_float_near(
+			direct_target.health.current,
+			25.0,
+			0.0001,
+			"Arena rifle ray clears the floor and damages a centered Zombie"
+		))
+		direct_target.free()
 	if player != null and health_label != null and game_over != null:
 		player.call("apply_damage", 10.0, Vector3.ZERO)
 		_append(failures, Assertions.expect_equal(
