@@ -19,6 +19,8 @@ Use GDScript with tabs for indentation and follow the existing Godot style. Name
 
 Tests use lightweight `RefCounted` cases with a `run() -> Array[String]` method. Name files `test_<behavior>.gd`, place logic tests in `unit/`, and scene-contract tests in `integration/`. Register every new test in `TEST_PATHS` inside `tests/test_runner.gd`. Run the full headless suite before submitting changes; no coverage percentage is enforced, but new behavior and regressions should receive focused tests.
 
+Do not use CUA (computer-use or UI-control automation) to perform fully automated validation. Test behavior from the source-code layer with unit tests, integration tests, scene-contract checks, and headless Godot commands. When a visual or interactive result cannot be verified reliably from source-level tests, give the user a short, precise sequence of in-game operations to perform, ask them to capture the relevant screenshot, and analyze the screenshot they provide.
+
 ## Commit & Pull Request Guidelines
 
 History follows Conventional Commit-style prefixes such as `feat:`, `fix:`, `test:`, `docs:`, and `chore:`. Keep subjects imperative and scoped to one logical change. Pull requests should summarize gameplay or architecture impact, list verification commands, link relevant issues or design notes, and include screenshots or short clips for visible scene, UI, animation, or VFX changes. Do not commit generated `build/` or `.godot/` contents.

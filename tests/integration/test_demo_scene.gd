@@ -196,11 +196,23 @@ func run() -> Array[String]:
 		orientation_guard.input_cancel_target_path == NodePath("../MobileControls"),
 		"Demo blocks portrait play and releases mobile controls"
 	))
+	var demo_viewport_height := tree.root.get_visible_rect().size.y
+	var expected_demo_joystick_size := demo_viewport_height * 0.45
+	var expected_demo_fire_size := expected_demo_joystick_size * 160.0 / 252.0
 	_append(failures, Assertions.expect_true(
-		virtual_joystick != null and virtual_joystick.size == Vector2(252.0, 252.0) and
-		is_equal_approx(virtual_joystick.joystick_size, 204.0) and
-		is_equal_approx(virtual_joystick.tip_size, 88.0),
-		"Demo has an enlarged native movement joystick"
+		virtual_joystick != null and
+		virtual_joystick.size.is_equal_approx(
+			Vector2.ONE * expected_demo_joystick_size
+		) and
+		is_equal_approx(
+			virtual_joystick.joystick_size,
+			expected_demo_joystick_size * 204.0 / 252.0
+		) and
+		is_equal_approx(
+			virtual_joystick.tip_size,
+			expected_demo_joystick_size * 88.0 / 252.0
+		),
+		"Demo sizes the native movement joystick to 45 percent of viewport height"
 	))
 	_append(failures, Assertions.expect_true(
 		virtual_joystick != null and
@@ -218,13 +230,20 @@ func run() -> Array[String]:
 	))
 	_append(failures, Assertions.expect_true(
 		fire_button != null and fire_button.action == &"primary_attack" and
-		fire_button.size.x >= 144.0 and fire_button.size.y >= 144.0,
-		"Demo has a large hold-to-fire touch button"
+		fire_button.size.is_equal_approx(Vector2.ONE * expected_demo_fire_size),
+		"Demo scales the hold-to-fire button with the movement joystick"
 	))
 	_append(failures, Assertions.expect_true(
 		jump_button != null and jump_button.action == &"jump" and
-		jump_button.size.x >= 112.0 and jump_button.size.y >= 112.0,
-		"Demo has a distinct jump touch button"
+		jump_button.size.is_equal_approx(Vector2(120.0, 120.0)),
+		"Demo keeps a distinct fixed-size jump touch button"
+	))
+	_append(failures, Assertions.expect_true(
+		virtual_joystick != null and fire_button != null and jump_button != null and
+		not virtual_joystick.get_global_rect().intersects(fire_button.get_global_rect()) and
+		not virtual_joystick.get_global_rect().intersects(jump_button.get_global_rect()) and
+		not fire_button.get_global_rect().intersects(jump_button.get_global_rect()),
+		"Demo responsive touch targets do not overlap"
 	))
 	_append(failures, Assertions.expect_true(
 		mobile_controls != null and

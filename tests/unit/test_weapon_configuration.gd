@@ -48,6 +48,54 @@ func run() -> Array[String]:
 		1,
 		"Rifle hit mask includes solid world layer one"
 	))
+	_append(failures, Assertions.expect_float_near(
+		pistol.base_spread_degrees,
+		0.35,
+		0.0001,
+		"Pistol base spread"
+	))
+	_append(failures, Assertions.expect_float_near(
+		pistol.max_spread_degrees,
+		3.0,
+		0.0001,
+		"Pistol maximum spread"
+	))
+	_append(failures, Assertions.expect_float_near(
+		pistol.spread_increase_per_shot_degrees,
+		0.8,
+		0.0001,
+		"Pistol spread growth per shot"
+	))
+	_append(failures, Assertions.expect_float_near(
+		pistol.spread_recovery_degrees_per_second,
+		1.8,
+		0.0001,
+		"Pistol spread recovery per second"
+	))
+	_append(failures, Assertions.expect_float_near(
+		rifle.base_spread_degrees,
+		0.5,
+		0.0001,
+		"Rifle base spread"
+	))
+	_append(failures, Assertions.expect_float_near(
+		rifle.max_spread_degrees,
+		5.0,
+		0.0001,
+		"Rifle maximum spread"
+	))
+	_append(failures, Assertions.expect_float_near(
+		rifle.spread_increase_per_shot_degrees,
+		0.65,
+		0.0001,
+		"Rifle spread growth per shot"
+	))
+	_append(failures, Assertions.expect_float_near(
+		rifle.spread_recovery_degrees_per_second,
+		1.5,
+		0.0001,
+		"Rifle spread recovery per second"
+	))
 
 	_append(failures, Assertions.expect_equal(
 		pistol.trigger_mode,
@@ -66,7 +114,10 @@ func run() -> Array[String]:
 		"Rifle uses held trigger mode"
 	))
 	_append(failures, Assertions.expect_float_near(
-		rifle.attacks_per_second, 6.0, 0.0001, "Rifle cadence"
+		rifle.attacks_per_second, 4.0, 0.0001, "Rifle cadence"
+	))
+	_append(failures, Assertions.expect_float_near(
+		rifle.damage, 25.0, 0.0001, "Rifle base damage"
 	))
 	_append(failures, Assertions.expect_equal(
 		knife.attack_animation, &"Slash", "Knife attack animation"

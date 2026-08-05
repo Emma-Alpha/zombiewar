@@ -21,7 +21,7 @@ Open `project.godot` in Godot 4.7.1 and run the configured main scene, or use:
 - `4`: reserved empty weapon slot; with no fourth weapon yet, keep the current weapon equipped
 
 - 手枪每次按下J只发射一枪，持续按住不会自动补发。
-- 步枪按住J以每秒6发持续射击。
+- 步枪按住J以每秒4发持续射击。
 - 刀每次按下J播放一次Slash，在0.22秒命中窗口攻击前方最近的一只僵尸。
 - 切换武器会立即更换模型、移动动画和攻击方式，并取消上一把武器未完成的攻击。
 - WASD始终同时改变移动、角色朝向和攻击方向；松开后保留最后一个非零方向。

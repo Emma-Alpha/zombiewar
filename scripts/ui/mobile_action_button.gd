@@ -5,6 +5,8 @@ class_name MobileActionButton
 @export var normal_color := Color(0.06, 0.08, 0.10, 0.58)
 @export var pressed_color := Color(1.0, 0.38, 0.10, 0.88)
 @export var outline_color := Color(1.0, 0.72, 0.12, 0.82)
+@export var outline_inset := 4.0
+@export var outline_width := 4.0
 
 var active_touch_id := -1
 var pressed := false
@@ -40,9 +42,9 @@ func cancel() -> void:
 
 func _draw() -> void:
 	var center := size * 0.5
-	var radius := minf(size.x, size.y) * 0.5 - 4.0
+	var radius := maxf(minf(size.x, size.y) * 0.5 - outline_inset, 0.0)
 	draw_circle(center, radius, pressed_color if pressed else normal_color)
-	draw_arc(center, radius, 0.0, TAU, 64, outline_color, 4.0, true)
+	draw_arc(center, radius, 0.0, TAU, 64, outline_color, outline_width, true)
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_RESIZED:

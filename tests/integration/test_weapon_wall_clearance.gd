@@ -3,6 +3,9 @@ extends RefCounted
 const Assertions = preload("res://tests/helpers/assertions.gd")
 const PLAYER_SCENE := preload("res://scenes/player/Player.tscn")
 const ZOMBIE_SCENE := preload("res://scenes/targets/ZombieTarget.tscn")
+const WeaponSpreadState = preload(
+	"res://scripts/combat/weapons/weapon_spread_state.gd"
+)
 
 func run() -> Array[String]:
 	var failures: Array[String] = []
@@ -21,6 +24,7 @@ func run() -> Array[String]:
 		"WeaponCollision"
 	) as CollisionShape3D
 	var rifle := player.equipment.get_current_weapon() as RangedWeapon
+	_use_zero_spread(rifle)
 	if clearance == null or weapon_collision == null or rifle == null:
 		_append(failures, Assertions.expect_true(
 			false,
@@ -294,6 +298,7 @@ func _test_raised_shot_obstruction_and_feedback(failures: Array[String]) -> void
 	tree.root.add_child(wall_target)
 	var clearance := player.get_node("WeaponClearanceController") as WeaponClearanceController
 	var rifle := player.equipment.get_current_weapon() as RangedWeapon
+	_use_zero_spread(rifle)
 	clearance.call("update_clearance", 0.016, Vector3.ZERO, 0.0)
 	rifle._process(0.0)
 	_append(failures, Assertions.expect_true(
@@ -466,6 +471,7 @@ func _assert_capsule_shot_contract(
 	label: String
 ) -> void:
 	var rifle := player.equipment.get_current_weapon() as RangedWeapon
+	_use_zero_spread(rifle)
 	var attack_origins: Array[Vector3] = []
 	var attack_directions: Array[Vector3] = []
 	rifle.attack_resolved.connect(func(
@@ -541,6 +547,7 @@ func _test_tucked_turn_uses_body_facing(failures: Array[String]) -> void:
 	Input.action_press(player.primary_attack_action)
 	player._physics_process(0.016)
 	var rifle := player.equipment.get_current_weapon() as RangedWeapon
+	_use_zero_spread(rifle)
 	rifle._physics_process(0.20)
 	var actual_forward := -player.global_basis.z.normalized()
 	var resolved_direction := resolved_directions[0]
@@ -747,6 +754,9 @@ func _tracer_start(tracer: ShotTracer) -> Vector3:
 
 func _tracer_end(tracer: ShotTracer) -> Vector3:
 	return tracer.to_global(Vector3(0.0, 0.0, -0.5))
+
+func _use_zero_spread(weapon: RangedWeapon) -> void:
+	weapon.spread_state = WeaponSpreadState.new(0.0, 0.0, 0.0, 0.0)
 
 func _capsule_muzzle_endpoint(weapon_collision: CollisionShape3D) -> Vector3:
 	var capsule := weapon_collision.shape as CapsuleShape3D

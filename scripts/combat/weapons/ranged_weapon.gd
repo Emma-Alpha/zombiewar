@@ -4,12 +4,17 @@ class_name RangedWeapon
 const TRACER_SCENE := preload("res://scenes/fx/ShotTracer.tscn")
 const MuzzleFlash = preload("res://scripts/fx/muzzle_flash.gd")
 const WeaponTrigger = preload("res://scripts/combat/weapons/weapon_trigger.gd")
+const WeaponSpreadState = preload(
+	"res://scripts/combat/weapons/weapon_spread_state.gd"
+)
 
 @onready var muzzle: Marker3D = $Muzzle
 @onready var muzzle_flash: MuzzleFlash = $Muzzle/MuzzleFlash
 @onready var shot_audio: AudioStreamPlayer3D = $ShotAudio
 
 var weapon_trigger: WeaponTrigger
+var spread_state: WeaponSpreadState
+var spread_rng := RandomNumberGenerator.new()
 var tracer_pool: Array[ShotTracer] = []
 var tracer_pool_cursor := 0
 
@@ -19,6 +24,13 @@ func _ready() -> void:
 		ranged_definition.trigger_mode,
 		ranged_definition.attacks_per_second
 	)
+	spread_state = WeaponSpreadState.new(
+		ranged_definition.base_spread_degrees,
+		ranged_definition.max_spread_degrees,
+		ranged_definition.spread_increase_per_shot_degrees,
+		ranged_definition.spread_recovery_degrees_per_second
+	)
+	spread_rng.randomize()
 	_prewarm_tracers()
 
 func bind_context(
@@ -36,10 +48,16 @@ func bind_context(
 		_sync_to_visual_anchor()
 
 func _physics_process(delta: float) -> void:
+	spread_state.tick(delta)
 	weapon_trigger.tick(delta)
 	if weapon_trigger.try_attack(trigger_pressed, trigger_just_pressed):
 		_fire(aim_direction)
 	trigger_just_pressed = false
+
+func set_equipped(value: bool) -> void:
+	super.set_equipped(value)
+	if not value and spread_state != null:
+		spread_state.reset()
 
 func _process(_delta: float) -> void:
 	_sync_to_visual_anchor()
@@ -68,7 +86,10 @@ func _fire(shot_direction: Vector3) -> void:
 	_sync_to_visual_anchor()
 	var ranged_definition := definition as RangedWeaponDefinition
 	var ray_origin := _sync_muzzle_to_capsule()
-	var ray_direction := WeaponMath.flat_direction(shot_direction)
+	var ray_direction := spread_state.resolve_shot_direction(
+		shot_direction,
+		spread_rng.randf_range(-1.0, 1.0)
+	)
 	var ray_end := WeaponMath.ray_end_from_direction(
 		ray_origin,
 		ray_direction,

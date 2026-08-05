@@ -6,6 +6,7 @@ const CAMERA_SCENE := preload("res://scenes/camera/FollowCamera.tscn")
 const ZOMBIE_SCENE := preload("res://scenes/targets/ZombieTarget.tscn")
 const EquipmentController = preload("res://scripts/player/equipment_controller.gd")
 const RangedWeapon = preload("res://scripts/combat/weapons/ranged_weapon.gd")
+const WeaponMath = preload("res://scripts/combat/weapon_math.gd")
 
 func run() -> Array[String]:
 	var failures: Array[String] = []
@@ -67,18 +68,63 @@ func run() -> Array[String]:
 		))
 
 	var feedback_origins: Array[Vector3] = []
+	var feedback_directions: Array[Vector3] = []
 	weapon.attack_resolved.connect(func(
 		origin: Vector3,
-		_direction: Vector3,
+		direction: Vector3,
 		_result: HitResult,
 		_visual_recoil_kick: float,
 		_camera_impulse_strength: float
 	) -> void:
 		feedback_origins.append(origin)
+		feedback_directions.append(direction)
 )
 	var tracer_index := weapon.tracer_pool_cursor
 	weapon._fire(-player.global_basis.z)
 	var tracer := weapon.tracer_pool[tracer_index] as ShotTracer
+	var ranged_definition := weapon.definition as RangedWeaponDefinition
+	var base_direction := WeaponMath.flat_direction(-player.global_basis.z)
+	var resolved_direction: Vector3 = feedback_directions.back()
+	var tracer_direction := WeaponMath.flat_direction(
+		_tracer_end(tracer) - _tracer_start(tracer)
+	)
+	_append(failures, Assertions.expect_true(
+		is_equal_approx(resolved_direction.y, 0.0) and
+			base_direction.angle_to(resolved_direction) <=
+				deg_to_rad(ranged_definition.base_spread_degrees) + 0.0001,
+		"Initial ranged shot stays inside base horizontal spread"
+	))
+	_append(failures, Assertions.expect_true(
+		tracer_direction.dot(resolved_direction) > 0.9999,
+		"Tracer follows the same resolved spread direction as feedback"
+	))
+	_append(failures, Assertions.expect_float_near(
+		weapon.spread_state.current_spread_degrees,
+		ranged_definition.base_spread_degrees +
+			ranged_definition.spread_increase_per_shot_degrees,
+		0.0001,
+		"A real fired shot grows the next-shot spread"
+	))
+
+	weapon.spread_state.reset()
+	weapon.set_attack_input(true, true, base_direction)
+	weapon._physics_process(0.0)
+	var spread_after_gate_shot: float = weapon.spread_state.current_spread_degrees
+	weapon.set_attack_input(true, false, base_direction)
+	weapon._physics_process(0.0)
+	_append(failures, Assertions.expect_float_near(
+		weapon.spread_state.current_spread_degrees,
+		spread_after_gate_shot,
+		0.0001,
+		"A held input blocked by fire cadence does not grow spread"
+	))
+	weapon.cancel_attack()
+	_append(failures, Assertions.expect_float_near(
+		weapon.spread_state.current_spread_degrees,
+		spread_after_gate_shot,
+		0.0001,
+		"Temporary attack cancellation does not instantly reset spread"
+	))
 	_append(failures, Assertions.expect_vector3_near(
 		weapon.muzzle.global_position,
 		expected_origin,
@@ -113,7 +159,6 @@ func run() -> Array[String]:
 	target.set_physics_process(false)
 	tree.root.add_child(wall)
 	tree.root.add_child(target)
-	var ranged_definition := weapon.definition as RangedWeaponDefinition
 	var original_hit_mask: int = ranged_definition.hit_collision_mask
 	ranged_definition.hit_collision_mask = original_hit_mask & ~1
 	wall.force_update_transform()
@@ -141,14 +186,47 @@ func run() -> Array[String]:
 		target.health.current < health_before,
 		"The same unobstructed shot still damages the target"
 	))
+	var target_knockback_direction := WeaponMath.flat_direction(target.velocity)
+	_append(failures, Assertions.expect_true(
+		target_knockback_direction.dot(feedback_directions.back()) > 0.999,
+		"Damage target receives the same resolved direction as attack feedback"
+	))
 	ranged_definition.hit_collision_mask = original_hit_mask
 	target.free()
+
+	var spread_before_recovery: float = weapon.spread_state.current_spread_degrees
+	weapon._physics_process(0.5)
+	_append(failures, Assertions.expect_float_near(
+		weapon.spread_state.current_spread_degrees,
+		maxf(
+			ranged_definition.base_spread_degrees,
+			spread_before_recovery -
+				ranged_definition.spread_recovery_degrees_per_second * 0.5
+		),
+		0.0001,
+		"Equipped weapon spread recovers over physics time"
+	))
+	weapon._fire(Vector3.FORWARD)
+	_append(failures, Assertions.expect_true(
+		weapon.spread_state.current_spread_degrees >
+			ranged_definition.base_spread_degrees,
+		"Additional shot expands rifle spread before switching"
+	))
+	equipment.equip_slot(0)
+	_append(failures, Assertions.expect_float_near(
+		weapon.spread_state.current_spread_degrees,
+		ranged_definition.base_spread_degrees,
+		0.0001,
+		"Unequipping a ranged weapon resets spread to base"
+	))
+	equipment.equip_slot(1)
 
 	var offset_target := ZOMBIE_SCENE.instantiate() as ZombieTarget
 	offset_target.position = Vector3(1.4, 0.0, -17.0)
 	offset_target.set_physics_process(false)
 	tree.root.add_child(offset_target)
 	functional_origin.global_position = Vector3(0.0, 1.1, 0.0)
+	weapon.spread_state.reset()
 	weapon.call("_fire", Vector3.FORWARD)
 	_append(failures, Assertions.expect_float_near(
 		offset_target.health.current,

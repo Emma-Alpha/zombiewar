@@ -157,28 +157,66 @@ func _append_raw_touch_event_failures(failures: Array[String]) -> void:
 	var virtual_joystick := controls.get_node_or_null("Layout/VirtualJoystick") as VirtualJoystick
 	var fire_button := controls.get_node_or_null("Layout/FireButton") as MobileActionButton
 	var jump_button := controls.get_node_or_null("Layout/JumpButton") as MobileActionButton
+	var fire_label := controls.get_node_or_null("Layout/FireButton/Label") as Label
 	_append(failures, Assertions.expect_true(
-		virtual_joystick != null and virtual_joystick.size == Vector2(252.0, 252.0) and
-		is_equal_approx(virtual_joystick.joystick_size, 204.0) and
-		is_equal_approx(virtual_joystick.tip_size, 88.0) and
+		virtual_joystick != null and
+		virtual_joystick.size.is_equal_approx(Vector2(324.0, 324.0)) and
+		is_equal_approx(virtual_joystick.joystick_size, 262.285714) and
+		is_equal_approx(virtual_joystick.tip_size, 113.142857) and
 		is_equal_approx(virtual_joystick.deadzone_ratio, 0.12),
-		"Raw touch tests use the enlarged low-deadzone movement joystick"
+		"A 720-high viewport sizes the movement joystick to 45 percent of screen height"
 	))
 	_append(failures, Assertions.expect_true(
 		fire_button != null and jump_button != null and
-		fire_button.get_global_rect().size != Vector2.ZERO and
-		jump_button.get_global_rect().size != Vector2.ZERO,
-		"Raw touch tests use visible action buttons with actual rectangles"
+		fire_button.size.is_equal_approx(Vector2(205.714286, 205.714286)) and
+		jump_button.size.is_equal_approx(Vector2(120.0, 120.0)),
+		"Fire scales with the joystick while jump keeps its fixed touch size"
 	))
-	if virtual_joystick == null or fire_button == null or jump_button == null:
+	_append(failures, Assertions.expect_true(
+		fire_label != null and fire_label.get_theme_font_size(&"font_size") == 33,
+		"The responsive fire button scales its label with the touch target"
+	))
+	if virtual_joystick == null or fire_button == null or jump_button == null or fire_label == null:
 		viewport.free()
 		return
+	var has_outline_inset := false
+	var has_outline_width := false
+	for property in fire_button.get_property_list():
+		if property.name == &"outline_inset":
+			has_outline_inset = true
+		elif property.name == &"outline_width":
+			has_outline_width = true
+	var fire_outline_inset := float(fire_button.get(&"outline_inset")) if has_outline_inset else -1.0
+	var fire_outline_width := float(fire_button.get(&"outline_width")) if has_outline_width else -1.0
+	_append(failures, Assertions.expect_true(
+		has_outline_inset and has_outline_width and
+		is_equal_approx(fire_outline_inset, 5.142857) and
+		is_equal_approx(fire_outline_width, 5.142857),
+		"The responsive fire button scales its circle inset and outline"
+	))
 	var joystick_rect := virtual_joystick.get_global_rect()
 	_append(failures, Assertions.expect_true(
 		not joystick_rect.intersects(fire_button.get_global_rect()) and
-		not joystick_rect.intersects(jump_button.get_global_rect()),
-		"Enlarged movement joystick does not overlap fire or jump touch targets"
+		not joystick_rect.intersects(jump_button.get_global_rect()) and
+		not fire_button.get_global_rect().intersects(jump_button.get_global_rect()),
+		"Responsive touch controls do not overlap at 1280 by 720"
 	))
+	viewport.size = Vector2i(1600, 800)
+	joystick_rect = virtual_joystick.get_global_rect()
+	_append(failures, Assertions.expect_true(
+		virtual_joystick.size.is_equal_approx(Vector2(360.0, 360.0)) and
+		fire_button.size.is_equal_approx(Vector2(228.571429, 228.571429)) and
+		jump_button.size.is_equal_approx(Vector2(120.0, 120.0)),
+		"Landscape viewport resizing recomputes height-relative touch target sizes"
+	))
+	_append(failures, Assertions.expect_true(
+		not joystick_rect.intersects(fire_button.get_global_rect()) and
+		not joystick_rect.intersects(jump_button.get_global_rect()) and
+		not fire_button.get_global_rect().intersects(jump_button.get_global_rect()),
+		"Responsive touch controls remain disjoint after landscape resizing"
+	))
+	viewport.size = Vector2i(1280, 720)
+	joystick_rect = virtual_joystick.get_global_rect()
 	var fire_center := fire_button.get_global_rect().get_center()
 	var jump_center := jump_button.get_global_rect().get_center()
 	var joystick_center := joystick_rect.get_center()

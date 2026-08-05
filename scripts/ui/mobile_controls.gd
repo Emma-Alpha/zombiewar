@@ -2,6 +2,17 @@ extends CanvasLayer
 class_name MobileControls
 
 const MobileTouchscreen = preload("res://scripts/ui/mobile_touchscreen.gd")
+const JOYSTICK_VIEWPORT_HEIGHT_RATIO := 0.45
+const BASE_JOYSTICK_CONTROL_SIZE := 252.0
+const BASE_JOYSTICK_SIZE := 204.0
+const BASE_JOYSTICK_TIP_SIZE := 88.0
+const BASE_FIRE_BUTTON_SIZE := 160.0
+const BASE_FIRE_LABEL_FONT_SIZE := 26.0
+const BASE_SCREEN_MARGIN := 40.0
+const BASE_JUMP_BUTTON_SIZE := 120.0
+const BASE_JUMP_BUTTON_GAP := 16.0
+const BASE_ACTION_OUTLINE_INSET := 4.0
+const BASE_ACTION_OUTLINE_WIDTH := 4.0
 
 @export var force_visible := false
 @export_node_path("CanvasItem") var desktop_help_path: NodePath
@@ -9,16 +20,88 @@ const MobileTouchscreen = preload("res://scripts/ui/mobile_touchscreen.gd")
 @onready var virtual_joystick: VirtualJoystick = $Layout/VirtualJoystick
 @onready var fire_button: MobileActionButton = $Layout/FireButton
 @onready var jump_button: MobileActionButton = $Layout/JumpButton
+@onready var fire_label: Label = $Layout/FireButton/Label
 
 var touch_mode := false
 var joystick_touch_id := -1
 var joystick_touch_position := Vector2.ZERO
 
 func _ready() -> void:
+	var viewport := get_viewport()
+	if not viewport.size_changed.is_connected(_apply_responsive_layout):
+		viewport.size_changed.connect(_apply_responsive_layout)
+	_apply_responsive_layout()
 	set_touch_mode(should_show_controls(
 		_is_physical_touchscreen_available(),
 		force_visible
 	))
+
+func _exit_tree() -> void:
+	var viewport := get_viewport()
+	if viewport != null and viewport.size_changed.is_connected(_apply_responsive_layout):
+		viewport.size_changed.disconnect(_apply_responsive_layout)
+
+func _apply_responsive_layout() -> void:
+	if not is_node_ready():
+		return
+	var viewport_height: float = get_viewport().get_visible_rect().size.y
+	if viewport_height <= 0.0:
+		return
+	var joystick_control_size := viewport_height * JOYSTICK_VIEWPORT_HEIGHT_RATIO
+	var scale_factor := joystick_control_size / BASE_JOYSTICK_CONTROL_SIZE
+	var fire_button_size := BASE_FIRE_BUTTON_SIZE * scale_factor
+	var screen_margin := BASE_SCREEN_MARGIN * scale_factor
+
+	_set_anchored_rect(
+		virtual_joystick,
+		screen_margin,
+		-screen_margin - joystick_control_size,
+		screen_margin + joystick_control_size,
+		-screen_margin
+	)
+	virtual_joystick.joystick_size = BASE_JOYSTICK_SIZE * scale_factor
+	virtual_joystick.tip_size = BASE_JOYSTICK_TIP_SIZE * scale_factor
+
+	var fire_left := -screen_margin - fire_button_size
+	var fire_top := -screen_margin - fire_button_size
+	_set_anchored_rect(
+		fire_button,
+		fire_left,
+		fire_top,
+		-screen_margin,
+		-screen_margin
+	)
+	fire_label.add_theme_font_size_override(
+		&"font_size",
+		roundi(BASE_FIRE_LABEL_FONT_SIZE * scale_factor)
+	)
+	fire_button.outline_inset = BASE_ACTION_OUTLINE_INSET * scale_factor
+	fire_button.outline_width = BASE_ACTION_OUTLINE_WIDTH * scale_factor
+	fire_button.queue_redraw()
+
+	var jump_gap := BASE_JUMP_BUTTON_GAP * scale_factor
+	var jump_left := fire_left - jump_gap
+	var jump_bottom := fire_top - jump_gap
+	_set_anchored_rect(
+		jump_button,
+		jump_left,
+		jump_bottom - BASE_JUMP_BUTTON_SIZE,
+		jump_left + BASE_JUMP_BUTTON_SIZE,
+		jump_bottom
+	)
+
+func _set_anchored_rect(
+	control: Control,
+	left: float,
+	top: float,
+	right: float,
+	bottom: float
+) -> void:
+	control.custom_minimum_size = Vector2(right - left, bottom - top)
+	control.offset_left = left
+	control.offset_top = top
+	control.offset_right = right
+	control.offset_bottom = bottom
 
 func _is_physical_touchscreen_available() -> bool:
 	return MobileTouchscreen.is_physical_touchscreen_available()

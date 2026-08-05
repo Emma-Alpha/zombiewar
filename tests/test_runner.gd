@@ -8,6 +8,7 @@ const TEST_PATHS: Array[String] = [
 	"res://tests/unit/test_mobile_orientation_guard.gd",
 	"res://tests/unit/test_follow_camera.gd",
 	"res://tests/unit/test_directional_fire.gd",
+	"res://tests/unit/test_weapon_spread_state.gd",
 	"res://tests/unit/test_weapon_configuration.gd",
 	"res://tests/unit/test_weapon_clearance_state.gd",
 	"res://tests/unit/test_weapon_clearance_controller.gd",

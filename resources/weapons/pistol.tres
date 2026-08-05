@@ -19,3 +19,7 @@ camera_impulse_strength = 0.08
 attack_range = 24.0
 hit_collision_mask = 5
 tracer_pool_size = 6
+base_spread_degrees = 0.35
+max_spread_degrees = 3.0
+spread_increase_per_shot_degrees = 0.8
+spread_recovery_degrees_per_second = 1.8
