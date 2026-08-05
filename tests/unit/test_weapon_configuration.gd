@@ -54,6 +54,87 @@ func run() -> Array[String]:
 		pistol.wall_capsule_offset != rifle.wall_capsule_offset,
 		"Each firearm owns its fitted capsule center"
 	))
+	var clearance_definition := RangedWeaponDefinition.new()
+	clearance_definition.wall_capsule_length = 1.0
+	clearance_definition.wall_capsule_radius = 0.1
+	clearance_definition.wall_capsule_offset = Vector3.ZERO
+	clearance_definition.wall_raise_angle_degrees = 65.0
+	clearance_definition.wall_capsule_length = NAN
+	_append(failures, Assertions.expect_true(
+		not clearance_definition.has_wall_clearance_profile(),
+		"Wall clearance rejects a NaN capsule length"
+	))
+	clearance_definition.wall_capsule_length = INF
+	_append(failures, Assertions.expect_true(
+		not clearance_definition.has_wall_clearance_profile(),
+		"Wall clearance rejects an infinite capsule length"
+	))
+	clearance_definition.wall_capsule_length = 1.0
+	clearance_definition.wall_capsule_radius = NAN
+	_append(failures, Assertions.expect_true(
+		not clearance_definition.has_wall_clearance_profile(),
+		"Wall clearance rejects a NaN capsule radius"
+	))
+	clearance_definition.wall_capsule_radius = INF
+	_append(failures, Assertions.expect_true(
+		not clearance_definition.has_wall_clearance_profile(),
+		"Wall clearance rejects an infinite capsule radius"
+	))
+	clearance_definition.wall_capsule_radius = 0.0
+	_append(failures, Assertions.expect_true(
+		not clearance_definition.has_wall_clearance_profile(),
+		"Wall clearance rejects a zero capsule radius"
+	))
+	clearance_definition.wall_capsule_radius = 0.6
+	clearance_definition.wall_capsule_length = 1.1
+	_append(failures, Assertions.expect_true(
+		not clearance_definition.has_wall_clearance_profile(),
+		"Wall clearance rejects a capsule shorter than its diameter"
+	))
+	clearance_definition.wall_capsule_length = 1.2
+	clearance_definition.wall_capsule_offset = Vector3(NAN, 0.0, 0.0)
+	_append(failures, Assertions.expect_true(
+		not clearance_definition.has_wall_clearance_profile(),
+		"Wall clearance rejects a NaN capsule offset"
+	))
+	clearance_definition.wall_capsule_offset = Vector3(INF, 0.0, 0.0)
+	_append(failures, Assertions.expect_true(
+		not clearance_definition.has_wall_clearance_profile(),
+		"Wall clearance rejects an infinite capsule offset"
+	))
+	clearance_definition.wall_capsule_offset = Vector3.ZERO
+	clearance_definition.wall_capsule_radius = 0.1
+	clearance_definition.wall_capsule_length = 1.0
+	clearance_definition.wall_raise_angle_degrees = NAN
+	_append(failures, Assertions.expect_true(
+		not clearance_definition.has_wall_clearance_profile(),
+		"Wall clearance rejects a NaN raise angle"
+	))
+	clearance_definition.wall_raise_angle_degrees = INF
+	_append(failures, Assertions.expect_true(
+		not clearance_definition.has_wall_clearance_profile(),
+		"Wall clearance rejects an infinite raise angle"
+	))
+	clearance_definition.wall_raise_angle_degrees = -0.1
+	_append(failures, Assertions.expect_true(
+		not clearance_definition.has_wall_clearance_profile(),
+		"Wall clearance rejects a raise angle below zero"
+	))
+	clearance_definition.wall_raise_angle_degrees = 90.1
+	_append(failures, Assertions.expect_true(
+		not clearance_definition.has_wall_clearance_profile(),
+		"Wall clearance rejects a raise angle above ninety degrees"
+	))
+	clearance_definition.wall_raise_angle_degrees = 0.0
+	_append(failures, Assertions.expect_true(
+		clearance_definition.has_wall_clearance_profile(),
+		"Wall clearance accepts the zero-degree raise angle boundary"
+	))
+	clearance_definition.wall_raise_angle_degrees = 90.0
+	_append(failures, Assertions.expect_true(
+		clearance_definition.has_wall_clearance_profile(),
+		"Wall clearance accepts the ninety-degree raise angle boundary"
+	))
 
 	_append(failures, Assertions.expect_equal(
 		pistol.trigger_mode,

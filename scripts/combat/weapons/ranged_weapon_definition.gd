@@ -19,6 +19,9 @@ func has_wall_clearance_profile() -> bool:
 		is_finite(wall_capsule_offset.x) and
 		is_finite(wall_capsule_offset.y) and
 		is_finite(wall_capsule_offset.z) and
+		is_finite(wall_raise_angle_degrees) and
 		wall_capsule_radius > 0.0 and
-		wall_capsule_length >= wall_capsule_radius * 2.0
+		wall_capsule_length >= wall_capsule_radius * 2.0 and
+		wall_raise_angle_degrees >= 0.0 and
+		wall_raise_angle_degrees <= 90.0
 	)
