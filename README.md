@@ -69,3 +69,28 @@ curl -k -I https://zombiewar.devlocal.com/index.wasm
 The homepage and `index.wasm` responses must both include `Cache-Control: no-store, no-cache, must-revalidate, max-age=0`. The `index.wasm` response must also include `Content-Type: application/wasm`.
 
 Open `https://zombiewar.devlocal.com` from a phone that resolves `*.devlocal.com` to this Mac. Use landscape orientation and verify joystick movement, jump, hold-to-fire, simultaneous touches, audio unlock after the first tap, and background/foreground recovery.
+
+### Cloudflare Pages + private R2 deployment
+
+The production deployment keeps HTML, JavaScript, PCK, images, and audio on Pages. The exported `index.wasm` is uploaded to the private `zombiewar-assets` R2 bucket and streamed from the same `/index.wasm` URL by the Pages Worker.
+
+Prepare and validate the upload package without contacting Cloudflare:
+
+```bash
+bash tools/cloudflare/deploy_r2_pages.sh --prepare-only
+```
+
+Export, upload the versioned WASM to R2, and deploy Pages:
+
+```bash
+bash tools/cloudflare/deploy_r2_pages.sh
+```
+
+CI/CD must provide:
+
+```text
+CLOUDFLARE_API_TOKEN
+CLOUDFLARE_ACCOUNT_ID
+```
+
+Optional overrides are `GODOT_BIN`, `CLOUDFLARE_PAGES_PROJECT`, and `CLOUDFLARE_BRANCH`. The Pages project and branch defaults are `zombiewar` and `main`. The R2 bucket is fixed as `zombiewar-assets` by `wrangler.jsonc`, remains private, and old hash-addressed WASM objects are intentionally retained for historical Pages deployments.
