@@ -401,6 +401,12 @@ func run() -> Array[String]:
 				"Every arena target forwards blood requests to the scene manager"
 			))
 			_append(failures, Assertions.expect_true(
+				target.ground_blood_trail_requested.is_connected(
+					Callable(arena, "_on_ground_blood_trail_requested")
+				),
+				"Every arena target forwards real knockback movement to the blood manager"
+			))
+			_append(failures, Assertions.expect_true(
 				target.has_method("set_attack_target"),
 				"Every zombie exposes player targeting"
 			))

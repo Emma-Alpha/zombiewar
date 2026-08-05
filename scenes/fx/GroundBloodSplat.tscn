@@ -1,12 +1,24 @@
-[gd_scene load_steps=3 format=3]
+[gd_scene load_steps=5 format=3]
 
 [ext_resource type="Script" path="res://scripts/fx/ground_blood_splat.gd" id="1_script"]
 [ext_resource type="Texture2D" path="res://assets/fx/blood/kenney_splat29.png" id="2_texture"]
 
-[node name="GroundBloodSplat" type="Sprite3D"]
-texture = ExtResource("2_texture")
-pixel_size = 0.0032
-billboard = 0
-alpha_cut = 1
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_blood"]
+transparency = 2
+alpha_scissor_threshold = 0.25
+cull_mode = 2
+shading_mode = 1
+albedo_color = Color(0.42, 0.008, 0.015, 0.92)
+albedo_texture = ExtResource("2_texture")
+metallic = 0.0
+roughness = 0.4
+
+[sub_resource type="QuadMesh" id="QuadMesh_blood"]
+material = SubResource("StandardMaterial3D_blood")
+size = Vector2(1, 1)
+
+[node name="GroundBloodSplat" type="MeshInstance3D"]
 cast_shadow = 0
+material_override = SubResource("StandardMaterial3D_blood")
+mesh = SubResource("QuadMesh_blood")
 script = ExtResource("1_script")

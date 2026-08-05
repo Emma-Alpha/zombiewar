@@ -6,6 +6,7 @@ const HitResponseMath = preload("res://scripts/combat/hit_response_math.gd")
 const HitResult = preload("res://scripts/combat/hit_result.gd")
 const MeleeAttackCycle = preload("res://scripts/combat/melee_attack_cycle.gd")
 const ZombieBehaviorMath = preload("res://scripts/combat/zombie_behavior_math.gd")
+const BloodTrailState = preload("res://scripts/fx/blood_trail_state.gd")
 const BLOOD_IMPACT_SCENE := preload("res://scenes/fx/BloodImpact.tscn")
 
 signal ground_blood_requested(
@@ -13,6 +14,12 @@ signal ground_blood_requested(
 	direction: Vector3,
 	intensity: float,
 	death_pool: bool
+)
+signal ground_blood_trail_requested(
+	position: Vector3,
+	direction: Vector3,
+	intensity: float,
+	progress: float
 )
 
 @export var max_health: float = 50.0
@@ -63,6 +70,7 @@ var home_position := Vector3.ZERO
 var wander_target := Vector3.ZERO
 var wander_pause_remaining := 0.0
 var wander_rng := RandomNumberGenerator.new()
+var blood_trail_state := BloodTrailState.new()
 
 func _ready() -> void:
 	_ensure_initialized()
@@ -121,23 +129,24 @@ func apply_hit(
 	if applied_damage <= 0.0:
 		return HitResult.miss(hit_position)
 
+	var knockback_multiplier := 1.0
 	var impulse := HitResponseMath.knockback_velocity(
 		shot_direction,
 		knockback_impulse,
-		1.0,
+		knockback_multiplier,
 		0.05
 	)
 	velocity += impulse
+	var knockback_origin := global_position if is_inside_tree() else position
+	blood_trail_state.start(knockback_origin, knockback_multiplier)
 	_apply_visual_torque(hit_position, impulse)
 	_spawn_blood_impact(hit_position, shot_direction, 1.0)
 	visual_root.scale = Vector3.ONE * 1.08
 	var killed := health.current <= 0.0
-	ground_blood_requested.emit(
-		global_position if killed else hit_position,
-		shot_direction,
-		1.25 if killed else 1.0,
-		killed
-	)
+	var ground_blood_direction := _ground_blood_direction(shot_direction)
+	ground_blood_requested.emit(hit_position, ground_blood_direction, knockback_multiplier, false)
+	if killed:
+		ground_blood_requested.emit(knockback_origin, ground_blood_direction, 1.25, true)
 	if not killed:
 		_play_hit_reaction()
 	return HitResult.resolved(
@@ -227,6 +236,19 @@ func _physics_process(delta: float) -> void:
 	velocity.x = move_toward(velocity.x, target_planar_velocity.x, planar_rate * delta)
 	velocity.z = move_toward(velocity.z, target_planar_velocity.z, planar_rate * delta)
 	move_and_slide()
+	var trail_samples := blood_trail_state.advance(
+		global_position,
+		delta,
+		Vector2(velocity.x, velocity.z).length(),
+		perception_move_speed
+	)
+	for sample in trail_samples:
+		ground_blood_trail_requested.emit(
+			sample["position"],
+			sample["direction"],
+			sample["intensity"],
+			sample["progress"]
+		)
 	_update_visual_reaction(delta)
 	_update_locomotion_animation()
 
@@ -329,6 +351,15 @@ func _spawn_blood_impact(
 	var effect := BLOOD_IMPACT_SCENE.instantiate() as BloodImpact
 	effect_parent.add_child(effect)
 	effect.setup(hit_position, shot_direction, intensity)
+
+func _ground_blood_direction(shot_direction: Vector3) -> Vector3:
+	var horizontal_direction := Vector3(shot_direction.x, 0.0, shot_direction.z)
+	if horizontal_direction.length_squared() <= 0.000001:
+		horizontal_direction = -global_transform.basis.z
+		horizontal_direction.y = 0.0
+	if horizontal_direction.length_squared() <= 0.000001:
+		return Vector3.FORWARD
+	return horizontal_direction.normalized()
 
 func _on_health_changed(_current: float, _maximum: float) -> void:
 	_refresh_label()
