@@ -141,7 +141,76 @@ func run() -> Array[String]:
 		"Zombie bodies and hit areas do not trigger firearm clearance"
 	))
 	_cleanup(player, active_wall, zombie)
+	_test_switching_contract(failures)
 	return failures
+
+func _test_switching_contract(failures: Array[String]) -> void:
+	var tree := Engine.get_main_loop() as SceneTree
+	var player := PLAYER_SCENE.instantiate() as PlayerController
+	var front_wall := _make_wall(
+		Vector3(0.0, 1.12, -1.1),
+		Vector3(3.0, 0.3, 0.2)
+	)
+	tree.root.add_child(player)
+	tree.root.add_child(front_wall)
+	var clearance := player.get_node("WeaponClearanceController") as WeaponClearanceController
+	var weapon_collision := player.get_node("WeaponCollision") as CollisionShape3D
+	var normal_probe := player.get_node(
+		"WeaponClearanceController/NormalProbe"
+	) as ShapeCast3D
+	var raised_probe := player.get_node(
+		"WeaponClearanceController/RaisedProbe"
+	) as ShapeCast3D
+	clearance.resolve_facing_yaw(0.016, Vector3.ZERO, 0.0)
+	_append(failures, Assertions.expect_true(
+		clearance.is_raised(),
+		"Front wall commits the raised pose before ranged switching"
+	))
+	_append(failures, Assertions.expect_true(
+		player.equipment.equip_slot(0) and clearance.is_raised() and
+			not weapon_collision.disabled,
+		"Ranged switch inherits the committed raised collision"
+	))
+	var runtime_capsules: Array[CapsuleShape3D] = [
+		weapon_collision.shape as CapsuleShape3D,
+		normal_probe.shape as CapsuleShape3D,
+		raised_probe.shape as CapsuleShape3D,
+	]
+	for capsule: CapsuleShape3D in runtime_capsules:
+		_append(failures, Assertions.expect_true(
+			is_equal_approx(capsule.height, 1.55) and
+				is_equal_approx(capsule.radius, 0.12),
+			"Ranged switch preserves the unified runtime envelope"
+		))
+
+	var rifle_candidate := player.equipment.weapons[1]
+	var saved_anchor := rifle_candidate.visual_anchor
+	rifle_candidate.visual_anchor = null
+	var before_weapon := player.equipment.get_current_weapon()
+	_append(failures, Assertions.expect_true(
+		not player.equipment.equip_slot(1) and
+			player.equipment.get_current_weapon() == before_weapon and
+			not weapon_collision.disabled,
+		"Missing ranged visual rejects the switch without disabling current collision"
+	))
+	rifle_candidate.visual_anchor = saved_anchor
+
+	player.equipment.equip_slot(2)
+	var low_ceiling := _make_wall(
+		Vector3(0.0, 2.25, -0.25),
+		Vector3(3.0, 0.2, 2.0)
+	)
+	tree.root.add_child(low_ceiling)
+	_append(failures, Assertions.expect_true(
+		not player.equipment.equip_slot(1) and
+			player.equipment.get_current_definition().weapon_id == &"knife" and
+			not player.equipment.weapons[1].visible,
+		"Melee-to-ranged switch fails closed when neither initial pose is safe"
+	))
+	_release_player_input(player)
+	low_ceiling.free()
+	front_wall.free()
+	player.free()
 
 func _make_wall(position: Vector3, size: Vector3) -> StaticBody3D:
 	var wall := StaticBody3D.new()

@@ -142,14 +142,14 @@ func run() -> Array[String]:
 	var saved_anchor := rifle.visual_anchor
 	var collision_before_rejected_bind := weapon_collision.transform
 	rifle.visual_anchor = null
-	var rejected_bind := controller.bind_weapon(rifle)
+	var rejected_bind := controller.try_bind_weapon(rifle)
 	_append(failures, Assertions.expect_true(
 		not rejected_bind and not weapon_collision.disabled and
 			weapon_collision.transform.is_equal_approx(collision_before_rejected_bind),
 		"Rejected ranged bind preserves the active weapon collision"
 	))
 	rifle.visual_anchor = saved_anchor
-	controller.bind_weapon(rifle)
+	controller.try_bind_weapon(rifle)
 	player.equipment.equip_slot(2)
 	_append(failures, Assertions.expect_true(
 		weapon_collision.disabled,
@@ -178,7 +178,33 @@ func run() -> Array[String]:
 		"Player death immediately restores a raised rifle visual"
 	))
 	host.free()
+	_test_exit_tree_restores_visual_transform(failures)
 	return failures
+
+func _test_exit_tree_restores_visual_transform(failures: Array[String]) -> void:
+	var tree := Engine.get_main_loop() as SceneTree
+	var player := PLAYER_SCENE.instantiate() as PlayerController
+	var wall := _new_clearance_wall()
+	tree.root.add_child(player)
+	tree.root.add_child(wall)
+	var controller := player.get_node("WeaponClearanceController") as WeaponClearanceController
+	var rifle := player.equipment.get_current_weapon()
+	var rifle_visual := rifle.visual_anchor
+	var rest_transform := rifle_visual.transform
+	controller.resolve_facing_yaw(0.016, Vector3.ZERO, 0.0)
+	if not controller.has_method("_exit_tree"):
+		_append(failures, Assertions.expect_true(
+			false,
+			"Clearance exit restores the raised weapon local transform"
+		))
+	else:
+		controller.call("_exit_tree")
+		_append(failures, Assertions.expect_true(
+			rifle_visual.transform.is_equal_approx(rest_transform),
+			"Clearance exit restores the raised weapon local transform"
+		))
+	wall.free()
+	player.free()
 
 func _new_clearance_wall(
 	position := Vector3(0.0, 1.12, -1.1),

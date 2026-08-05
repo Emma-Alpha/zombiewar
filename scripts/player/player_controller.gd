@@ -62,13 +62,15 @@ func _ready() -> void:
 	animation_player = visual_root.find_child("AnimationPlayer", true, false) as AnimationPlayer
 	visual_rest_position = visual_root.position
 	weapon_clearance.setup(self)
-	equipment.set_weapon_switch_guard(
-		Callable(weapon_clearance, "try_bind_weapon")
-	)
 	equipment.attack_started.connect(_on_weapon_attack_started)
 	equipment.attack_resolved.connect(_on_weapon_attack_resolved)
 	equipment.weapon_changed.connect(_on_weapon_changed)
-	equipment.setup(self, visual_root, functional_ray_origin)
+	equipment.setup(
+		self,
+		visual_root,
+		functional_ray_origin,
+		Callable(weapon_clearance, "try_bind_weapon")
+	)
 
 func _process(delta: float) -> void:
 	hit_reaction_remaining = maxf(hit_reaction_remaining - delta, 0.0)
@@ -196,7 +198,6 @@ func _on_weapon_attack_resolved(
 
 func _on_weapon_changed(_definition: WeaponDefinition) -> void:
 	attack_animation_remaining = 0.0
-	weapon_clearance.bind_weapon(equipment.get_current_weapon())
 	_update_animation(Vector2(velocity.x, velocity.z).length())
 
 func apply_damage(amount: float, _source_position := Vector3.ZERO) -> float:

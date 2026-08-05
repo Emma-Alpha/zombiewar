@@ -24,19 +24,21 @@ var weapons: Array[WeaponBase] = []
 var current_slot := -1
 var current_weapon: WeaponBase
 var initialized := false
-var weapon_switch_guard: Callable
+var switch_guard := Callable()
 
-func set_weapon_switch_guard(value_guard: Callable) -> void:
-	weapon_switch_guard = value_guard
+func set_switch_guard(value: Callable) -> void:
+	switch_guard = value
 
 func setup(
 	wielder: CharacterBody3D,
 	visual_root: Node3D,
-	functional_ray_origin: Marker3D
+	functional_ray_origin: Marker3D,
+	value_switch_guard: Callable = Callable()
 ) -> void:
 	if initialized:
 		return
 	initialized = true
+	switch_guard = value_switch_guard
 	for weapon_name in EMBEDDED_WEAPON_NAMES:
 		var embedded_visual := visual_root.find_child(
 			String(weapon_name),
@@ -60,12 +62,13 @@ func equip_slot(slot_index: int) -> bool:
 		return false
 	if slot_index == current_slot:
 		return true
-	if weapon_switch_guard.is_valid() and not bool(weapon_switch_guard.call(weapons[slot_index])):
+	var candidate := weapons[slot_index]
+	if switch_guard.is_valid() and not bool(switch_guard.call(candidate)):
 		return false
 	if current_weapon != null:
 		current_weapon.set_equipped(false)
 	current_slot = slot_index
-	current_weapon = weapons[current_slot]
+	current_weapon = candidate
 	current_weapon.set_equipped(false)
 	weapon_changed.emit(current_weapon.definition)
 	current_weapon.set_equipped(true)
