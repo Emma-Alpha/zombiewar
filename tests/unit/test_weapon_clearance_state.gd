@@ -41,6 +41,58 @@ func run() -> Array[String]:
 		WeaponClearanceState.Pose.NORMAL,
 		"Raised pose requests normal after 0.15 seconds of clearance"
 	))
+
+	var tucked_pose := int(WeaponClearanceState.Pose.get("TUCKED", -1))
+	if tucked_pose < 0:
+		_append(failures, Assertions.expect_true(
+			false,
+			"Clearance state exposes a tucked pose for fully blocked turns"
+		))
+		state.reset()
+		return failures
+
+	state.configure(WeaponClearanceState.Pose.NORMAL)
+	var tucked_request := int(state.call("request_pose", 0.016, false, false))
+	_append(failures, Assertions.expect_equal(
+		tucked_request,
+		tucked_pose,
+		"Blocked normal and raised poses request tucked without mutating committed pose"
+	))
+	_append(failures, Assertions.expect_equal(
+		state.pose,
+		WeaponClearanceState.Pose.NORMAL,
+		"Tucked request stays separate from the committed normal pose"
+	))
+	state.call("commit_pose", tucked_request)
+	_append(failures, Assertions.expect_equal(
+		int(state.call("request_pose", 0.016, true, false)),
+		tucked_pose,
+		"Tucked pose stays committed until raised clearance is available"
+	))
+	var raised_request := int(state.call("request_pose", 0.016, true, true))
+	_append(failures, Assertions.expect_equal(
+		raised_request,
+		WeaponClearanceState.Pose.RAISED,
+		"Tucked pose restores to raised before starting normal restore timing"
+	))
+	state.call("commit_pose", raised_request)
+	_append(failures, Assertions.expect_equal(
+		int(state.call("request_pose", 0.10, true, true)),
+		WeaponClearanceState.Pose.RAISED,
+		"Restored raised pose waits for the full normal restore delay"
+	))
+	_append(failures, Assertions.expect_equal(
+		int(state.call("request_pose", 0.05, true, true)),
+		WeaponClearanceState.Pose.NORMAL,
+		"Restored raised pose requests normal after 0.15 seconds of clearance"
+	))
+
+	state.configure(WeaponClearanceState.Pose.RAISED)
+	_append(failures, Assertions.expect_equal(
+		int(state.call("request_pose", 0.016, true, false)),
+		tucked_pose,
+		"Raised pose requests tucked when its committed volume becomes blocked"
+	))
 	state.reset()
 	_append(failures, Assertions.expect_equal(
 		state.pose,

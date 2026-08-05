@@ -1,7 +1,7 @@
 extends RefCounted
 class_name WeaponClearanceState
 
-enum Pose { DISABLED, NORMAL, RAISED }
+enum Pose { DISABLED, NORMAL, RAISED, TUCKED }
 
 var pose := Pose.DISABLED
 var restore_delay: float
@@ -14,11 +14,24 @@ func configure(initial_pose: int) -> void:
 	pose = initial_pose
 	restore_elapsed = 0.0
 
-func request_pose(delta: float, normal_clear: bool) -> int:
+func request_pose(
+	delta: float,
+	normal_clear: bool,
+	raised_clear := true
+) -> int:
 	if pose == Pose.DISABLED:
 		return Pose.DISABLED
 	if pose == Pose.NORMAL:
-		return Pose.NORMAL if normal_clear else Pose.RAISED
+		restore_elapsed = 0.0
+		if normal_clear:
+			return Pose.NORMAL
+		return Pose.RAISED if raised_clear else Pose.TUCKED
+	if pose == Pose.TUCKED:
+		restore_elapsed = 0.0
+		return Pose.RAISED if raised_clear else Pose.TUCKED
+	if not raised_clear:
+		restore_elapsed = 0.0
+		return Pose.TUCKED
 	if not normal_clear:
 		restore_elapsed = 0.0
 		return Pose.RAISED
