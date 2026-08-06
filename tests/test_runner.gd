@@ -1,5 +1,6 @@
 extends SceneTree
 
+const TestPathSelection = preload("res://tests/helpers/test_path_selection.gd")
 const TEST_PATHS: Array[String] = [
 	"res://tests/unit/test_project_contract.gd",
 	"res://tests/unit/test_menu_flow.gd",
@@ -11,6 +12,8 @@ const TEST_PATHS: Array[String] = [
 	"res://tests/unit/test_weapon_spread_state.gd",
 	"res://tests/unit/test_explosion_math.gd",
 	"res://tests/unit/test_explosive_barrel.gd",
+	"res://tests/unit/test_place_item_grid.gd",
+	"res://tests/unit/test_test_path_selection.gd",
 	"res://tests/unit/test_weapon_configuration.gd",
 	"res://tests/unit/test_weapon_penetration.gd",
 	"res://tests/unit/test_weapon_clearance_state.gd",
@@ -36,6 +39,10 @@ const TEST_PATHS: Array[String] = [
 	"res://tests/unit/test_player_damage.gd",
 	"res://tests/unit/test_weapon_feedback.gd",
 	"res://tests/integration/test_weapon_wall_clearance.gd",
+	"res://tests/integration/test_player_place_item_input.gd",
+	"res://tests/integration/test_place_item_grid_physics.gd",
+	"res://tests/integration/test_place_item_controller.gd",
+	"res://tests/integration/test_demo_place_item.gd",
 	"res://tests/integration/test_explosive_barrel_scene.gd",
 	"res://tests/integration/test_combat_fx_prewarm.gd",
 	"res://tests/integration/test_demo_scene.gd",
@@ -50,7 +57,23 @@ const TEST_PATHS: Array[String] = [
 func _initialize() -> void:
 	await process_frame
 	var failures: Array[String] = []
-	for test_path in TEST_PATHS:
+	var requested_paths: Array[String] = []
+	requested_paths.assign(OS.get_cmdline_user_args())
+	var selection: Dictionary = TestPathSelection.select_paths(
+		TEST_PATHS,
+		requested_paths
+	)
+	var selection_errors: Array[String] = []
+	selection_errors.assign(selection["errors"])
+	if not selection_errors.is_empty():
+		for selection_error in selection_errors:
+			push_error(selection_error)
+		print("FAIL: %d invalid test path(s)" % selection_errors.size())
+		quit(1)
+		return
+	var selected_paths: Array[String] = []
+	selected_paths.assign(selection["paths"])
+	for test_path in selected_paths:
 		if test_path == "res://tests/integration/test_weapon_wall_clearance.gd":
 			_release_player_input()
 			await physics_frame
@@ -63,7 +86,7 @@ func _initialize() -> void:
 			failures.append("%s: %s" % [test_path, failure])
 
 	if failures.is_empty():
-		print("PASS: %d test file(s)" % TEST_PATHS.size())
+		print("PASS: %d test file(s)" % selected_paths.size())
 		quit(0)
 		return
 
@@ -78,7 +101,7 @@ func _release_player_input() -> void:
 		&"move_right",
 		&"move_forward",
 		&"move_back",
-		&"jump",
+		&"place_item",
 		&"primary_attack",
 		&"weapon_pistol",
 		&"weapon_rifle",

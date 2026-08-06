@@ -12,11 +12,16 @@ cleanup_test_output() {
 trap cleanup_test_output EXIT
 
 cd "$zombiewar_repo_root"
+zombiewar_godot_args=(
+	--headless
+	--path .
+	--script tests/test_runner.gd
+)
+if (( $# > 0 )); then
+	zombiewar_godot_args+=(-- "$@")
+fi
 set +e
-"$zombiewar_godot_bin" \
-	--headless \
-	--path . \
-	--script tests/test_runner.gd 2>&1 | tee "$zombiewar_test_output"
+"$zombiewar_godot_bin" "${zombiewar_godot_args[@]}" 2>&1 | tee "$zombiewar_test_output"
 zombiewar_pipeline_status=("${PIPESTATUS[@]}")
 zombiewar_runner_status=${zombiewar_pipeline_status[0]}
 zombiewar_tee_status=${zombiewar_pipeline_status[1]}

@@ -54,14 +54,14 @@ func run() -> Array[String]:
 	var fire_button := arena.get_node_or_null(
 		"MobileControls/Layout/FireButton"
 	) as MobileActionButton
-	var jump_button := arena.get_node_or_null(
-		"MobileControls/Layout/JumpButton"
+	var place_item_button := arena.get_node_or_null(
+		"MobileControls/Layout/PlaceItemButton"
 	) as MobileActionButton
 	var fire_label := arena.get_node_or_null(
 		"MobileControls/Layout/FireButton/Label"
 	) as Label
-	var jump_label := arena.get_node_or_null(
-		"MobileControls/Layout/JumpButton/Label"
+	var place_item_label := arena.get_node_or_null(
+		"MobileControls/Layout/PlaceItemButton/Label"
 	) as Label
 	var difficulty := arena.get("zombie_difficulty") as ZombieDifficultyProfile
 	_append(failures, Assertions.expect_true(
@@ -193,11 +193,17 @@ func run() -> Array[String]:
 		))
 	_append(failures, Assertions.expect_true(controls != null, "Demo has controls label"))
 	if controls != null:
-		_append(failures, Assertions.expect_equal(
-			controls.text,
-			"WASD  MOVE + FACE    SPACE  JUMP    J  FIRE    1-3  WEAPON    T  WAVE    R  RESTART",
-			"HUD documents attack and weapon switching controls"
+		_append(failures, Assertions.expect_true(
+			controls.text.contains("K") and
+			controls.text.contains("油桶") and
+			controls.text.contains("999"),
+			"HUD documents the configured place item and inventory"
 		))
+	_append(failures, Assertions.expect_equal(
+		place_item_label.text if place_item_label != null else "",
+		"油桶\n999",
+		"Demo initializes the mobile place-item label from its inventory"
+	))
 	_append(failures, Assertions.expect_true(
 		mobile_controls != null,
 		"Demo owns a mobile controls layer"
@@ -245,15 +251,15 @@ func run() -> Array[String]:
 		"Demo scales the hold-to-fire button with the movement joystick"
 	))
 	_append(failures, Assertions.expect_true(
-		jump_button != null and jump_button.action == &"jump" and
-		jump_button.size.is_equal_approx(Vector2(120.0, 120.0)),
-		"Demo keeps a distinct fixed-size jump touch button"
+		place_item_button != null and place_item_button.action == &"place_item" and
+		place_item_button.size.is_equal_approx(Vector2(120.0, 120.0)),
+		"Demo keeps a distinct fixed-size place-item touch button"
 	))
 	_append(failures, Assertions.expect_true(
-		virtual_joystick != null and fire_button != null and jump_button != null and
+		virtual_joystick != null and fire_button != null and place_item_button != null and
 		not virtual_joystick.get_global_rect().intersects(fire_button.get_global_rect()) and
-		not virtual_joystick.get_global_rect().intersects(jump_button.get_global_rect()) and
-		not fire_button.get_global_rect().intersects(jump_button.get_global_rect()),
+		not virtual_joystick.get_global_rect().intersects(place_item_button.get_global_rect()) and
+		not fire_button.get_global_rect().intersects(place_item_button.get_global_rect()),
 		"Demo responsive touch targets do not overlap"
 	))
 	_append(failures, Assertions.expect_true(
@@ -301,7 +307,7 @@ func run() -> Array[String]:
 			wave_status.get_theme_font(&"font").has_char(glyph.unicode_at(0)),
 			"Automatic wave status font includes glyph %s" % glyph
 		))
-	for candidate in [fire_label, jump_label]:
+	for candidate in [fire_label, place_item_label]:
 		var label := candidate as Label
 		_append(failures, Assertions.expect_true(
 			label != null,
@@ -317,6 +323,8 @@ func run() -> Array[String]:
 		if font == null:
 			continue
 		for glyph in label.text:
+			if glyph == "\n":
+				continue
 			var codepoint := glyph.unicode_at(0)
 			_append(failures, Assertions.expect_true(
 				font.has_char(codepoint),

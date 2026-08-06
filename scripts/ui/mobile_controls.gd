@@ -9,8 +9,8 @@ const BASE_JOYSTICK_TIP_SIZE := 88.0
 const BASE_FIRE_BUTTON_SIZE := 160.0
 const BASE_FIRE_LABEL_FONT_SIZE := 26.0
 const BASE_SCREEN_MARGIN := 40.0
-const BASE_JUMP_BUTTON_SIZE := 120.0
-const BASE_JUMP_BUTTON_GAP := 16.0
+const BASE_PLACE_ITEM_BUTTON_SIZE := 120.0
+const BASE_PLACE_ITEM_BUTTON_GAP := 16.0
 const BASE_ACTION_OUTLINE_INSET := 4.0
 const BASE_ACTION_OUTLINE_WIDTH := 4.0
 
@@ -19,8 +19,9 @@ const BASE_ACTION_OUTLINE_WIDTH := 4.0
 
 @onready var virtual_joystick: VirtualJoystick = $Layout/VirtualJoystick
 @onready var fire_button: MobileActionButton = $Layout/FireButton
-@onready var jump_button: MobileActionButton = $Layout/JumpButton
+@onready var place_item_button: MobileActionButton = $Layout/PlaceItemButton
 @onready var fire_label: Label = $Layout/FireButton/Label
+@onready var place_item_label: Label = $Layout/PlaceItemButton/Label
 
 var touch_mode := false
 var joystick_touch_id := -1
@@ -79,15 +80,15 @@ func _apply_responsive_layout() -> void:
 	fire_button.outline_width = BASE_ACTION_OUTLINE_WIDTH * scale_factor
 	fire_button.queue_redraw()
 
-	var jump_gap := BASE_JUMP_BUTTON_GAP * scale_factor
-	var jump_left := fire_left - jump_gap
-	var jump_bottom := fire_top - jump_gap
+	var place_item_gap := BASE_PLACE_ITEM_BUTTON_GAP * scale_factor
+	var place_item_left := fire_left - place_item_gap
+	var place_item_bottom := fire_top - place_item_gap
 	_set_anchored_rect(
-		jump_button,
-		jump_left,
-		jump_bottom - BASE_JUMP_BUTTON_SIZE,
-		jump_left + BASE_JUMP_BUTTON_SIZE,
-		jump_bottom
+		place_item_button,
+		place_item_left,
+		place_item_bottom - BASE_PLACE_ITEM_BUTTON_SIZE,
+		place_item_left + BASE_PLACE_ITEM_BUTTON_SIZE,
+		place_item_bottom
 	)
 
 func _set_anchored_rect(
@@ -124,6 +125,13 @@ func set_touch_mode(enabled: bool) -> void:
 func is_touch_mode() -> bool:
 	return touch_mode
 
+func set_place_item_status(display_name: String, remaining_count: int) -> void:
+	var label := place_item_label
+	if label == null:
+		label = get_node_or_null("Layout/PlaceItemButton/Label") as Label
+	if label != null:
+		label.text = "%s\n%d" % [display_name, maxi(remaining_count, 0)]
+
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_APPLICATION_FOCUS_OUT or what == NOTIFICATION_APPLICATION_PAUSED:
 		cancel_all_input()
@@ -152,7 +160,7 @@ func cancel_all_input() -> void:
 	for action in [&"move_left", &"move_right", &"move_forward", &"move_back"]:
 		Input.action_release(action)
 	fire_button.cancel()
-	jump_button.cancel()
+	place_item_button.cancel()
 
 func _is_joystick_touch_start(position: Vector2) -> bool:
 	var touch_rect := virtual_joystick.get_global_rect()

@@ -6,7 +6,7 @@ const REQUIRED_ACTIONS: Array[StringName] = [
 	&"move_right",
 	&"move_forward",
 	&"move_back",
-	&"jump",
+	&"place_item",
 	&"primary_attack",
 	&"weapon_pistol",
 	&"weapon_rifle",
@@ -20,7 +20,7 @@ const REQUIRED_KEY_BINDINGS: Dictionary = {
 	&"move_right": KEY_D,
 	&"move_forward": KEY_W,
 	&"move_back": KEY_S,
-	&"jump": KEY_SPACE,
+	&"place_item": KEY_K,
 	&"primary_attack": KEY_J,
 	&"weapon_pistol": KEY_1,
 	&"weapon_rifle": KEY_2,
@@ -32,6 +32,10 @@ const REQUIRED_KEY_BINDINGS: Dictionary = {
 
 func run() -> Array[String]:
 	var failures: Array[String] = []
+	_append(failures, Assertions.expect_true(
+		not InputMap.has_action(&"jump"),
+		"Project removes the jump input action"
+	))
 	var version := Engine.get_version_info()
 	_append(failures, Assertions.expect_equal(version["major"], 4, "Godot major version"))
 	_append(failures, Assertions.expect_equal(version["minor"], 7, "Godot minor version"))

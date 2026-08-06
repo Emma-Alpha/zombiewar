@@ -865,7 +865,7 @@ func _release_player_input(player: PlayerController) -> void:
 		player.move_right_action,
 		player.move_forward_action,
 		player.move_back_action,
-		player.jump_action,
+		player.place_item_action,
 		player.primary_attack_action,
 		player.pistol_action,
 		player.rifle_action,

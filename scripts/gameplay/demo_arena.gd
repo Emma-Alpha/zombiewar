@@ -134,7 +134,7 @@ func _release_startup_actions() -> void:
 		&"move_right",
 		&"move_forward",
 		&"move_back",
-		&"jump",
+		&"place_item",
 		&"primary_attack",
 		&"weapon_pistol",
 		&"weapon_rifle",
@@ -178,6 +178,40 @@ func _wire_dependencies() -> void:
 		restart_button.pressed.connect(request_restart)
 	_sync_command_controls()
 	var player := get_node_or_null("Player") as PlayerController
+	var place_item_controller := get_node_or_null(
+		"PlaceItemController"
+	) as PlaceItemController
+	if (
+		player != null and place_item_controller != null and
+		not player.place_item_requested.is_connected(
+			place_item_controller.request_place_item
+		)
+	):
+		player.place_item_requested.connect(
+			place_item_controller.request_place_item
+		)
+	if (
+		place_item_controller != null and
+		not place_item_controller.placement_geometry_changed.is_connected(
+			_on_barrel_navigation_geometry_changed
+		)
+	):
+		place_item_controller.placement_geometry_changed.connect(
+			_on_barrel_navigation_geometry_changed
+		)
+	if (
+		place_item_controller != null and
+		not place_item_controller.item_count_changed.is_connected(
+			_on_place_item_count_changed
+		)
+	):
+		place_item_controller.item_count_changed.connect(
+			_on_place_item_count_changed
+		)
+		_on_place_item_count_changed(
+			place_item_controller.item_display_name,
+			place_item_controller.get_remaining_count()
+		)
 	var targets := get_node_or_null("World/Targets")
 	if targets != null:
 		for target in targets.get_children():
@@ -276,6 +310,29 @@ func _on_barrel_navigation_geometry_changed() -> void:
 	) as NavigationWorldManager
 	if navigation_manager != null:
 		navigation_manager.mark_chunk_dirty(&"demo_arena")
+
+func _on_place_item_count_changed(
+	display_name: String,
+	remaining_count: int
+) -> void:
+	var mobile_controls := get_node_or_null("MobileControls")
+	if (
+		mobile_controls != null and
+		mobile_controls.has_method("set_place_item_status")
+	):
+		mobile_controls.call(
+			"set_place_item_status",
+			display_name,
+			remaining_count
+		)
+	var controls := get_node_or_null(
+		"HUD/ControlsPanel/Controls"
+	) as Label
+	if controls != null:
+		controls.text = (
+			"WASD  MOVE + FACE    K  %s %d    J  FIRE    " +
+			"1-3  WEAPON    T  WAVE    R  RESTART"
+		) % [display_name, remaining_count]
 
 func _on_player_attack(
 	direction: Vector3,

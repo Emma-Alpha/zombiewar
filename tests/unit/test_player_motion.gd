@@ -183,16 +183,16 @@ func run() -> Array[String]:
 		"Tuned deceleration leaves a short controllable stopping tail"
 	))
 	_append(failures, Assertions.expect_float_near(
-		player_motion.next_vertical_velocity(0.0, true, true, 0.016, 24.0, 8.5),
-		8.5,
+		player_motion.next_vertical_velocity(3.0, true, 0.1, 24.0),
+		0.0,
 		0.0001,
-		"Grounded jump applies jump speed"
+		"Grounded vertical motion cannot retain upward jump speed"
 	))
 	_append(failures, Assertions.expect_float_near(
-		player_motion.next_vertical_velocity(2.0, false, true, 0.5, 24.0, 8.5),
-		-10.0,
+		player_motion.next_vertical_velocity(1.0, false, 0.25, 8.0),
+		-1.0,
 		0.0001,
-		"Airborne jump input does not bypass gravity"
+		"Airborne vertical motion only applies gravity"
 	))
 	return failures
 

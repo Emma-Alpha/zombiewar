@@ -17,6 +17,11 @@ signal attack_resolved(
 signal health_changed(current: float, maximum: float)
 signal damaged(amount: float)
 signal died
+signal place_item_requested(
+	requester: CollisionObject3D,
+	origin: Vector3,
+	direction: Vector3
+)
 
 @export_group("Survivability")
 @export var max_health := 100.0
@@ -28,7 +33,7 @@ signal died
 @export var move_forward_action: StringName = &"move_forward"
 @export var move_back_action: StringName = &"move_back"
 @export_range(0.0, 1.0, 0.01) var move_input_deadzone := 0.0
-@export var jump_action: StringName = &"jump"
+@export var place_item_action: StringName = &"place_item"
 @export var primary_attack_action: StringName = &"primary_attack"
 @export var pistol_action: StringName = &"weapon_pistol"
 @export var rifle_action: StringName = &"weapon_rifle"
@@ -41,7 +46,6 @@ signal died
 @export var ground_deceleration: float = 42.0
 @export var air_acceleration: float = 12.0
 @export var gravity: float = 24.0
-@export var jump_speed: float = 8.5
 
 @export_group("Weapon Feel")
 @export var visual_recoil_recovery := 1.2
@@ -63,6 +67,7 @@ var hit_reaction_remaining := 0.0
 var attack_animation_remaining := 0.0
 var health_bar_initialized := false
 var missing_health_bar_warned := false
+var place_item_was_pressed := false
 
 func _ready() -> void:
 	_ensure_health_initialized()
@@ -115,6 +120,10 @@ func _physics_process(delta: float) -> void:
 		move_direction,
 		aim_direction
 	)
+	var place_item_pressed := Input.is_action_pressed(place_item_action)
+	if place_item_pressed and not place_item_was_pressed:
+		place_item_requested.emit(self, global_position, aim_direction)
+	place_item_was_pressed = place_item_pressed
 	var target_yaw := PlayerMotion.next_facing_yaw(aim_direction, rotation.y)
 	if Input.is_action_just_pressed(pistol_action):
 		equipment.equip_slot(0)
@@ -140,10 +149,8 @@ func _physics_process(delta: float) -> void:
 	velocity.y = PlayerMotion.next_vertical_velocity(
 		velocity.y,
 		is_on_floor(),
-		Input.is_action_just_pressed(jump_action),
 		delta,
-		gravity,
-		jump_speed
+		gravity
 	)
 	var desired_motion := Vector3(velocity.x, 0.0, velocity.z) * delta
 	weapon_clearance.update_clearance(
@@ -250,10 +257,8 @@ func _update_defeated_motion(delta: float) -> void:
 	velocity.y = PlayerMotion.next_vertical_velocity(
 		velocity.y,
 		is_on_floor(),
-		false,
 		delta,
-		gravity,
-		jump_speed
+		gravity
 	)
 	move_and_slide()
 

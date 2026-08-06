@@ -57,13 +57,9 @@ static func next_planar_velocity(
 static func next_vertical_velocity(
 	current_y: float,
 	grounded: bool,
-	jump_pressed: bool,
 	delta: float,
-	gravity: float,
-	jump_speed: float
+	gravity: float
 ) -> float:
-	if grounded and jump_pressed:
-		return jump_speed
 	if not grounded:
-		return current_y - gravity * delta
+		return current_y - maxf(gravity, 0.0) * maxf(delta, 0.0)
 	return minf(current_y, 0.0)

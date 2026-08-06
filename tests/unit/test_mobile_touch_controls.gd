@@ -109,7 +109,7 @@ func _append_desktop_scene_visibility_failures(failures: Array[String]) -> void:
 		Input.is_emulating_touch_from_mouse() == runtime_emulation_before,
 		"Physical touchscreen detection restores runtime mouse touch emulation"
 	))
-	arena.queue_free()
+	arena.free()
 
 func _append_disjoint_touch_emulation_restore_failures(
 	failures: Array[String],
@@ -156,8 +156,11 @@ func _append_raw_touch_event_failures(failures: Array[String]) -> void:
 	viewport.add_child(guard)
 	var virtual_joystick := controls.get_node_or_null("Layout/VirtualJoystick") as VirtualJoystick
 	var fire_button := controls.get_node_or_null("Layout/FireButton") as MobileActionButton
-	var jump_button := controls.get_node_or_null("Layout/JumpButton") as MobileActionButton
+	var place_item_button := controls.get_node_or_null("Layout/PlaceItemButton") as MobileActionButton
 	var fire_label := controls.get_node_or_null("Layout/FireButton/Label") as Label
+	var place_item_label := controls.get_node_or_null(
+		"Layout/PlaceItemButton/Label"
+	) as Label
 	_append(failures, Assertions.expect_true(
 		virtual_joystick != null and
 		virtual_joystick.size.is_equal_approx(Vector2(324.0, 324.0)) and
@@ -167,18 +170,34 @@ func _append_raw_touch_event_failures(failures: Array[String]) -> void:
 		"A 720-high viewport sizes the movement joystick to 45 percent of screen height"
 	))
 	_append(failures, Assertions.expect_true(
-		fire_button != null and jump_button != null and
+		fire_button != null and place_item_button != null and
 		fire_button.size.is_equal_approx(Vector2(205.714286, 205.714286)) and
-		jump_button.size.is_equal_approx(Vector2(120.0, 120.0)),
-		"Fire scales with the joystick while jump keeps its fixed touch size"
+		place_item_button.size.is_equal_approx(Vector2(120.0, 120.0)),
+		"Fire scales with the joystick while place item keeps its fixed touch size"
 	))
 	_append(failures, Assertions.expect_true(
 		fire_label != null and fire_label.get_theme_font_size(&"font_size") == 33,
 		"The responsive fire button scales its label with the touch target"
 	))
-	if virtual_joystick == null or fire_button == null or jump_button == null or fire_label == null:
+	if (
+		virtual_joystick == null or fire_button == null or
+		place_item_button == null or fire_label == null or
+		place_item_label == null
+	):
 		viewport.free()
 		return
+	var has_place_item_status := controls.has_method("set_place_item_status")
+	_append(failures, Assertions.expect_true(
+		has_place_item_status,
+		"Mobile controls expose place-item inventory status updates"
+	))
+	if has_place_item_status:
+		controls.call("set_place_item_status", "油桶", 998)
+		_append(failures, Assertions.expect_equal(
+			place_item_label.text,
+			"油桶\n998",
+			"Mobile place-item label shows the current item and count"
+		))
 	var has_outline_inset := false
 	var has_outline_width := false
 	for property in fire_button.get_property_list():
@@ -197,8 +216,8 @@ func _append_raw_touch_event_failures(failures: Array[String]) -> void:
 	var joystick_rect := virtual_joystick.get_global_rect()
 	_append(failures, Assertions.expect_true(
 		not joystick_rect.intersects(fire_button.get_global_rect()) and
-		not joystick_rect.intersects(jump_button.get_global_rect()) and
-		not fire_button.get_global_rect().intersects(jump_button.get_global_rect()),
+		not joystick_rect.intersects(place_item_button.get_global_rect()) and
+		not fire_button.get_global_rect().intersects(place_item_button.get_global_rect()),
 		"Responsive touch controls do not overlap at 1280 by 720"
 	))
 	viewport.size = Vector2i(1600, 800)
@@ -206,19 +225,19 @@ func _append_raw_touch_event_failures(failures: Array[String]) -> void:
 	_append(failures, Assertions.expect_true(
 		virtual_joystick.size.is_equal_approx(Vector2(360.0, 360.0)) and
 		fire_button.size.is_equal_approx(Vector2(228.571429, 228.571429)) and
-		jump_button.size.is_equal_approx(Vector2(120.0, 120.0)),
+		place_item_button.size.is_equal_approx(Vector2(120.0, 120.0)),
 		"Landscape viewport resizing recomputes height-relative touch target sizes"
 	))
 	_append(failures, Assertions.expect_true(
 		not joystick_rect.intersects(fire_button.get_global_rect()) and
-		not joystick_rect.intersects(jump_button.get_global_rect()) and
-		not fire_button.get_global_rect().intersects(jump_button.get_global_rect()),
+		not joystick_rect.intersects(place_item_button.get_global_rect()) and
+		not fire_button.get_global_rect().intersects(place_item_button.get_global_rect()),
 		"Responsive touch controls remain disjoint after landscape resizing"
 	))
 	viewport.size = Vector2i(1280, 720)
 	joystick_rect = virtual_joystick.get_global_rect()
 	var fire_center := fire_button.get_global_rect().get_center()
-	var jump_center := jump_button.get_global_rect().get_center()
+	var place_item_center := place_item_button.get_global_rect().get_center()
 	var joystick_center := joystick_rect.get_center()
 	virtual_joystick.get_viewport().push_input(
 		_screen_touch(21, true, joystick_center), true
@@ -302,11 +321,11 @@ func _append_raw_touch_event_failures(failures: Array[String]) -> void:
 	))
 
 	fire_button._input(_screen_touch(14, true, fire_center))
-	jump_button._input(_screen_touch(15, true, jump_center))
+	place_item_button._input(_screen_touch(15, true, place_item_center))
 	_append(failures, Assertions.expect_true(
-		fire_button.active_touch_id == 14 and jump_button.active_touch_id == 15 and
-		Input.is_action_pressed(&"primary_attack") and Input.is_action_pressed(&"jump"),
-		"Different raw touch IDs hold fire and jump simultaneously"
+		fire_button.active_touch_id == 14 and place_item_button.active_touch_id == 15 and
+		Input.is_action_pressed(&"primary_attack") and Input.is_action_pressed(&"place_item"),
+		"Different raw touch IDs hold fire and place item simultaneously"
 	))
 	for action in [&"move_left", &"move_right", &"move_forward", &"move_back"]:
 		Input.action_press(action)
@@ -317,9 +336,9 @@ func _append_raw_touch_event_failures(failures: Array[String]) -> void:
 		not Input.is_action_pressed(&"move_forward") and
 		not Input.is_action_pressed(&"move_back") and
 		not Input.is_action_pressed(&"primary_attack") and
-		not Input.is_action_pressed(&"jump") and
+		not Input.is_action_pressed(&"place_item") and
 		fire_button.active_touch_id == -1 and not fire_button.pressed and
-		jump_button.active_touch_id == -1 and not jump_button.pressed,
+		place_item_button.active_touch_id == -1 and not place_item_button.pressed,
 		"Coordinator cancellation releases all actions and resets both action buttons"
 	))
 	viewport.free()
@@ -340,7 +359,7 @@ func _screen_drag(index: int, position: Vector2) -> InputEventScreenDrag:
 
 func _release_test_actions() -> void:
 	for action in [
-		&"move_left", &"move_right", &"move_forward", &"move_back", &"jump",
+		&"move_left", &"move_right", &"move_forward", &"move_back", &"place_item",
 		&"primary_attack"
 	]:
 		Input.action_release(action)
