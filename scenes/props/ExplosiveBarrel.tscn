@@ -1,0 +1,26 @@
+[gd_scene load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://scripts/props/explosive_barrel.gd" id="1_barrel"]
+[ext_resource type="PackedScene" path="res://assets/environment/Barrel.gltf" id="2_visual"]
+[ext_resource type="PackedScene" path="res://scenes/fx/BarrelDamageSmoke.tscn" id="3_damage_smoke"]
+
+[sub_resource type="CylinderShape3D" id="CylinderShape3D_barrel"]
+radius = 0.44
+height = 1.44
+
+[node name="ExplosiveBarrel" type="StaticBody3D" groups=["navigation_source"]]
+collision_layer = 1
+collision_mask = 0
+script = ExtResource("1_barrel")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+position = Vector3(0, 0.72, 0)
+shape = SubResource("CylinderShape3D_barrel")
+
+[node name="VisualRoot" type="Node3D" parent="."]
+
+[node name="Barrel" parent="VisualRoot" instance=ExtResource("2_visual")]
+scale = Vector3(1.25, 1.25, 1.25)
+
+[node name="DamageSmoke" parent="." instance=ExtResource("3_damage_smoke")]
+position = Vector3(0, 1.35, 0)

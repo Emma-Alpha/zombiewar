@@ -158,6 +158,18 @@ func _wire_dependencies() -> void:
 		navigation_manager.chunk_bake_failed.connect(
 			_on_navigation_chunk_bake_failed
 		)
+	var barrels_root := get_node_or_null("World/Props/ExplosiveBarrels")
+	if barrels_root != null:
+		for barrel in barrels_root.get_children():
+			if (
+				barrel is ExplosiveBarrel and
+				not barrel.navigation_geometry_changed.is_connected(
+					_on_barrel_navigation_geometry_changed
+				)
+			):
+				barrel.navigation_geometry_changed.connect(
+					_on_barrel_navigation_geometry_changed
+				)
 	var spawn_button := get_node_or_null("HUD/SpawnWaveButton") as Button
 	if spawn_button != null and not spawn_button.pressed.is_connected(request_spawn_wave):
 		spawn_button.pressed.connect(request_spawn_wave)
@@ -257,6 +269,13 @@ func _on_navigation_chunk_bake_failed(
 ) -> void:
 	push_warning("Navigation chunk %s failed: %s" % [chunk_id, message])
 	_show_wave_status("NAVIGATION FAILED: %s" % chunk_id)
+
+func _on_barrel_navigation_geometry_changed() -> void:
+	var navigation_manager := get_node_or_null(
+		"World/Navigation"
+	) as NavigationWorldManager
+	if navigation_manager != null:
+		navigation_manager.mark_chunk_dirty(&"demo_arena")
 
 func _on_player_attack(
 	direction: Vector3,

@@ -1,4 +1,4 @@
-[gd_scene load_steps=29 format=3]
+[gd_scene load_steps=30 format=3]
 
 [ext_resource type="Script" path="res://scripts/gameplay/demo_arena.gd" id="1_arena"]
 [ext_resource type="PackedScene" path="res://scenes/player/Player.tscn" id="2_player"]
@@ -14,6 +14,7 @@
 [ext_resource type="Script" path="res://scripts/fx/combat_fx_prewarmer.gd" id="12_fx_prewarmer"]
 [ext_resource type="Script" path="res://scripts/navigation/navigation_world_manager.gd" id="13_navigation_manager"]
 [ext_resource type="PackedScene" path="res://scenes/navigation/NavigationChunk3D.tscn" id="14_navigation_chunk"]
+[ext_resource type="PackedScene" path="res://scenes/props/ExplosiveBarrel.tscn" id="15_explosive_barrel"]
 
 [sub_resource type="Environment" id="Environment_arena"]
 background_mode = 1
@@ -217,6 +218,17 @@ collision_mask = 0
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="World/Props/ContainerBCollision"]
 shape = SubResource("BoxShape3D_container")
+
+[node name="ExplosiveBarrels" type="Node3D" parent="World/Props"]
+
+[node name="ChainA" parent="World/Props/ExplosiveBarrels" instance=ExtResource("15_explosive_barrel")]
+position = Vector3(-13, 0, -3)
+
+[node name="ChainB" parent="World/Props/ExplosiveBarrels" instance=ExtResource("15_explosive_barrel")]
+position = Vector3(-10, 0, -3)
+
+[node name="Solo" parent="World/Props/ExplosiveBarrels" instance=ExtResource("15_explosive_barrel")]
+position = Vector3(-15, 0, 6)
 
 [node name="Targets" type="Node3D" parent="World"]
 

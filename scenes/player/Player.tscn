@@ -25,7 +25,7 @@ height = 1.55
 radius = 0.12
 height = 1.55
 
-[node name="Player" type="CharacterBody3D"]
+[node name="Player" type="CharacterBody3D" groups=["damageable_targets"]]
 collision_layer = 2
 collision_mask = 1
 floor_snap_length = 0.25

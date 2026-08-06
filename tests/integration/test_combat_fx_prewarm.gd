@@ -4,6 +4,8 @@ const Assertions = preload("res://tests/helpers/assertions.gd")
 const PREWARMER_PATH := "res://scripts/fx/combat_fx_prewarmer.gd"
 const ARENA_PATH := "res://scenes/gameplay/DemoArena.tscn"
 const EXPECTED_FX_PATHS: Array[String] = [
+	"res://scenes/fx/BarrelDamageSmoke.tscn",
+	"res://scenes/fx/BarrelExplosion.tscn",
 	"res://scenes/fx/BloodImpact.tscn",
 	"res://scenes/fx/GroundBloodSplat.tscn",
 	"res://scenes/fx/MuzzleFlash.tscn",

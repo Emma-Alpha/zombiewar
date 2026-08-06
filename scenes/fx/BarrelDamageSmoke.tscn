@@ -1,0 +1,62 @@
+[gd_scene load_steps=6 format=3]
+
+[ext_resource type="Script" path="res://scripts/fx/barrel_damage_smoke.gd" id="1_script"]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_smoke"]
+transparency = 1
+shading_mode = 0
+albedo_color = Color(0.055, 0.045, 0.04, 0.72)
+
+[sub_resource type="SphereMesh" id="SphereMesh_smoke"]
+material = SubResource("StandardMaterial3D_smoke")
+radius = 0.18
+height = 0.36
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_spark"]
+shading_mode = 0
+albedo_color = Color(1, 0.28, 0.015, 1)
+
+[sub_resource type="SphereMesh" id="SphereMesh_spark"]
+material = SubResource("StandardMaterial3D_spark")
+radius = 0.018
+height = 0.07
+
+[node name="BarrelDamageSmoke" type="Node3D"]
+visible = false
+script = ExtResource("1_script")
+
+[node name="Smoke" type="CPUParticles3D" parent="."]
+emitting = false
+amount = 16
+lifetime = 1.45
+randomness = 0.75
+visibility_aabb = AABB(-2, -1, -2, 4, 4, 4)
+mesh = SubResource("SphereMesh_smoke")
+direction = Vector3(0, 1, 0)
+spread = 18.0
+gravity = Vector3(0, 0.2, 0)
+initial_velocity_min = 0.45
+initial_velocity_max = 1.15
+damping_min = 0.15
+damping_max = 0.4
+scale_amount_min = 0.55
+scale_amount_max = 1.45
+color = Color(0.08, 0.065, 0.055, 0.72)
+
+[node name="Sparks" type="CPUParticles3D" parent="."]
+emitting = false
+amount = 7
+lifetime = 0.55
+randomness = 0.9
+visibility_aabb = AABB(-2, -2, -2, 4, 4, 4)
+mesh = SubResource("SphereMesh_spark")
+direction = Vector3(0, 0.55, 0)
+spread = 65.0
+gravity = Vector3(0, -4.5, 0)
+initial_velocity_min = 0.8
+initial_velocity_max = 2.1
+damping_min = 0.2
+damping_max = 0.8
+scale_amount_min = 0.55
+scale_amount_max = 1.2
+color = Color(1, 0.22, 0.01, 1)
