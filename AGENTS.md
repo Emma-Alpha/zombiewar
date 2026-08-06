@@ -2,13 +2,12 @@
 
 ## Project Structure & Module Organization
 
-This is a Godot 4.7.1 2.5D game prototype. Keep runtime code in `scripts/`, grouped by feature (`player/`, `combat/`, `gameplay/`, `fx/`, `menu/`, and `ui/`). Matching reusable scenes belong in `scenes/`; data-driven configuration such as weapon and difficulty definitions belongs in `resources/`. Source models, textures, fonts, and audio live under `assets/`. Tests are split between `tests/unit/` and `tests/integration/`, with shared assertions in `tests/helpers/` and registration in `tests/test_runner.gd`. Treat `addons/` as third-party or plugin code; avoid modifying it unless the change specifically targets that dependency. Design notes and implementation plans live in `docs/`.
+This is a Godot 4.7.1 2.5D game prototype. Keep runtime code in `scripts/`, grouped by feature (`player/`, `combat/`, `gameplay/`, `fx/`, `menu/`, and `ui/`). Matching reusable scenes belong in `scenes/`; data-driven configuration such as weapon and difficulty definitions belongs in `resources/`. Source models, textures, fonts, and audio live under `assets/`. Treat `addons/` as third-party or plugin code; avoid modifying it unless the change specifically targets that dependency. Design notes and implementation plans live in `docs/`.
 
 ## Build, Test, and Development Commands
 
 - `/Applications/Godot.app/Contents/MacOS/Godot --path .` launches the configured main scene.
 - `/Applications/Godot.app/Contents/MacOS/Godot --headless --editor --path . --quit` imports assets and catches scene or script parse errors.
-- `./tests/run_tests.sh` runs the full custom test suite with strict Godot error capture. Use the direct Godot test-runner invocation only for low-level debugging.
 - `mkdir -p build/web && /Applications/Godot.app/Contents/MacOS/Godot --headless --path . --export-release Web build/web/index.html` creates the Web export.
 
 ## Coding Style & Naming Conventions
@@ -29,13 +28,13 @@ When changing navigation behavior, verify pursuit, wandering, unreachable target
 
 Place new runtime combat VFX scenes that use meshes, custom shaders, GPU particles, or first-use animations under `scenes/fx/`. If the effect can appear during gameplay, its root script must implement `warmup_for_render(context)` and `finish_render_warmup()` so `CombatFxPrewarmer` discovers it automatically.
 
-Warmup methods may only activate visual rendering. They must not play audio, deal damage, emit gameplay attack signals, consume input, mutate weapon spread, write saves, or depend on a live target. `finish_render_warmup()` must be safe to call during cleanup and restore the effect to an inactive state. Add or update the combat FX smoke test when introducing a new warmable effect.
+Warmup methods may only activate visual rendering. They must not play audio, deal damage, emit gameplay attack signals, consume input, mutate weapon spread, write saves, or depend on a live target. `finish_render_warmup()` must be safe to call during cleanup and restore the effect to an inactive state. Verify new warmable effects with the headless import check and focused in-game inspection.
 
 ## Testing Guidelines
 
-Tests use lightweight `RefCounted` cases with a `run() -> Array[String]` method. Name files `test_<behavior>.gd`, place logic tests in `unit/`, and scene-contract tests in `integration/`. Register every new test in `TEST_PATHS` inside `tests/test_runner.gd`. Run the full headless suite before submitting changes; no coverage percentage is enforced, but new behavior and regressions should receive focused tests.
+The repository currently has no persistent automated test suite. Use the headless Godot editor command to catch import, scene, and script parse errors. Add focused tests only when a change has a stable, high-value behavior contract that is not coupled to frequently tuned gameplay numbers or presentation details.
 
-Do not use CUA (computer-use or UI-control automation) to perform fully automated validation. Test behavior from the source-code layer with unit tests, integration tests, scene-contract checks, and headless Godot commands. When a visual or interactive result cannot be verified reliably from source-level tests, give the user a short, precise sequence of in-game operations to perform, ask them to capture the relevant screenshot, and analyze the screenshot they provide.
+Do not use CUA (computer-use or UI-control automation) to perform fully automated validation. Prefer headless Godot checks and focused source-level validation. When a visual or interactive result cannot be verified reliably from source-level checks, give the user a short, precise sequence of in-game operations to perform, ask them to capture the relevant screenshot, and analyze the screenshot they provide.
 
 ## Commit & Pull Request Guidelines
 

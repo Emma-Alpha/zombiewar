@@ -50,12 +50,6 @@ See `docs/assets/shooting-impact-assets.md` for the reviewed Quaternius, Kenney,
 
 Navigation-mesh pathfinding and obstacle avoidance, spawn waves, experience, upgrades, loot, and persistent roguelite runs are intentionally reserved for the next milestone.
 
-## Tests
-
-```bash
-./tests/run_tests.sh
-```
-
 ## Export and mobile verification
 
 ```bash
@@ -93,6 +87,6 @@ CLOUDFLARE_API_TOKEN
 CLOUDFLARE_ACCOUNT_ID
 ```
 
-The workflow checks out the release tag, runs ./tests/run_tests.sh, then deploys to the Cloudflare Pages main production branch. Ordinary pushes do not deploy.
+The workflow checks out the release tag, then deploys to the Cloudflare Pages main production branch. Ordinary pushes do not deploy.
 
 Optional overrides are `GODOT_BIN`, `CLOUDFLARE_PAGES_PROJECT`, and `CLOUDFLARE_BRANCH`. The Pages project and branch defaults are `zombiewar` and `main`. The deployment script reads the single `GAME_ASSETS` bucket from `wrangler.jsonc`; that file fixes it as `zombiewar-assets`. The bucket remains private, and old hash-addressed WASM objects are intentionally retained for historical Pages deployments.

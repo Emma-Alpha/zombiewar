@@ -13,7 +13,7 @@ concurrency:
 
 jobs:
   deploy:
-    name: Test and deploy release
+    name: Deploy release
     runs-on: ubuntu-latest
     steps:
       - name: Check out the published Release tag
@@ -46,9 +46,6 @@ jobs:
           chmod +x "$RUNNER_TEMP/godot/$GODOT_BINARY"
           echo "GODOT_BIN=$RUNNER_TEMP/godot/$GODOT_BINARY" >> "$GITHUB_ENV"
           echo "ZOMBIEWAR_GODOT_BIN=$RUNNER_TEMP/godot/$GODOT_BINARY" >> "$GITHUB_ENV"
-
-      - name: Run the full Godot test suite
-        run: ./tests/run_tests.sh
 
       - name: Deploy the Release to Cloudflare production
         env:
