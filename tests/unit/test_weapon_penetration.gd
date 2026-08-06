@@ -10,14 +10,14 @@ const HitResult = preload("res://scripts/combat/hit_result.gd")
 
 func run() -> Array[String]:
 	var failures: Array[String] = []
-	_test_pistol_damage_and_limit(failures)
-	_test_rifle_damage_and_summary(failures)
+	_test_pistol_stops_at_first_zombie(failures)
+	_test_rifle_stops_at_first_zombie(failures)
 	_test_wall_block_and_hitbox_deduplication(failures)
 	_test_runtime_penetration_limit_is_clamped(failures)
-	_test_unobstructed_penetration_reaches_max_range(failures)
+	_test_disabled_penetration_terminates_tracer_at_first_zombie(failures)
 	return failures
 
-func _test_pistol_damage_and_limit(failures: Array[String]) -> void:
+func _test_pistol_stops_at_first_zombie(failures: Array[String]) -> void:
 	var fixture := _make_fixture()
 	var player := PLAYER_SCENE.instantiate() as PlayerController
 	fixture.add_child(player)
@@ -41,19 +41,19 @@ func _test_pistol_damage_and_limit(failures: Array[String]) -> void:
 	))
 	_append(failures, Assertions.expect_float_near(
 		targets[1].health.current,
-		32.5,
+		50.0,
 		0.0001,
-		"Pistol second zombie receives coefficient damage"
+		"Pistol does not damage the second zombie"
 	))
 	_append(failures, Assertions.expect_float_near(
 		targets[2].health.current,
 		50.0,
 		0.0001,
-		"Pistol stops after one extra penetration"
+		"Pistol does not damage the third zombie"
 	))
 	fixture.free()
 
-func _test_rifle_damage_and_summary(failures: Array[String]) -> void:
+func _test_rifle_stops_at_first_zombie(failures: Array[String]) -> void:
 	var fixture := _make_fixture()
 	var player := PLAYER_SCENE.instantiate() as PlayerController
 	fixture.add_child(player)
@@ -83,9 +83,9 @@ func _test_rifle_damage_and_summary(failures: Array[String]) -> void:
 
 	var expected_health: Array[float] = [
 		25.0,
-		31.25,
-		35.9375,
-		39.453125,
+		50.0,
+		50.0,
+		50.0,
 		50.0,
 	]
 	for target_index in range(targets.size()):
@@ -93,23 +93,23 @@ func _test_rifle_damage_and_summary(failures: Array[String]) -> void:
 			targets[target_index].health.current,
 			expected_health[target_index],
 			0.0001,
-			"Rifle penetration health at target %d" % target_index
+			"Rifle non-penetrating health at target %d" % target_index
 		))
 	_append(failures, Assertions.expect_equal(
 		feedback_results.size(),
 		1,
-		"Penetrating rifle shot emits one attack result"
+		"Non-penetrating rifle shot emits one attack result"
 	))
 	if feedback_results.size() == 1:
 		_append(failures, Assertions.expect_true(
 			feedback_results[0].did_hit,
-			"Penetrating rifle summary reports a hit"
+			"Non-penetrating rifle summary reports a hit"
 		))
 		_append(failures, Assertions.expect_float_near(
 			feedback_results[0].damage_applied,
-			68.359375,
+			25.0,
 			0.0001,
-			"Penetrating rifle summary totals actual damage"
+			"Non-penetrating rifle summary contains first-target damage"
 		))
 	fixture.free()
 
@@ -127,11 +127,11 @@ func _test_wall_block_and_hitbox_deduplication(
 	_disable_spread(wall_weapon)
 	var front_target := _spawn_target(
 		wall_fixture,
-		Vector3(0.0, 0.0, -4.0)
+		Vector3(0.0, 0.0, -8.0)
 	)
 	var rear_target := _spawn_target(
 		wall_fixture,
-		Vector3(0.0, 0.0, -8.0)
+		Vector3(0.0, 0.0, -10.0)
 	)
 	var wall := _make_wall(
 		Vector3(0.0, 1.1, -6.0),
@@ -146,9 +146,9 @@ func _test_wall_block_and_hitbox_deduplication(
 	var tracer := wall_weapon.tracer_pool[tracer_index] as ShotTracer
 	_append(failures, Assertions.expect_float_near(
 		front_target.health.current,
-		15.0,
+		50.0,
 		0.0001,
-		"Zombie before wall receives pistol damage"
+		"Wall blocks damage to the first zombie behind it"
 	))
 	_append(failures, Assertions.expect_float_near(
 		rear_target.health.current,
@@ -193,9 +193,9 @@ func _test_wall_block_and_hitbox_deduplication(
 	))
 	_append(failures, Assertions.expect_float_near(
 		next_target.health.current,
-		32.5,
+		50.0,
 		0.0001,
-		"Duplicate hitbox does not consume penetration count"
+		"Disabled penetration leaves the next zombie undamaged"
 	))
 	dedupe_fixture.free()
 
@@ -247,7 +247,7 @@ func _test_runtime_penetration_limit_is_clamped(
 	))
 	fixture.free()
 
-func _test_unobstructed_penetration_reaches_max_range(
+func _test_disabled_penetration_terminates_tracer_at_first_zombie(
 	failures: Array[String]
 ) -> void:
 	var fixture := _make_fixture()
@@ -260,9 +260,6 @@ func _test_unobstructed_penetration_reaches_max_range(
 	var weapon := equipment.get_current_weapon() as RangedWeapon
 	_disable_spread(weapon)
 	var target := _spawn_target(fixture, Vector3(0.0, 0.0, -24.0))
-	var ranged_definition := weapon.definition as RangedWeaponDefinition
-	var ray_origin := weapon.get_ray_origin()
-	var expected_end := ray_origin + Vector3.FORWARD * ranged_definition.attack_range
 	var tracer_index := weapon.tracer_pool_cursor
 
 	weapon._fire(Vector3.FORWARD)
@@ -272,13 +269,13 @@ func _test_unobstructed_penetration_reaches_max_range(
 		target.health.current,
 		15.0,
 		0.0001,
-		"Unobstructed penetration damages the zombie"
+		"Disabled penetration still damages the first zombie"
 	))
-	_append(failures, Assertions.expect_vector3_near(
-		_tracer_end(tracer),
-		expected_end,
-		0.001,
-		"Unobstructed penetration tracer reaches maximum range"
+	_append(failures, Assertions.expect_float_near(
+		_tracer_end(tracer).z,
+		-22.9,
+		0.05,
+		"Disabled penetration tracer terminates at the first zombie"
 	))
 	fixture.free()
 

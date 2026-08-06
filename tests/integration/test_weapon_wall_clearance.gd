@@ -390,9 +390,9 @@ func _assert_raised_blocker_pair(
 		"Removing the %s lets the same RAISED shot damage its target" % label
 	))
 	_append(failures, Assertions.expect_true(
-		_tracer_end(clear_tracer).distance_to(ray_end) < 0.001 and
+		_tracer_end(clear_tracer).distance_to(clear_hit) < 0.001 and
 			feedback_positions.back().distance_to(clear_hit) < 0.001,
-		"Unobstructed RAISED %s tracer reaches range and feedback keeps the hit" % label
+		"Unobstructed RAISED %s tracer and feedback end at the first zombie" % label
 	))
 
 func _test_capsule_muzzle_origins_and_directions(failures: Array[String]) -> void:

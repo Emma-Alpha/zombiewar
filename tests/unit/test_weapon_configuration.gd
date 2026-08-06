@@ -67,26 +67,26 @@ func run() -> Array[String]:
 	if pistol_has_penetration:
 		_append(failures, Assertions.expect_float_near(
 			pistol.penetration_damage_coefficient,
-			0.5,
+			0.0,
 			0.0001,
-			"Pistol penetration damage coefficient"
+			"Pistol penetration is disabled by coefficient"
 		))
 		_append(failures, Assertions.expect_equal(
 			pistol.max_penetration_count,
-			1,
-			"Pistol maximum extra penetration count"
+			0,
+			"Pistol has no extra penetration targets"
 		))
 	if rifle_has_penetration:
 		_append(failures, Assertions.expect_float_near(
 			rifle.penetration_damage_coefficient,
-			0.75,
+			0.0,
 			0.0001,
-			"Rifle penetration damage coefficient"
+			"Rifle penetration is disabled by coefficient"
 		))
 		_append(failures, Assertions.expect_equal(
 			rifle.max_penetration_count,
-			3,
-			"Rifle maximum extra penetration count"
+			0,
+			"Rifle has no extra penetration targets"
 		))
 	_append(failures, Assertions.expect_float_near(
 		pistol.base_spread_degrees,
