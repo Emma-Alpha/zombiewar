@@ -73,6 +73,21 @@ func merge_limited(size_growth: float, darken_amount: float) -> void:
 	var material := material_override as StandardMaterial3D
 	material.albedo_color = current_tint
 
+func warmup_for_render(context: FxWarmupContext) -> void:
+	var material := material_override as StandardMaterial3D
+	setup(
+		context.position_in_view(3.5, Vector2(0.3, -0.3)),
+		-context.forward_direction(),
+		Vector2.ONE,
+		0.0,
+		Color(0.42, 0.008, 0.015, 0.92),
+		material.albedo_texture,
+		0.4
+	)
+
+func finish_render_warmup() -> void:
+	visible = false
+
 func _apply_size_basis() -> void:
 	var resolved_basis := surface_basis(
 		current_surface_normal,

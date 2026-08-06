@@ -1,4 +1,4 @@
-[gd_scene load_steps=26 format=3]
+[gd_scene load_steps=27 format=3]
 
 [ext_resource type="Script" path="res://scripts/gameplay/demo_arena.gd" id="1_arena"]
 [ext_resource type="PackedScene" path="res://scenes/player/Player.tscn" id="2_player"]
@@ -11,6 +11,7 @@
 [ext_resource type="PackedScene" path="res://scenes/ui/MobileControls.tscn" id="9_mobile_controls"]
 [ext_resource type="FontFile" path="res://assets/fonts/NotoSansSC-UI.ttf" id="10_cjk_font"]
 [ext_resource type="PackedScene" path="res://scenes/ui/MobileOrientationGuard.tscn" id="11_orientation_guard"]
+[ext_resource type="Script" path="res://scripts/fx/combat_fx_prewarmer.gd" id="12_fx_prewarmer"]
 
 [sub_resource type="Environment" id="Environment_arena"]
 background_mode = 1
@@ -230,6 +231,9 @@ script = ExtResource("7_ground_blood")
 max_splats = 192
 surface_collision_mask = 1
 
+[node name="CombatFxPrewarmer" type="Node3D" parent="."]
+script = ExtResource("12_fx_prewarmer")
+
 [node name="FollowCamera" parent="." instance=ExtResource("3_camera")]
 position = Vector3(0, 0, 6)
 
@@ -383,3 +387,35 @@ one_shot = true
 [node name="AutoWaveTimer" type="Timer" parent="."]
 wait_time = 1.5
 one_shot = true
+
+[node name="WarmupLayer" type="CanvasLayer" parent="."]
+layer = 100
+
+[node name="Overlay" type="ColorRect" parent="WarmupLayer"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 0
+color = Color(0.025, 0.031, 0.04, 1)
+
+[node name="Label" type="Label" parent="WarmupLayer/Overlay"]
+layout_mode = 0
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -180.0
+offset_top = -24.0
+offset_right = 180.0
+offset_bottom = 24.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_override_fonts/font = ExtResource("10_cjk_font")
+theme_override_font_sizes/font_size = 24
+text = "正在准备战斗…"
+horizontal_alignment = 1
+vertical_alignment = 1

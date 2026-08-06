@@ -45,6 +45,21 @@ func setup(hit_position: Vector3, shot_direction: Vector3, intensity: float = 1.
 		droplets.emitting = true
 	set_process(true)
 
+func warmup_for_render(context: FxWarmupContext) -> void:
+	setup(
+		context.position_in_view(3.0, Vector2(0.0, -0.2)),
+		context.forward_direction(),
+		1.0
+	)
+	set_process(false)
+
+func finish_render_warmup() -> void:
+	remaining = 0.0
+	if droplets != null:
+		droplets.emitting = false
+	visible = false
+	set_process(false)
+
 func _process(delta: float) -> void:
 	remaining -= delta
 	var duration := maxf(lifetime, 0.05)

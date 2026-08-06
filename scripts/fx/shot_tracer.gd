@@ -29,6 +29,15 @@ func deactivate() -> void:
 	visible = false
 	set_process(false)
 
+func warmup_for_render(context: FxWarmupContext) -> void:
+	setup(
+		context.position_in_view(2.0, Vector2(-0.35, 0.0)),
+		context.position_in_view(4.0, Vector2(-0.35, 0.0))
+	)
+
+func finish_render_warmup() -> void:
+	deactivate()
+
 func _process(delta: float) -> void:
 	remaining -= delta
 	var alpha := clampf(

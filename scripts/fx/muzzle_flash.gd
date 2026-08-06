@@ -16,6 +16,15 @@ func flash() -> void:
 	visible = true
 	set_process(true)
 
+func warmup_for_render(context: FxWarmupContext) -> void:
+	global_position = context.position_in_view(2.5, Vector2(0.35, 0.15))
+	flash()
+
+func finish_render_warmup() -> void:
+	remaining = 0.0
+	visible = false
+	set_process(false)
+
 func _process(delta: float) -> void:
 	remaining -= delta
 	if remaining <= 0.0:

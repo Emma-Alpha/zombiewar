@@ -30,6 +30,8 @@ var wave_rng := RandomNumberGenerator.new()
 var wave_number := 0
 var player_defeated := false
 var restart_pending := false
+var startup_pending := false
+var warmup_overlay_tween: Tween
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_SCENE_INSTANTIATED:
@@ -43,9 +45,18 @@ func _ready() -> void:
 		wave_rng.randomize()
 	else:
 		wave_rng.seed = random_seed
-	spawn_wave()
+	startup_pending = true
+	if DisplayServer.get_name() == "headless":
+		_complete_combat_startup(false)
+		return
+	var player := get_node_or_null("Player") as PlayerController
+	if player != null:
+		player.set_physics_process(false)
+	call_deferred("_run_combat_startup")
 
 func _unhandled_input(event: InputEvent) -> void:
+	if startup_pending:
+		return
 	if event is InputEventKey and (event as InputEventKey).echo:
 		return
 	if event.is_action_pressed(&"spawn_wave"):
@@ -57,13 +68,13 @@ func _unhandled_input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 
 func request_spawn_wave() -> int:
-	if player_defeated:
+	if startup_pending or player_defeated:
 		return 0
 	_cancel_auto_wave()
 	return spawn_wave()
 
 func request_restart() -> void:
-	if not player_defeated or restart_pending:
+	if startup_pending or not player_defeated or restart_pending:
 		return
 	restart_pending = true
 	restart_requested.emit()
@@ -73,6 +84,66 @@ func _reload_current_scene() -> void:
 	var scene_tree := get_tree()
 	if scene_tree != null:
 		scene_tree.reload_current_scene()
+
+func _run_combat_startup() -> void:
+	var prewarmer := get_node_or_null(
+		"CombatFxPrewarmer"
+	) as CombatFxPrewarmer
+	var camera := get_node_or_null("FollowCamera/Camera3D") as Camera3D
+	var warmup_layer := get_node_or_null("WarmupLayer") as CanvasLayer
+	if prewarmer != null:
+		await get_tree().process_frame
+		await get_tree().process_frame
+		if warmup_layer != null:
+			warmup_layer.hide()
+		prewarmer.prewarm(camera)
+		if warmup_layer != null:
+			warmup_layer.show()
+	_complete_combat_startup(true)
+
+func _complete_combat_startup(animate_overlay: bool) -> void:
+	if not startup_pending:
+		return
+	var mobile_controls := get_node_or_null("MobileControls") as MobileControls
+	if mobile_controls != null:
+		mobile_controls.cancel_all_input()
+	_release_startup_actions()
+	var player := get_node_or_null("Player") as PlayerController
+	if player != null:
+		player.set_physics_process(true)
+	startup_pending = false
+	spawn_wave()
+	var warmup_layer := get_node_or_null("WarmupLayer") as CanvasLayer
+	var overlay := get_node_or_null("WarmupLayer/Overlay") as ColorRect
+	if warmup_layer == null or overlay == null:
+		return
+	if not animate_overlay:
+		warmup_layer.hide()
+		return
+	if warmup_overlay_tween != null and warmup_overlay_tween.is_valid():
+		warmup_overlay_tween.kill()
+	warmup_overlay_tween = create_tween()
+	warmup_overlay_tween.tween_property(overlay, "color:a", 0.0, 0.16)
+	await warmup_overlay_tween.finished
+	if is_instance_valid(warmup_layer):
+		warmup_layer.hide()
+
+func _release_startup_actions() -> void:
+	for action in [
+		&"move_left",
+		&"move_right",
+		&"move_forward",
+		&"move_back",
+		&"jump",
+		&"primary_attack",
+		&"weapon_pistol",
+		&"weapon_rifle",
+		&"weapon_knife",
+		&"weapon_slot_4",
+		&"spawn_wave",
+		&"restart_demo",
+	]:
+		Input.action_release(action)
 
 func _wire_dependencies() -> void:
 	var spawn_button := get_node_or_null("HUD/SpawnWaveButton") as Button

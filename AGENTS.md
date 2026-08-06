@@ -15,6 +15,12 @@ This is a Godot 4.7.1 2.5D game prototype. Keep runtime code in `scripts/`, grou
 
 Use GDScript with tabs for indentation and follow the existing Godot style. Name files, variables, and functions in `snake_case`; use `PascalCase` for `class_name` declarations and scene root types; use `UPPER_SNAKE_CASE` for constants. Add type annotations where they clarify public APIs or avoid Variant inference. Prefer small, feature-focused scripts and `res://` paths. Keep `.tscn` and `.tres` edits editor-generated when practical, and commit the associated `.uid` files.
 
+## Combat FX Render Warmup
+
+Place new runtime combat VFX scenes that use meshes, custom shaders, GPU particles, or first-use animations under `scenes/fx/`. If the effect can appear during gameplay, its root script must implement `warmup_for_render(context)` and `finish_render_warmup()` so `CombatFxPrewarmer` discovers it automatically.
+
+Warmup methods may only activate visual rendering. They must not play audio, deal damage, emit gameplay attack signals, consume input, mutate weapon spread, write saves, or depend on a live target. `finish_render_warmup()` must be safe to call during cleanup and restore the effect to an inactive state. Add or update the combat FX smoke test when introducing a new warmable effect.
+
 ## Testing Guidelines
 
 Tests use lightweight `RefCounted` cases with a `run() -> Array[String]` method. Name files `test_<behavior>.gd`, place logic tests in `unit/`, and scene-contract tests in `integration/`. Register every new test in `TEST_PATHS` inside `tests/test_runner.gd`. Run the full headless suite before submitting changes; no coverage percentage is enforced, but new behavior and regressions should receive focused tests.
