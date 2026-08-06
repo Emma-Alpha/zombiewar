@@ -62,19 +62,40 @@ func run() -> Array[String]:
 		"World/Boundaries/South",
 		"World/Boundaries/West",
 		"World/Boundaries/East",
-		"World/Props/PickupCollision",
-		"World/Props/ContainerACollision",
-		"World/Props/ContainerBCollision",
+		"World/Props/Incident/PickupCollision",
+		"World/Props/HazardZone/ContainerACollision",
+		"World/Props/Checkpoint/ContainerBCollision",
 	]:
 		var source := arena.get_node_or_null(path)
 		_append(failures, Assertions.expect_true(
 			source != null and source.is_in_group(&"navigation_source"),
 			"Demo navigation source is tagged: %s" % path
 		))
+	for root_path in [
+		"World/Props/Checkpoint/TrafficBarriers",
+		"World/Props/Checkpoint/PlasticBarriers",
+		"World/Props/SupplyPoint/PerimeterProps",
+		"World/Props/SupplyPoint/Chests",
+	]:
+		var root := arena.get_node_or_null(root_path)
+		_append(failures, Assertions.expect_true(
+			root != null,
+			"Demo navigation prop root exists: %s" % root_path
+		))
+		if root == null:
+			continue
+		for child in root.get_children():
+			_append(failures, Assertions.expect_true(
+				child.is_in_group(&"navigation_source"),
+				"Checkpoint static prop is a navigation source: %s/%s" % [
+					root_path,
+					child.name,
+				]
+			))
 	for path in [
-		"World/Props/PickupVisual",
-		"World/Props/ContainerAVisual",
-		"World/Props/ContainerBVisual",
+		"World/Props/Incident/PickupVisual",
+		"World/Props/HazardZone/ContainerAVisual",
+		"World/Props/Checkpoint/ContainerBVisual",
 	]:
 		var visual := arena.get_node_or_null(path)
 		_append(failures, Assertions.expect_true(

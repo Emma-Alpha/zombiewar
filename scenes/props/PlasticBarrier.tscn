@@ -1,0 +1,16 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="PackedScene" path="res://assets/environment/PlasticBarrier.gltf" id="1_visual"]
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_plastic_barrier"]
+size = Vector3(1.04, 0.6, 0.34)
+
+[node name="PlasticBarrier" type="StaticBody3D" groups=["navigation_source", "place_item_obstacle"]]
+collision_layer = 1
+collision_mask = 0
+
+[node name="Visual" parent="." instance=ExtResource("1_visual")]
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+position = Vector3(0, 0.3, 0)
+shape = SubResource("BoxShape3D_plastic_barrier")

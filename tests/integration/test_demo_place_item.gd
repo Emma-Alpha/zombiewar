@@ -14,7 +14,7 @@ func run() -> Array[String]:
 	) as PlaceItemController
 	var player := arena.get_node_or_null("Player") as PlayerController
 	var barrels := arena.get_node_or_null(
-		"World/Props/ExplosiveBarrels"
+		"World/Props/HazardZone/ExplosiveBarrels"
 	) as Node3D
 	_append(failures, Assertions.expect_true(
 		grid != null and is_equal_approx(grid.cell_size, 1.0) and
@@ -33,9 +33,9 @@ func run() -> Array[String]:
 		"World/Boundaries/South",
 		"World/Boundaries/West",
 		"World/Boundaries/East",
-		"World/Props/PickupCollision",
-		"World/Props/ContainerACollision",
-		"World/Props/ContainerBCollision",
+		"World/Props/Incident/PickupCollision",
+		"World/Props/HazardZone/ContainerACollision",
+		"World/Props/Checkpoint/ContainerBCollision",
 	]
 	for path in obstacle_paths:
 		var obstacle := arena.get_node_or_null(path)
@@ -43,6 +43,27 @@ func run() -> Array[String]:
 			obstacle != null and obstacle.is_in_group(&"place_item_obstacle"),
 			"Demo placement grid registers obstacle %s" % path
 		))
+	for root_path in [
+		"World/Props/Checkpoint/TrafficBarriers",
+		"World/Props/Checkpoint/PlasticBarriers",
+		"World/Props/SupplyPoint/PerimeterProps",
+		"World/Props/SupplyPoint/Chests",
+	]:
+		var root := arena.get_node_or_null(root_path)
+		_append(failures, Assertions.expect_true(
+			root != null,
+			"Demo placement prop root exists: %s" % root_path
+		))
+		if root == null:
+			continue
+		for child in root.get_children():
+			_append(failures, Assertions.expect_true(
+				child.is_in_group(&"place_item_obstacle"),
+				"Checkpoint static prop occupies placement cells: %s/%s" % [
+					root_path,
+					child.name,
+				]
+			))
 	if barrels != null:
 		for barrel in barrels.get_children():
 			_append(failures, Assertions.expect_true(
@@ -83,7 +104,7 @@ func run() -> Array[String]:
 	var count_before_blocked := controller.get_remaining_count()
 	var blocked := controller.request_place_item(
 		player,
-		Vector3(-7.0, 0.0, -3.0),
+		Vector3(-9.0, 0.0, -1.5),
 		Vector3.FORWARD
 	)
 	_append(failures, Assertions.expect_true(

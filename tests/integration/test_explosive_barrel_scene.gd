@@ -169,7 +169,7 @@ func _test_melee_and_arena_contract(failures: Array[String]) -> void:
 
 	var arena := ARENA_SCENE.instantiate()
 	var barrels_root := arena.get_node_or_null(
-		"World/Props/ExplosiveBarrels"
+		"World/Props/HazardZone/ExplosiveBarrels"
 	)
 	var barrels: Array[Node] = []
 	if barrels_root != null:

@@ -1,0 +1,16 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="PackedScene" path="res://assets/environment/Chest.gltf" id="1_visual"]
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_supply_chest"]
+size = Vector3(0.64, 0.41, 0.48)
+
+[node name="SupplyChest" type="StaticBody3D" groups=["navigation_source", "place_item_obstacle"]]
+collision_layer = 1
+collision_mask = 0
+
+[node name="Visual" parent="." instance=ExtResource("1_visual")]
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+position = Vector3(0, 0.205, 0)
+shape = SubResource("BoxShape3D_supply_chest")

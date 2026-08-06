@@ -158,7 +158,9 @@ func _wire_dependencies() -> void:
 		navigation_manager.chunk_bake_failed.connect(
 			_on_navigation_chunk_bake_failed
 		)
-	var barrels_root := get_node_or_null("World/Props/ExplosiveBarrels")
+	var barrels_root := get_node_or_null(
+		"World/Props/HazardZone/ExplosiveBarrels"
+	)
 	if barrels_root != null:
 		for barrel in barrels_root.get_children():
 			if (
