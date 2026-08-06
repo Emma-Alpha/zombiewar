@@ -71,6 +71,39 @@ func run() -> Array[String]:
 		weapon != null and not weapon.trigger_pressed and not weapon.trigger_just_pressed,
 		"Taking damage cancels the current weapon attack"
 	))
+	var has_hit_lock := _has_property(player, &"hit_attack_lock_remaining")
+	var has_knockback := _has_property(player, &"knockback_velocity")
+	_append(failures, Assertions.expect_true(
+		has_hit_lock and has_knockback,
+		"Player exposes hit lock and knockback runtime state"
+	))
+	if has_hit_lock and has_knockback:
+		var current_knockback: Vector3 = player.get("knockback_velocity")
+		_append(failures, Assertions.expect_float_near(
+			float(player.get("hit_attack_lock_remaining")),
+			1.2,
+			0.0001,
+			"A successful hit starts the full weapon lock"
+		))
+		_append(failures, Assertions.expect_vector3_near(
+			current_knockback,
+			Vector3.LEFT * 8.0,
+			0.0001,
+			"A hit from the right starts leftward knockback"
+		))
+		Input.action_press(player.primary_attack_action)
+		player._physics_process(0.016)
+		_append(failures, Assertions.expect_true(
+			weapon != null and not weapon.trigger_pressed and not weapon.trigger_just_pressed,
+			"Weapon input stays cancelled during the hit lock"
+		))
+		player._process(1.2)
+		player._physics_process(0.016)
+		_append(failures, Assertions.expect_true(
+			weapon != null and weapon.trigger_pressed,
+			"Weapon input resumes after the hit lock expires"
+		))
+		Input.action_release(player.primary_attack_action)
 	var weapon_collision := player.get_node("WeaponCollision") as CollisionShape3D
 	player.set("attack_animation_remaining", 0.5)
 	player.call("apply_damage", 1000.0, Vector3.RIGHT)
@@ -109,6 +142,20 @@ func run() -> Array[String]:
 		0.0001,
 		"Death clears the weapon attack animation lock"
 	))
+	if has_hit_lock and has_knockback:
+		var death_knockback: Vector3 = player.get("knockback_velocity")
+		_append(failures, Assertions.expect_float_near(
+			float(player.get("hit_attack_lock_remaining")),
+			0.0,
+			0.0001,
+			"Death clears the weapon hit lock"
+		))
+		_append(failures, Assertions.expect_vector3_near(
+			death_knockback,
+			Vector3.ZERO,
+			0.0001,
+			"Death clears knockback velocity"
+		))
 	_append(failures, Assertions.expect_float_near(
 		float(player.call("apply_damage", 10.0, Vector3.RIGHT)),
 		0.0,
@@ -133,6 +180,12 @@ func _on_damaged(_amount: float) -> void:
 
 func _on_died() -> void:
 	death_emissions += 1
+
+func _has_property(instance: Object, property_name: StringName) -> bool:
+	for property: Dictionary in instance.get_property_list():
+		if StringName(property.get("name", "")) == property_name:
+			return true
+	return false
 
 func _append(failures: Array[String], failure: String) -> void:
 	if not failure.is_empty():

@@ -37,6 +37,31 @@ static func next_aim_direction(
 		return Vector3.FORWARD
 	return flat_current.normalized()
 
+static func knockback_direction(
+	player_position: Vector3,
+	source_position: Vector3,
+	facing_direction: Vector3
+) -> Vector3:
+	var away := player_position - source_position
+	away.y = 0.0
+	if away.length_squared() > 0.000001:
+		return away.normalized()
+	var flat_facing := Vector3(facing_direction.x, 0.0, facing_direction.z)
+	if flat_facing.length_squared() <= 0.000001:
+		flat_facing = Vector3.FORWARD
+	return -flat_facing.normalized()
+
+static func next_knockback_velocity(
+	current_velocity: Vector3,
+	deceleration: float,
+	delta: float
+) -> Vector3:
+	var planar := Vector3(current_velocity.x, 0.0, current_velocity.z)
+	return planar.move_toward(
+		Vector3.ZERO,
+		maxf(deceleration, 0.0) * maxf(delta, 0.0)
+	)
+
 static func next_planar_velocity(
 	current_velocity: Vector3,
 	move_direction: Vector3,

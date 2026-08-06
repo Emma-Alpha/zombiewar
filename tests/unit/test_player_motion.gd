@@ -194,6 +194,58 @@ func run() -> Array[String]:
 		0.0001,
 		"Airborne vertical motion only applies gravity"
 	))
+	var has_knockback_direction := false
+	var has_next_knockback_velocity := false
+	for method: Dictionary in player_motion.get_script_method_list():
+		if method.get("name", "") == "knockback_direction":
+			has_knockback_direction = true
+		elif method.get("name", "") == "next_knockback_velocity":
+			has_next_knockback_velocity = true
+	_append(failures, Assertions.expect_true(
+		has_knockback_direction and has_next_knockback_velocity,
+		"PlayerMotion exposes knockback direction and decay"
+	))
+	if has_knockback_direction and has_next_knockback_velocity:
+		_append(failures, Assertions.expect_vector3_near(
+			player_motion.knockback_direction(
+				Vector3.ZERO,
+				Vector3.RIGHT,
+				Vector3.FORWARD
+			),
+			Vector3.LEFT,
+			0.0001,
+			"A hit from the right knocks the player left"
+		))
+		_append(failures, Assertions.expect_vector3_near(
+			player_motion.knockback_direction(
+				Vector3.ZERO,
+				Vector3.ZERO,
+				Vector3.FORWARD
+			),
+			Vector3.BACK,
+			0.0001,
+			"An overlapping source knocks opposite the player facing"
+		))
+		_append(failures, Assertions.expect_vector3_near(
+			player_motion.next_knockback_velocity(
+				Vector3.LEFT * 8.0,
+				18.0,
+				0.25
+			),
+			Vector3.LEFT * 3.5,
+			0.0001,
+			"Knockback velocity decays without changing direction"
+		))
+		_append(failures, Assertions.expect_vector3_near(
+			player_motion.next_knockback_velocity(
+				Vector3.LEFT,
+				18.0,
+				0.25
+			),
+			Vector3.ZERO,
+			0.0001,
+			"Knockback decay stops at zero instead of reversing"
+		))
 	return failures
 
 func _append(failures: Array[String], failure: String) -> void:

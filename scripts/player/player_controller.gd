@@ -26,6 +26,9 @@ signal place_item_requested(
 @export_group("Survivability")
 @export var max_health := 100.0
 @export var hit_reaction_duration := 0.24
+@export var hit_attack_lock_duration := 1.2
+@export var hit_knockback_speed := 8.0
+@export var hit_knockback_deceleration := 18.0
 
 @export_group("Input Actions")
 @export var move_left_action: StringName = &"move_left"
@@ -64,6 +67,8 @@ var visual_recoil_offset := 0.0
 var health: Health
 var defeated := false
 var hit_reaction_remaining := 0.0
+var hit_attack_lock_remaining := 0.0
+var knockback_velocity := Vector3.ZERO
 var attack_animation_remaining := 0.0
 var health_bar_initialized := false
 var missing_health_bar_warned := false
@@ -88,6 +93,7 @@ func _ready() -> void:
 
 func _process(delta: float) -> void:
 	hit_reaction_remaining = maxf(hit_reaction_remaining - delta, 0.0)
+	hit_attack_lock_remaining = maxf(hit_attack_lock_remaining - delta, 0.0)
 	attack_animation_remaining = maxf(attack_animation_remaining - delta, 0.0)
 	visual_recoil_offset = move_toward(
 		visual_recoil_offset,
@@ -112,7 +118,8 @@ func _physics_process(delta: float) -> void:
 	if defeated:
 		_update_defeated_motion(delta)
 		return
-	var input_vector := get_move_input_vector()
+	var knockback_active := knockback_velocity.length_squared() > 0.000001
+	var input_vector := Vector2.ZERO if knockback_active else get_move_input_vector()
 	var camera_basis := movement_camera.global_basis if movement_camera != null else Basis.IDENTITY
 	var move_direction := PlayerMotion.world_direction(input_vector, camera_basis)
 
@@ -136,14 +143,16 @@ func _physics_process(delta: float) -> void:
 
 	var acceleration := ground_acceleration if is_on_floor() else air_acceleration
 	var deceleration := ground_deceleration if is_on_floor() else air_acceleration
-	var planar_velocity := PlayerMotion.next_planar_velocity(
-		velocity,
-		move_direction,
-		move_speed,
-		acceleration,
-		deceleration,
-		delta
-	)
+	var planar_velocity := knockback_velocity
+	if not knockback_active:
+		planar_velocity = PlayerMotion.next_planar_velocity(
+			velocity,
+			move_direction,
+			move_speed,
+			acceleration,
+			deceleration,
+			delta
+		)
 	velocity.x = planar_velocity.x
 	velocity.z = planar_velocity.z
 	velocity.y = PlayerMotion.next_vertical_velocity(
@@ -161,7 +170,11 @@ func _physics_process(delta: float) -> void:
 	rotation.y = target_yaw
 	var trigger_pressed := Input.is_action_pressed(primary_attack_action)
 	var trigger_just_pressed := Input.is_action_just_pressed(primary_attack_action)
-	if hit_reaction_remaining > 0.0:
+	var attack_locked := (
+		hit_reaction_remaining > 0.0 or
+		hit_attack_lock_remaining > 0.0
+	)
+	if attack_locked:
 		trigger_pressed = false
 		trigger_just_pressed = false
 		equipment.cancel_attack()
@@ -170,6 +183,14 @@ func _physics_process(delta: float) -> void:
 		attack_direction = _actual_ranged_attack_direction()
 	equipment.set_attack_input(trigger_pressed, trigger_just_pressed, attack_direction)
 	move_and_slide()
+	if knockback_active:
+		knockback_velocity = PlayerMotion.next_knockback_velocity(
+			Vector3(velocity.x, 0.0, velocity.z),
+			hit_knockback_deceleration,
+			delta
+		)
+		velocity.x = knockback_velocity.x
+		velocity.z = knockback_velocity.z
 	_update_animation(Vector2(velocity.x, velocity.z).length())
 
 func _actual_ranged_attack_direction() -> Vector3:
@@ -194,7 +215,11 @@ func _on_weapon_attack_started(
 	animation_name: StringName,
 	lock_duration: float
 ) -> void:
-	if defeated or hit_reaction_remaining > 0.0:
+	if (
+		defeated or
+		hit_reaction_remaining > 0.0 or
+		hit_attack_lock_remaining > 0.0
+	):
 		equipment.cancel_attack()
 		attack_animation_remaining = 0.0
 		return
@@ -223,7 +248,7 @@ func _on_weapon_changed(_definition: WeaponDefinition) -> void:
 	attack_animation_remaining = 0.0
 	_update_animation(Vector2(velocity.x, velocity.z).length())
 
-func apply_damage(amount: float, _source_position := Vector3.ZERO) -> float:
+func apply_damage(amount: float, source_position := Vector3.ZERO) -> float:
 	_ensure_health_initialized()
 	if defeated:
 		return 0.0
@@ -234,7 +259,14 @@ func apply_damage(amount: float, _source_position := Vector3.ZERO) -> float:
 	attack_animation_remaining = 0.0
 	damaged.emit(applied)
 	if not defeated:
-		hit_reaction_remaining = hit_reaction_duration
+		hit_reaction_remaining = maxf(hit_reaction_duration, 0.0)
+		hit_attack_lock_remaining = maxf(hit_attack_lock_duration, 0.0)
+		var facing_direction := -global_basis.z
+		knockback_velocity = PlayerMotion.knockback_direction(
+			global_position,
+			source_position,
+			facing_direction
+		) * maxf(hit_knockback_speed, 0.0)
 		if animation_player != null and animation_player.has_animation(&"HitReact"):
 			animation_player.play(&"HitReact", 0.05)
 	return applied
@@ -281,6 +313,8 @@ func _on_depleted() -> void:
 	attack_animation_remaining = 0.0
 	defeated = true
 	hit_reaction_remaining = 0.0
+	hit_attack_lock_remaining = 0.0
+	knockback_velocity = Vector3.ZERO
 	velocity.x = 0.0
 	velocity.z = 0.0
 	if animation_player != null and animation_player.has_animation(&"Death"):

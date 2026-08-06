@@ -39,6 +39,7 @@ const TEST_PATHS: Array[String] = [
 	"res://tests/unit/test_player_damage.gd",
 	"res://tests/unit/test_weapon_feedback.gd",
 	"res://tests/integration/test_weapon_wall_clearance.gd",
+	"res://tests/integration/test_player_knockback.gd",
 	"res://tests/integration/test_player_place_item_input.gd",
 	"res://tests/integration/test_place_item_grid_physics.gd",
 	"res://tests/integration/test_place_item_controller.gd",
@@ -77,7 +78,10 @@ func _initialize() -> void:
 	var selected_paths: Array[String] = []
 	selected_paths.assign(selection["paths"])
 	for test_path in selected_paths:
-		if test_path == "res://tests/integration/test_weapon_wall_clearance.gd":
+		if test_path in [
+			"res://tests/integration/test_weapon_wall_clearance.gd",
+			"res://tests/integration/test_player_knockback.gd",
+		]:
 			_release_player_input()
 			await physics_frame
 		var test_script := load(test_path) as Script
