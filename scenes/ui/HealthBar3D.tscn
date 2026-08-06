@@ -6,19 +6,7 @@
 code = "shader_type spatial;
 render_mode unshaded, cull_disabled, depth_draw_never, depth_test_disabled;
 
-uniform vec4 tint_color : source_color = vec4(0.06, 0.08, 0.10, 0.88);
-
-void vertex() {
-	vec3 model_scale = vec3(
-		length(MODEL_MATRIX[0].xyz),
-		length(MODEL_MATRIX[1].xyz),
-		length(MODEL_MATRIX[2].xyz)
-	);
-	MODELVIEW_MATRIX = VIEW_MATRIX * mat4(
-		INV_VIEW_MATRIX[0] * model_scale.x, INV_VIEW_MATRIX[1] * model_scale.y,
-		INV_VIEW_MATRIX[2] * model_scale.z, MODEL_MATRIX[3]
-	);
-}
+uniform vec4 tint_color : source_color = vec4(0.06, 0.08, 0.10, 0.35);
 
 void fragment() {
 	vec2 centered_uv = abs(UV - vec2(0.5)) - vec2(0.42, 0.42);
@@ -31,6 +19,7 @@ void fragment() {
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_background"]
 resource_local_to_scene = true
 shader = SubResource("Shader_background")
+shader_parameter/tint_color = Color(0.06, 0.08, 0.1, 0.35)
 
 [sub_resource type="QuadMesh" id="QuadMesh_background"]
 size = Vector2(1.1, 0.1)
@@ -40,18 +29,6 @@ code = "shader_type spatial;
 render_mode unshaded, cull_disabled, depth_draw_never, depth_test_disabled;
 
 uniform vec4 tint_color : source_color = vec4(0.262745, 0.811765, 0.4, 1.0);
-
-void vertex() {
-	vec3 model_scale = vec3(
-		length(MODEL_MATRIX[0].xyz),
-		length(MODEL_MATRIX[1].xyz),
-		length(MODEL_MATRIX[2].xyz)
-	);
-	MODELVIEW_MATRIX = VIEW_MATRIX * mat4(
-		INV_VIEW_MATRIX[0] * model_scale.x, INV_VIEW_MATRIX[1] * model_scale.y,
-		INV_VIEW_MATRIX[2] * model_scale.z, MODEL_MATRIX[3]
-	);
-}
 
 void fragment() {
 	vec2 centered_uv = abs(UV - vec2(0.5)) - vec2(0.42, 0.42);

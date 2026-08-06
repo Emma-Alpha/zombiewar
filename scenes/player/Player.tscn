@@ -63,7 +63,7 @@ rotation_degrees = Vector3(0, 180, 0)
 position = Vector3(0, 1.1, 0)
 
 [node name="HealthBar3D" parent="." instance=ExtResource("11_health_bar")]
-position = Vector3(0, 2.35, 0)
+anchor_offset = Vector3(0, 2.35, 0)
 
 [node name="EquipmentController" type="Node" parent="."]
 script = ExtResource("6_equipment")

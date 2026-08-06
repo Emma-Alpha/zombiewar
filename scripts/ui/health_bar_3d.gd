@@ -9,12 +9,38 @@ const LOW_HEALTH_COLOR := Color("e44b46")
 
 @onready var fill: MeshInstance3D = $Fill
 
+@export var anchor_offset := Vector3.ZERO
+
 var target_ratio := 1.0
 var displayed_ratio := 1.0
 var fill_tween: Tween
+var follow_target: Node3D
+var missing_follow_target_warned := false
+var missing_camera_warned := false
 
 func _ready() -> void:
+	follow_target = get_parent() as Node3D
+	top_level = true
+	_sync_to_camera()
 	_set_displayed_ratio(displayed_ratio)
+
+func _process(_delta: float) -> void:
+	_sync_to_camera()
+
+func _sync_to_camera() -> void:
+	if not is_instance_valid(follow_target) or not follow_target.is_inside_tree():
+		if not missing_follow_target_warned:
+			push_warning("HealthBar3D requires an in-tree Node3D follow target.")
+			missing_follow_target_warned = true
+		return
+	var camera := get_viewport().get_camera_3d()
+	if camera == null:
+		if not missing_camera_warned:
+			push_warning("HealthBar3D requires an active Camera3D.")
+			missing_camera_warned = true
+		return
+	global_position = follow_target.global_position + anchor_offset
+	global_basis = camera.global_basis
 
 func set_health(current: float, maximum: float, animate: bool = true) -> void:
 	target_ratio = health_ratio(current, maximum)
