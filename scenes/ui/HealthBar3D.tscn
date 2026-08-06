@@ -29,13 +29,17 @@ code = "shader_type spatial;
 render_mode unshaded, cull_disabled, depth_draw_never, depth_test_disabled;
 
 uniform vec4 tint_color : source_color = vec4(0.262745, 0.811765, 0.4, 1.0);
+uniform float fill_ratio : hint_range(0.0, 1.0) = 1.0;
 
 void fragment() {
-	vec2 centered_uv = abs(UV - vec2(0.5)) - vec2(0.42, 0.42);
+	float safe_ratio = max(fill_ratio, 0.0001);
+	vec2 fill_uv = vec2(UV.x / safe_ratio, UV.y);
+	vec2 centered_uv = abs(fill_uv - vec2(0.5)) - vec2(0.42, 0.42);
 	float corner_distance = length(max(centered_uv, vec2(0.0)));
-	float alpha = 1.0 - smoothstep(0.07, 0.09, corner_distance);
+	float rounded_alpha = 1.0 - smoothstep(0.07, 0.09, corner_distance);
+	float visible_alpha = step(UV.x, fill_ratio);
 	ALBEDO = tint_color.rgb;
-	ALPHA = tint_color.a * alpha;
+	ALPHA = tint_color.a * rounded_alpha * visible_alpha;
 }"
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_fill"]
@@ -50,9 +54,11 @@ size = Vector2(1.1, 0.1)
 script = ExtResource("1_health_bar")
 
 [node name="Background" type="MeshInstance3D" parent="."]
+cast_shadow = 0
 material_override = SubResource("ShaderMaterial_background")
 mesh = SubResource("QuadMesh_background")
 
 [node name="Fill" type="MeshInstance3D" parent="."]
+cast_shadow = 0
 material_override = SubResource("ShaderMaterial_fill")
 mesh = SubResource("QuadMesh_fill")

@@ -92,6 +92,16 @@ func run() -> Array[String]:
 	var background := health_bar.get_node("Background") as MeshInstance3D
 	var fill_material := fill.material_override as ShaderMaterial
 	var background_material := background.material_override as ShaderMaterial
+	_append(failures, Assertions.expect_equal(
+		background.cast_shadow,
+		GeometryInstance3D.SHADOW_CASTING_SETTING_OFF,
+		"Background does not cast a second black bar onto the ground"
+	))
+	_append(failures, Assertions.expect_equal(
+		fill.cast_shadow,
+		GeometryInstance3D.SHADOW_CASTING_SETTING_OFF,
+		"Fill does not cast a second black bar onto the ground"
+	))
 	_append(failures, Assertions.expect_float_near(
 		fill.position.z,
 		0.0,
@@ -119,21 +129,28 @@ func run() -> Array[String]:
 		))
 	health_bar.set_health(25.0, 100.0, false)
 	_append(failures, Assertions.expect_float_near(health_bar.get_target_ratio(), 0.25, 0.0001, "Immediate health update sets target ratio"))
-	_append(failures, Assertions.expect_float_near(fill.scale.x, 0.25, 0.0001, "Immediate health update scales Fill"))
-	_append(failures, Assertions.expect_float_near(fill.position.x, -0.4125, 0.0001, "Immediate health update anchors Fill position"))
-	_append(failures, Assertions.expect_float_near(fill.position.x - 0.55 * fill.scale.x, -0.55, 0.0001, "Fill left edge remains fixed"))
-	_append(failures, Assertions.expect_equal(fill_material.get_shader_parameter(&"tint_color"), Color("e44b46"), "Immediate health update tints Fill"))
-	if can_sync_to_camera:
-		var fill_left_edge := health_bar.to_global(fill.position - Vector3.RIGHT * 0.55 * fill.scale.x)
-		follow_target.rotation.y = PI
-		health_bar._sync_to_camera()
-		var rotated_fill_left_edge := health_bar.to_global(fill.position - Vector3.RIGHT * 0.55 * fill.scale.x)
-		_append(failures, Assertions.expect_vector3_near(
-			rotated_fill_left_edge,
-			fill_left_edge,
+	var fill_ratio: Variant = fill_material.get_shader_parameter(&"fill_ratio")
+	_append(failures, Assertions.expect_true(fill_ratio is float, "Fill exposes its visible ratio at runtime"))
+	if fill_ratio is float:
+		_append(failures, Assertions.expect_float_near(
+			fill_ratio,
+			0.25,
 			0.0001,
-			"Fill left edge stays fixed when the follow target turns 180 degrees"
+			"Fill clips to the requested health ratio"
 		))
+	_append(failures, Assertions.expect_vector3_near(
+		fill.position,
+		Vector3.ZERO,
+		0.0001,
+		"Fill keeps the same origin as Background while clipping"
+	))
+	_append(failures, Assertions.expect_vector3_near(
+		fill.scale,
+		Vector3.ONE,
+		0.0001,
+		"Fill keeps its full quad size while clipping"
+	))
+	_append(failures, Assertions.expect_equal(fill_material.get_shader_parameter(&"tint_color"), Color("e44b46"), "Immediate health update tints Fill"))
 
 	health_bar.set_health(100.0, 100.0, true)
 	var replaced_tween := health_bar.fill_tween
@@ -143,8 +160,16 @@ func run() -> Array[String]:
 
 	health_bar.set_health(0.0, 100.0, false)
 	_append(failures, Assertions.expect_float_near(health_bar.get_target_ratio(), 0.0, 0.0001, "Empty health sets target ratio to zero"))
-	_append(failures, Assertions.expect_float_near(fill.scale.x, 0.0, 0.0001, "Empty health collapses Fill"))
+	var empty_fill_ratio: Variant = fill_material.get_shader_parameter(&"fill_ratio")
+	if empty_fill_ratio is float:
+		_append(failures, Assertions.expect_float_near(
+			empty_fill_ratio,
+			0.0,
+			0.0001,
+			"Empty health clips the whole Fill"
+		))
 	_append(failures, Assertions.expect_true(not fill.visible, "Empty health hides Fill"))
+	_append(failures, Assertions.expect_true(background.visible, "Empty health keeps the track visible"))
 
 	health_bar.free()
 	camera.free()

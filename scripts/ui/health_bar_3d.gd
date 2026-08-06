@@ -71,7 +71,9 @@ static func color_for_ratio(ratio: float) -> Color:
 	return LOW_HEALTH_COLOR
 
 func _set_displayed_ratio(ratio: float) -> void:
-	displayed_ratio = ratio
-	fill.scale.x = ratio
-	fill.position.x = -BAR_WIDTH * 0.5 + BAR_WIDTH * ratio * 0.5
-	fill.visible = ratio > 0.0
+	displayed_ratio = clampf(ratio, 0.0, 1.0)
+	var fill_material := fill.material_override as ShaderMaterial
+	fill_material.set_shader_parameter(&"fill_ratio", displayed_ratio)
+	fill.position = Vector3.ZERO
+	fill.scale = Vector3.ONE
+	fill.visible = displayed_ratio > 0.0
