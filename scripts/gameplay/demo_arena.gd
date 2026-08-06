@@ -146,6 +146,18 @@ func _release_startup_actions() -> void:
 		Input.action_release(action)
 
 func _wire_dependencies() -> void:
+	var navigation_manager := get_node_or_null(
+		"World/Navigation"
+	) as NavigationWorldManager
+	if (
+		navigation_manager != null and
+		not navigation_manager.chunk_bake_failed.is_connected(
+			_on_navigation_chunk_bake_failed
+		)
+	):
+		navigation_manager.chunk_bake_failed.connect(
+			_on_navigation_chunk_bake_failed
+		)
 	var spawn_button := get_node_or_null("HUD/SpawnWaveButton") as Button
 	if spawn_button != null and not spawn_button.pressed.is_connected(request_spawn_wave):
 		spawn_button.pressed.connect(request_spawn_wave)
@@ -196,6 +208,11 @@ func _wire_target(target: Node) -> void:
 		return
 	var player := get_node_or_null("Player") as PlayerController
 	var zombie := target as ZombieTarget
+	var navigation_manager := get_node_or_null(
+		"World/Navigation"
+	) as NavigationWorldManager
+	if navigation_manager != null:
+		zombie.set_navigation_manager(navigation_manager)
 	if player != null:
 		zombie.set_attack_target(player)
 	if zombie_difficulty != null:
@@ -232,6 +249,14 @@ func _on_ground_blood_trail_requested(
 ) -> void:
 	var manager := get_node("GroundBloodManager") as GroundBloodManager
 	manager.spawn_trail_splat(position, direction, intensity, progress)
+
+func _on_navigation_chunk_bake_failed(
+	chunk_id: StringName,
+	_generation: int,
+	message: String
+) -> void:
+	push_warning("Navigation chunk %s failed: %s" % [chunk_id, message])
+	_show_wave_status("NAVIGATION FAILED: %s" % chunk_id)
 
 func _on_player_attack(
 	direction: Vector3,

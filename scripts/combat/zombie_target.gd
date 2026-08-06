@@ -49,10 +49,15 @@ signal ground_blood_trail_requested(
 @export var attack_windup := 0.50
 @export var attack_animation_duration := 0.70
 
+@export_group("Navigation")
+@export var navigation_target_refresh_distance := 0.35
+@export_flags_3d_physics var attack_obstacle_mask := 1
+
 @onready var visual_root: Node3D = $VisualRoot
 @onready var motion_collision: CollisionShape3D = $MotionCollision
 @onready var hitbox_root: Node3D = $Hitboxes
 @onready var health_label: Label3D = $HealthLabel
+@onready var navigation_agent: NavigationAgent3D = $NavigationAgent3D
 
 var health: Health
 var animation_player: AnimationPlayer
@@ -71,6 +76,9 @@ var wander_target := Vector3.ZERO
 var wander_pause_remaining := 0.0
 var wander_rng := RandomNumberGenerator.new()
 var blood_trail_state := BloodTrailState.new()
+var has_navigation_target := false
+var last_navigation_target := Vector3.ZERO
+var navigation_manager: NavigationWorldManager
 
 func _ready() -> void:
 	_ensure_initialized()
@@ -104,6 +112,9 @@ func _ensure_initialized() -> void:
 
 func set_attack_target(target: PlayerController) -> void:
 	attack_target = target
+
+func set_navigation_manager(manager: NavigationWorldManager) -> void:
+	navigation_manager = manager
 
 func set_perception_move_speed(speed: float) -> void:
 	perception_move_speed = maxf(speed, 0.0)
@@ -177,6 +188,18 @@ func _physics_process(delta: float) -> void:
 		distance_to_target = direction_to_target.length()
 		if distance_to_target > 0.001:
 			direction_to_target /= distance_to_target
+	else:
+		has_navigation_target = false
+	var attack_path_clear := (
+		target_alive and
+		distance_to_target <= attack_range and
+		_attack_path_is_clear()
+	)
+	var approach_stop_range := ZombieBehaviorMath.approach_stop_range(
+		distance_to_target,
+		attack_range,
+		attack_path_clear
+	)
 
 	var previous_state := behavior_state
 	behavior_state = ZombieBehaviorMath.next_state(
@@ -185,11 +208,14 @@ func _physics_process(delta: float) -> void:
 		target_alive,
 		perception_range,
 		perception_exit_margin,
-		attack_range
+		attack_range,
+		attack_path_clear
 	)
 	if previous_state == ZombieBehaviorMath.State.ATTACK and behavior_state != ZombieBehaviorMath.State.ATTACK:
 		attack_cycle.cancel_pending()
 		attack_animation_remaining = 0.0
+	if behavior_state == ZombieBehaviorMath.State.ATTACK:
+		has_navigation_target = false
 	var target_in_range := (
 		behavior_state == ZombieBehaviorMath.State.ATTACK and
 		target_alive and
@@ -213,20 +239,23 @@ func _physics_process(delta: float) -> void:
 			ZombieBehaviorMath.State.WANDER:
 				target_planar_velocity = _wander_velocity(delta)
 			ZombieBehaviorMath.State.AWARE_APPROACH:
-				target_planar_velocity = ZombieBehaviorMath.arrive_velocity(
-					global_position,
+				target_planar_velocity = _navigation_velocity(
 					attack_target.global_position,
-					attack_range,
+					approach_stop_range,
 					perception_move_speed,
 					perception_slow_radius
 				)
 			ZombieBehaviorMath.State.ATTACK:
 				target_planar_velocity = Vector3.ZERO
-	var facing_direction := (
-		target_planar_velocity
-		if behavior_state == ZombieBehaviorMath.State.WANDER
-		else direction_to_target
-	)
+	var facing_direction := direction_to_target
+	if (
+		behavior_state == ZombieBehaviorMath.State.WANDER or
+		(
+			behavior_state == ZombieBehaviorMath.State.AWARE_APPROACH and
+			target_planar_velocity.length_squared() > 0.0001
+		)
+	):
+		facing_direction = target_planar_velocity
 	if facing_direction.length_squared() > 0.0001:
 		rotation.y = ZombieBehaviorMath.facing_yaw(facing_direction, rotation.y)
 	var moving := target_planar_velocity.length_squared() > 0.0001
@@ -266,16 +295,94 @@ func _wander_velocity(delta: float) -> Vector3:
 		if wander_pause_remaining <= 0.0:
 			_select_wander_target()
 		return Vector3.ZERO
-	var offset := ZombieBehaviorMath.arrive_velocity(
-		global_position,
+	var offset := _navigation_velocity(
 		wander_target,
 		wander_arrive_range,
 		wander_speed,
 		0.8
 	)
 	if offset == Vector3.ZERO:
-		wander_pause_remaining = wander_rng.randf_range(wander_pause_min, wander_pause_max)
+		var navigation_done := (
+			_navigation_is_ready() and
+			has_navigation_target and
+			navigation_agent.is_navigation_finished()
+		)
+		var direct_done := (
+			not _navigation_is_ready() and
+			global_position.distance_to(wander_target) <= wander_arrive_range
+		)
+		if navigation_done or direct_done:
+			wander_pause_remaining = wander_rng.randf_range(wander_pause_min, wander_pause_max)
+			has_navigation_target = false
 	return offset
+
+func _navigation_is_ready() -> bool:
+	if (
+		navigation_agent == null or
+		navigation_manager == null or
+		not is_instance_valid(navigation_manager) or
+		not navigation_manager.is_navigation_ready_at(global_position)
+	):
+		return false
+	var navigation_map := navigation_agent.get_navigation_map()
+	return (
+		navigation_map.is_valid() and
+		NavigationServer3D.map_get_iteration_id(navigation_map) > 0
+	)
+
+func _refresh_navigation_target(target_position: Vector3) -> void:
+	if (
+		not has_navigation_target or
+		Vector2(last_navigation_target.x, last_navigation_target.z).distance_to(
+			Vector2(target_position.x, target_position.z)
+		) >= navigation_target_refresh_distance
+	):
+		navigation_agent.target_position = target_position
+		last_navigation_target = target_position
+		has_navigation_target = true
+
+func _navigation_velocity(
+	target_position: Vector3,
+	stop_range: float,
+	move_speed: float,
+	slow_radius: float
+) -> Vector3:
+	if not _navigation_is_ready():
+		has_navigation_target = false
+		return ZombieBehaviorMath.arrive_velocity(
+			global_position,
+			target_position,
+			stop_range,
+			move_speed,
+			slow_radius
+		)
+	_refresh_navigation_target(target_position)
+	if navigation_agent.is_navigation_finished():
+		return Vector3.ZERO
+	var next_path_position := navigation_agent.get_next_path_position()
+	return ZombieBehaviorMath.path_velocity(
+		global_position,
+		next_path_position,
+		target_position,
+		stop_range,
+		move_speed,
+		slow_radius
+	)
+
+func _attack_path_is_clear() -> bool:
+	if not _target_is_alive() or get_world_3d() == null:
+		return false
+	var origin := global_position + Vector3.UP * 0.90
+	var destination := attack_target.global_position + Vector3.UP * 0.90
+	var query := PhysicsRayQueryParameters3D.create(
+		origin,
+		destination,
+		attack_obstacle_mask,
+		[get_rid(), attack_target.get_rid()]
+	)
+	query.collide_with_areas = false
+	query.collide_with_bodies = true
+	return get_world_3d().direct_space_state.intersect_ray(query).is_empty()
 
 func _process(delta: float) -> void:
 	hit_animation_cooldown = maxf(hit_animation_cooldown - delta, 0.0)
@@ -367,6 +474,7 @@ func _on_health_changed(_current: float, _maximum: float) -> void:
 func _on_depleted() -> void:
 	depleted = true
 	attack_target = null
+	has_navigation_target = false
 	attack_cycle.cancel_pending()
 	attack_animation_remaining = 0.0
 	motion_collision.set_deferred("disabled", true)

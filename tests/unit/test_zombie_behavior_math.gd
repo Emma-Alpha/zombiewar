@@ -47,6 +47,19 @@ func run() -> Array[String]:
 		ZombieBehaviorMath.State.WANDER,
 		"Dead or missing player always returns zombie to wander"
 	))
+	_append(failures, Assertions.expect_equal(
+		ZombieBehaviorMath.next_state(
+			ZombieBehaviorMath.State.AWARE_APPROACH,
+			1.0,
+			true,
+			7.0,
+			1.0,
+			1.45,
+			false
+		),
+		ZombieBehaviorMath.State.AWARE_APPROACH,
+		"Blocked attack range keeps zombie approaching"
+	))
 
 	_append(failures, Assertions.expect_vector3_near(
 		ZombieBehaviorMath.wander_point(Vector3(2.0, 0.0, 3.0), PI * 0.5, 0.5, 4.0),
@@ -71,6 +84,90 @@ func run() -> Array[String]:
 		Vector3.ZERO,
 		0.0001,
 		"Attack range produces zero approach velocity"
+	))
+	_append(failures, Assertions.expect_vector3_near(
+		ZombieBehaviorMath.path_velocity(
+			Vector3.ZERO,
+			Vector3(0.0, 0.0, -2.0),
+			Vector3(4.0, 0.0, 0.0),
+			1.45,
+			1.30,
+			1.50
+		),
+		Vector3(0.0, 0.0, -1.30),
+		0.0001,
+		"Path point controls direction while logical target controls speed"
+	))
+	_append(failures, Assertions.expect_vector3_near(
+		ZombieBehaviorMath.path_velocity(
+			Vector3.ZERO,
+			Vector3.ZERO,
+			Vector3(4.0, 0.0, 0.0),
+			1.45,
+			1.30,
+			1.50
+		),
+		Vector3.ZERO,
+		0.0001,
+		"Missing next path point produces no navigation velocity"
+	))
+	var blocked_stop_range := ZombieBehaviorMath.approach_stop_range(
+		1.0,
+		1.45,
+		false
+	)
+	_append(failures, Assertions.expect_float_near(
+		blocked_stop_range,
+		0.0,
+		0.0001,
+		"Blocked player inside attack range removes the approach stop distance"
+	))
+	_append(failures, Assertions.expect_vector3_near(
+		ZombieBehaviorMath.path_velocity(
+			Vector3.ZERO,
+			Vector3(0.0, 0.0, -2.0),
+			Vector3(1.0, 0.0, 0.0),
+			blocked_stop_range,
+			1.30,
+			1.0
+		),
+		Vector3(0.0, 0.0, -1.30),
+		0.0001,
+		"Blocked player inside attack range keeps path detour velocity"
+	))
+	var clear_stop_range := ZombieBehaviorMath.approach_stop_range(
+		1.0,
+		1.45,
+		true
+	)
+	_append(failures, Assertions.expect_float_near(
+		clear_stop_range,
+		1.45,
+		0.0001,
+		"Clear attack path preserves the configured stop distance"
+	))
+	_append(failures, Assertions.expect_vector3_near(
+		ZombieBehaviorMath.path_velocity(
+			Vector3.ZERO,
+			Vector3(0.0, 0.0, -2.0),
+			Vector3(1.0, 0.0, 0.0),
+			clear_stop_range,
+			1.30,
+			1.0
+		),
+		Vector3.ZERO,
+		0.0001,
+		"Clear player inside attack range still stops path movement"
+	))
+	_append(failures, Assertions.expect_float_near(
+		ZombieBehaviorMath.approach_stop_range(
+			2.0,
+			1.45,
+			false
+		),
+		1.45,
+		0.0001,
+		"Outside attack range preserves stop distance before ray checks"
 	))
 	return failures
 

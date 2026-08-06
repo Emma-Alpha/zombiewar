@@ -33,6 +33,12 @@ attack_animation_duration = 0.7
 position = Vector3(0, 0.95, 0)
 shape = SubResource("CapsuleShape3D_target")
 
+[node name="NavigationAgent3D" type="NavigationAgent3D" parent="."]
+path_desired_distance = 0.35
+target_desired_distance = 0.25
+avoidance_enabled = false
+navigation_layers = 1
+
 [node name="Hitboxes" type="Node3D" parent="."]
 
 [node name="BodyHitbox" type="Area3D" parent="Hitboxes"]

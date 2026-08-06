@@ -24,6 +24,9 @@ func run() -> Array[String]:
 	var follow_camera := arena.get_node_or_null("FollowCamera") as FollowCamera
 	var camera := arena.get_node_or_null("FollowCamera/Camera3D") as Camera3D
 	var targets := arena.get_node_or_null("World/Targets")
+	var navigation_manager := arena.get_node_or_null(
+		"World/Navigation"
+	) as NavigationWorldManager
 	var zombies: Array[ZombieTarget] = []
 	if targets != null:
 		for child in targets.get_children():
@@ -159,6 +162,13 @@ func run() -> Array[String]:
 	_append(failures, Assertions.expect_true(
 		targets != null and zombies.size() >= 4 and zombies.size() <= 8,
 		"Demo starts with a four-to-eight zombie wave"
+	))
+	_append(failures, Assertions.expect_true(
+		navigation_manager != null and
+		navigation_manager.chunk_bake_failed.is_connected(
+			Callable(arena, "_on_navigation_chunk_bake_failed")
+		),
+		"Demo reports navigation bake failures"
 	))
 	_append(failures, Assertions.expect_true(
 		equipment != null,
