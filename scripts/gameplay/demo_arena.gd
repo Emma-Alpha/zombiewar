@@ -4,13 +4,23 @@ signal restart_requested
 
 const HitResult = preload("res://scripts/combat/hit_result.gd")
 const ZombieDifficultyProfile = preload("res://scripts/gameplay/zombie_difficulty_profile.gd")
-const ZOMBIE_SCENE := preload("res://scenes/targets/ZombieTarget.tscn")
 const SinglePlayerInputSourceScript = preload(
 	"res://scripts/input/single_player_input_source.gd"
 )
 const LocalTeamStateScript = preload("res://scripts/gameplay/local_team_state.gd")
 const AUTO_WAVE_STATUS := "下一波即将到来"
 const ARENA_CAMERA_BOUNDS := Rect2(Vector2(-10.0, -7.0), Vector2(20.0, 14.0))
+const SimClockScript = preload("res://scripts/sim/sim_clock.gd")
+const SimWorldScript = preload("res://scripts/sim/sim_world.gd")
+const PlaceItemGridScript = preload("res://scripts/gameplay/place_item_grid.gd")
+const BLOOD_IMPACT_SCENE := preload("res://scenes/fx/BloodImpact.tscn")
+const ARENA_SIM_GRID_ORIGIN := Vector2(-24.5, -19.5)
+const ARENA_SIM_CELL_SIZE := 1.0
+const ARENA_SIM_GRID_WIDTH := 49
+const ARENA_SIM_GRID_HEIGHT := 39
+const DEFAULT_SIM_SEED := 20260807
+const ZOMBIE_MAX_HEALTH := 50.0
+const BLOCKER_GROUP: StringName = &"place_item_obstacle"
 const SPAWN_POINT_NAMES: Array[StringName] = [
 	&"NorthWest",
 	&"NorthEast",
@@ -21,9 +31,9 @@ const SPAWN_POINT_NAMES: Array[StringName] = [
 @export var zombie_difficulty: ZombieDifficultyProfile
 
 @export_group("Wave Spawning")
-@export_range(1, 8, 1) var minimum_zombies_per_corner := 1
-@export_range(1, 8, 1) var maximum_zombies_per_corner := 2
-@export_range(4, 128, 1) var maximum_active_zombies := 24
+@export_range(1, 40, 1) var minimum_zombies_per_corner := 12
+@export_range(1, 40, 1) var maximum_zombies_per_corner := 18
+@export_range(4, 400, 1) var maximum_active_zombies := 300
 @export_range(0.0, 8.0, 0.05) var spawn_radius := 1.75
 @export_range(0.0, 4.0, 0.05) var minimum_spawn_spacing := 1.1
 @export_range(1.0, 100.0, 0.5) var wave_perception_range := 60.0
@@ -31,7 +41,9 @@ const SPAWN_POINT_NAMES: Array[StringName] = [
 
 var hit_confirm_tween: Tween
 var damage_flash_tween: Tween
-var wave_rng := RandomNumberGenerator.new()
+var sim_clock = SimClockScript.new()
+var sim_world = SimWorldScript.new()
+var zombie_renderer: ZombieRenderer
 var wave_number := 0
 var team_defeated := false
 var restart_pending := false
@@ -57,10 +69,7 @@ func _ready() -> void:
 	local_team_state.setup(players)
 	_set_touch_game_over_active(false)
 	_wire_dependencies()
-	if random_seed == 0:
-		wave_rng.randomize()
-	else:
-		wave_rng.seed = random_seed
+	_setup_simulation()
 	startup_pending = true
 	if DisplayServer.get_name() == "headless":
 		_complete_combat_startup(false)
@@ -69,13 +78,138 @@ func _ready() -> void:
 		player.set_physics_process(false)
 	call_deferred("_run_combat_startup")
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
 	if (
 		team_defeated and
 		not restart_pending and
 		local_team_state.sample_restart_requested()
 	):
 		request_restart()
+	if zombie_renderer != null:
+		zombie_renderer.render_frame(
+			sim_world,
+			sim_clock.get_interpolation_alpha(),
+			delta
+		)
+
+func _physics_process(delta: float) -> void:
+	if startup_pending or zombie_renderer == null:
+		return
+	var ticks := sim_clock.consume_frame(delta)
+	for _tick_offset in range(ticks):
+		_push_player_snapshot()
+		sim_world.step_tick()
+		_consume_sim_events()
+		zombie_renderer.sync_lod(sim_world)
+
+func get_sim_world() -> SimWorld:
+	return sim_world
+
+func _setup_simulation() -> void:
+	sim_world.configure(
+		ARENA_SIM_GRID_ORIGIN,
+		ARENA_SIM_CELL_SIZE,
+		ARENA_SIM_GRID_WIDTH,
+		ARENA_SIM_GRID_HEIGHT
+	)
+	_bake_static_blockers()
+	sim_world.reset(DEFAULT_SIM_SEED if random_seed == 0 else random_seed)
+	if zombie_difficulty != null:
+		sim_world.set_default_move_speed(zombie_difficulty.perception_move_speed)
+	# 基线的 spawn_wave() 用 wave_perception_range（默认 60.0）覆盖 ZombieTarget 的
+	# 导出默认值 7.0；模拟层没有这一步的话，生成角 (±19, ±14) 上的僵尸
+	# 在 48 × 38 的场地里永远够不到玩家，会原地游荡而不汇聚。
+	sim_world.set_perception_range(wave_perception_range)
+	sim_clock.reset()
+
+func _bake_static_blockers() -> void:
+	if not is_inside_tree():
+		return
+	for node in get_tree().get_nodes_in_group(BLOCKER_GROUP):
+		var obstacle := node as CollisionObject3D
+		if obstacle != null:
+			mark_blocker(obstacle, true)
+
+## 运行时增删阻挡几何的统一入口。任何调用都会置脏对应 cell，
+## 下一 tick 的 FlowField.update() 会同步重算。
+func mark_blocker(obstacle: CollisionObject3D, blocked: bool) -> void:
+	var bounds := PlaceItemGridScript.collision_object_world_aabb(obstacle)
+	if bounds.size == Vector3.ZERO:
+		return
+	sim_world.set_blocker_world_rect(
+		Vector2(bounds.position.x, bounds.position.z),
+		Vector2(bounds.end.x, bounds.end.z),
+		blocked
+	)
+
+func _player_for_slot(slot: int) -> PlayerController:
+	if slot < 0 or slot >= players.size():
+		return null
+	var player := players[slot]
+	return player if is_instance_valid(player) else null
+
+## 玩家状态以量化后的快照进入 SimWorld；玩家自身位移仍由玩家层决定。
+func _push_player_snapshot() -> void:
+	for slot in range(SimWorldScript.MAX_PLAYER_SLOTS):
+		var player := _player_for_slot(slot)
+		if player == null:
+			sim_world.set_player_snapshot(slot, Vector2.ZERO, false, false)
+			continue
+		sim_world.set_player_snapshot(
+			slot,
+			Vector2(player.global_position.x, player.global_position.z),
+			player.is_alive(),
+			true
+		)
+
+func _consume_sim_events() -> void:
+	for event in sim_world.tick_hit_events:
+		_on_sim_hit_event(event)
+	for event in sim_world.tick_player_damage_events:
+		_on_sim_player_damage_event(event)
+	if sim_world.tick_death_events.size() > 0:
+		zombie_renderer.notify_deaths(sim_world)
+		call_deferred("_refresh_wave_state_after_deaths")
+
+func _on_sim_hit_event(event: Dictionary) -> void:
+	var planar: Vector2 = event["position"]
+	var hit_position := Vector3(planar.x, float(event["height"]), planar.y)
+	var planar_direction: Vector2 = event["direction"]
+	var direction := Vector3(planar_direction.x, 0.0, planar_direction.y)
+	var view := zombie_renderer.get_near_view(int(event["zombie_id"]))
+	if view != null:
+		view.play_hit_reaction(
+			hit_position,
+			direction * SimWorldScript.ZOMBIE_KNOCKBACK_IMPULSE
+		)
+	_spawn_blood_impact(hit_position, direction)
+	var manager := get_node_or_null("GroundBloodManager") as GroundBloodManager
+	if manager == null:
+		return
+	manager.spawn_hit_splat(hit_position, direction, 1.0)
+	if bool(event["killed"]):
+		manager.spawn_death_pool(Vector3(planar.x, 0.0, planar.y), 1.25)
+
+func _on_sim_player_damage_event(event: Dictionary) -> void:
+	var view := zombie_renderer.get_near_view(int(event["zombie_id"]))
+	if event["kind"] == &"zombie_windup":
+		if view != null:
+			view.play_attack_windup()
+		return
+	var target := _player_for_slot(int(event["slot"]))
+	if target == null or not target.is_alive():
+		return
+	var origin: Vector2 = event["origin"]
+	target.apply_damage(float(event["damage"]), Vector3(origin.x, 0.0, origin.y))
+
+func _spawn_blood_impact(hit_position: Vector3, direction: Vector3) -> void:
+	var effect := BLOOD_IMPACT_SCENE.instantiate() as BloodImpact
+	add_child(effect)
+	effect.setup(hit_position, direction, 1.0)
+
+func _refresh_wave_state_after_deaths() -> void:
+	_update_wave_hud()
+	_schedule_auto_wave_if_empty()
 
 func _exit_tree() -> void:
 	_set_touch_game_over_active(false)
@@ -93,6 +227,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		request_restart()
 		get_viewport().set_input_as_handled()
 
+## 返回本次授予的生成上限（不是实际生成数）：实际生成在下一个模拟 tick 才兑现。
 func request_spawn_wave() -> int:
 	if startup_pending or team_defeated:
 		return 0
@@ -222,14 +357,12 @@ func _wire_dependencies() -> void:
 		place_item_service.placement_geometry_changed.connect(
 			_on_runtime_navigation_geometry_changed
 		)
-	var targets := get_node_or_null("World/Targets")
-	if targets != null:
-		for target in targets.get_children():
-			_wire_target(target)
-		if not targets.child_entered_tree.is_connected(_wire_target):
-			targets.child_entered_tree.connect(_wire_target)
-		if not targets.child_exiting_tree.is_connected(_on_target_exiting_tree):
-			targets.child_exiting_tree.connect(_on_target_exiting_tree)
+	var renderer := get_node_or_null(
+		"World/Targets/ZombieRenderer"
+	) as ZombieRenderer
+	if renderer != null and zombie_renderer != renderer:
+		zombie_renderer = renderer
+		zombie_renderer.setup(get_node_or_null("FollowCamera") as Node3D)
 	var status_timer := get_node_or_null("WaveStatusTimer") as Timer
 	if (
 		status_timer != null and
@@ -259,22 +392,6 @@ func _wire_dependencies() -> void:
 			player.attack_resolved.connect(_on_player_attack)
 		if not player.damaged.is_connected(_on_player_damaged):
 			player.damaged.connect(_on_player_damaged)
-
-func _wire_target(target: Node) -> void:
-	_wire_target_blood(target)
-	if not target is ZombieTarget:
-		return
-	var zombie := target as ZombieTarget
-	var player_registry := get_node_or_null("PlayerRegistry") as PlayerRegistry
-	var navigation_manager := get_node_or_null(
-		"World/Navigation"
-	) as NavigationWorldManager
-	if navigation_manager != null:
-		zombie.set_navigation_manager(navigation_manager)
-	if player_registry != null:
-		zombie.set_player_registry(player_registry)
-	if zombie_difficulty != null:
-		zombie.set_perception_move_speed(zombie_difficulty.perception_move_speed)
 
 func _spawn_session_players() -> bool:
 	var mobile_controls := get_node_or_null("MobileControls") as MobileControls
@@ -331,38 +448,6 @@ func _handle_player_spawn_failure() -> void:
 	if session != null and session.mode == 1:
 		destination = "res://scenes/menu/LocalMultiplayerLobby.tscn"
 	get_tree().change_scene_to_file.call_deferred(destination)
-
-func _wire_target_blood(target: Node) -> void:
-	if not target is ZombieTarget:
-		return
-	var zombie := target as ZombieTarget
-	if not zombie.ground_blood_requested.is_connected(_on_ground_blood_requested):
-		zombie.ground_blood_requested.connect(_on_ground_blood_requested)
-	if not zombie.ground_blood_trail_requested.is_connected(
-		_on_ground_blood_trail_requested
-	):
-		zombie.ground_blood_trail_requested.connect(_on_ground_blood_trail_requested)
-
-func _on_ground_blood_requested(
-	origin: Vector3,
-	direction: Vector3,
-	intensity: float,
-	death_pool: bool
-) -> void:
-	var manager := get_node("GroundBloodManager") as GroundBloodManager
-	if death_pool:
-		manager.spawn_death_pool(origin, intensity)
-	else:
-		manager.spawn_hit_splat(origin, direction, intensity)
-
-func _on_ground_blood_trail_requested(
-	position: Vector3,
-	direction: Vector3,
-	intensity: float,
-	progress: float
-) -> void:
-	var manager := get_node("GroundBloodManager") as GroundBloodManager
-	manager.spawn_trail_splat(position, direction, intensity, progress)
 
 func _on_navigation_chunk_bake_failed(
 	chunk_id: StringName,
@@ -437,68 +522,54 @@ func _sync_command_controls() -> void:
 	if restart_button != null:
 		restart_button.visible = team_defeated
 
+## 把一次波次生成排入模拟层，由下一 tick 在 Stream.ZOMBIE_SPAWN 上确定性执行。
+## 返回本次授予的生成上限；实际生成数在下一 tick 后才可由
+## get_active_zombie_count() 读到。
+##
+## 返回值语义相对基线有变：基线返回「本次实际生成数」，这里返回「本次授予的名额」。
+## 三个调用点（spawn_wave 输入动作、HUD 生成按钮、_on_auto_wave_timeout）都只判
+## `> 0`，语义变化不影响它们；但 request_spawn_wave() -> int 的文档注释必须同步改成
+## 「本次授予的生成上限」，不要留着「实际生成数」的旧措辞。
 func spawn_wave() -> int:
 	if team_defeated:
-		return 0
-	var targets := get_node_or_null("World/Targets") as Node3D
-	if targets == null:
-		_report_wave_problem("MISSING TARGET CONTAINER")
 		return 0
 	var spawn_points := _get_spawn_points()
 	if spawn_points.size() != SPAWN_POINT_NAMES.size():
 		_report_wave_problem("MISSING CORNER SPAWN POINT")
 		return 0
-
 	var remaining_capacity := maximum_active_zombies - get_active_zombie_count()
 	if remaining_capacity <= 0:
 		_show_wave_status("MAX ZOMBIES: %d" % maximum_active_zombies)
 		return 0
-
-	var occupied_positions := _collect_zombie_positions()
-	var spawned := 0
-	var next_wave_number := wave_number + 1
+	var centers := PackedVector2Array()
 	for marker in spawn_points:
-		var requested := wave_rng.randi_range(
-			minimum_zombies_per_corner,
-			maximum_zombies_per_corner
+		centers.append(
+			Vector2(marker.global_position.x, marker.global_position.z)
 		)
-		for _index in range(requested):
-			if spawned >= remaining_capacity:
-				break
-			var spawn_position := _sample_spawn_position(
-				marker.global_position,
-				occupied_positions
-			)
-			var zombie := ZOMBIE_SCENE.instantiate() as ZombieTarget
-			if zombie == null:
-				_report_wave_problem("FAILED TO CREATE ZOMBIE")
-				return spawned
-			zombie.name = "Wave%02dZombie%02d" % [
-				next_wave_number,
-				spawned + 1,
-			]
-			zombie.perception_range = wave_perception_range
-			zombie.position = targets.to_local(spawn_position)
-			targets.add_child(zombie)
-			occupied_positions.append(spawn_position)
-			spawned += 1
-		if spawned >= remaining_capacity:
-			break
-
-	if spawned > 0:
-		wave_number = next_wave_number
+	sim_world.queue_spawn_wave(
+		centers,
+		minimum_zombies_per_corner,
+		maximum_zombies_per_corner,
+		remaining_capacity,
+		spawn_radius,
+		minimum_spawn_spacing,
+		ZOMBIE_MAX_HEALTH
+	)
+	# 与基线一致：只有真的授出了名额才推进波次号，避免 HUD 波次在空转的
+	# 波次请求上虚增。上面的 `remaining_capacity <= 0` 分支已经提前 return，
+	# 走到这里必然 > 0，这一行是把基线的 `if spawned > 0` 守卫显式保留下来。
+	if remaining_capacity > 0:
+		wave_number += 1
 	_update_wave_hud()
-	return spawned
+	return remaining_capacity
 
+## 必须把「已排队但尚未兑现」的名额算进来。sim_world.get_zombie_count() 要等
+## 下一个 step_tick() 才会变化，若只读它：
+##   1. 同一物理帧内连按两次 T，两次都看到同样的 remaining_capacity，
+##      _apply_pending_spawn_waves() 会把两批都放出来，突破 maximum_active_zombies；
+##   2. 排队后的那一 tick 里计数仍为 0，_schedule_auto_wave_if_empty() 会再排一次。
 func get_active_zombie_count() -> int:
-	var targets := get_node_or_null("World/Targets")
-	if targets == null:
-		return 0
-	var count := 0
-	for child in targets.get_children():
-		if child is ZombieTarget:
-			count += 1
-	return count
+	return sim_world.get_zombie_count() + sim_world.get_pending_spawn_capacity()
 
 func _get_spawn_points() -> Array[Marker3D]:
 	var points: Array[Marker3D] = []
@@ -510,53 +581,6 @@ func _get_spawn_points() -> Array[Marker3D]:
 			return []
 		points.append(marker)
 	return points
-
-func _collect_zombie_positions() -> Array[Vector3]:
-	var positions: Array[Vector3] = []
-	var targets := get_node_or_null("World/Targets")
-	if targets == null:
-		return positions
-	for child in targets.get_children():
-		if child is ZombieTarget:
-			positions.append((child as ZombieTarget).global_position)
-	return positions
-
-func _sample_spawn_position(
-	center: Vector3,
-	occupied_positions: Array[Vector3]
-) -> Vector3:
-	var fallback := center
-	for _attempt in range(16):
-		var angle := wave_rng.randf_range(0.0, TAU)
-		var radius := sqrt(wave_rng.randf()) * spawn_radius
-		var candidate := center + Vector3(
-			cos(angle) * radius,
-			0.0,
-			sin(angle) * radius
-		)
-		fallback = candidate
-		if _has_spawn_clearance(candidate, occupied_positions):
-			return candidate
-	return fallback
-
-func _has_spawn_clearance(
-	candidate: Vector3,
-	occupied_positions: Array[Vector3]
-) -> bool:
-	for occupied in occupied_positions:
-		if Vector2(candidate.x, candidate.z).distance_to(
-			Vector2(occupied.x, occupied.z)
-		) < minimum_spawn_spacing:
-			return false
-	return true
-
-func _on_target_exiting_tree(target: Node) -> void:
-	if target is ZombieTarget:
-		call_deferred("_refresh_wave_state_after_target_exit")
-
-func _refresh_wave_state_after_target_exit() -> void:
-	_update_wave_hud()
-	_schedule_auto_wave_if_empty()
 
 func _schedule_auto_wave_if_empty() -> bool:
 	if team_defeated or get_active_zombie_count() != 0:

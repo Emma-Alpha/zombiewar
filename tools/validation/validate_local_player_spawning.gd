@@ -90,7 +90,7 @@ func _validate_players(arena, expected_count: int, failures: Array[String]) -> v
 		var player = container.get_child(index)
 		_expect(player.player_index == index, "spawned player must retain sequential player index", failures)
 		_expect(player.collision_layer == 2, "spawned players must remain on collision layer 2", failures)
-		_expect(player.collision_mask == 1, "spawned players must only collide with world layer 1", failures)
+		_expect(player.collision_mask == 9, "spawned players must collide with world layer 1 and zombie blocker layer 4", failures)
 		_expect(player.get_input_source() != null, "spawned player must receive an input source", failures)
 		var equipment_label := player.get_node_or_null("PlayerEquipmentLabel") as Label3D
 		_expect(equipment_label != null, "spawned player must contain persistent equipment label", failures)
