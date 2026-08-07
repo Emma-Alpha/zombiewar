@@ -16,13 +16,44 @@ Use GDScript with tabs for indentation and follow the existing Godot style. Name
 
 ## 3D Runtime Navigation
 
-Each playable 3D world owns a scene-level navigation manager; do not use an Autoload for world navigation state. Split navigation into registerable chunk lifecycle units that all share the current `World3D` navigation map so adjacent regions can form continuous paths.
+Zombie pathfinding uses the deterministic flow field in `scripts/sim/`
+(`FlowFieldGrid` + `FlowField`): an XZ integer grid with multi-source BFS over
+integer costs, rebuilt synchronously whenever a player crosses a cell boundary
+or the blocker set is marked dirty. Runtime navigation baking does not
+participate in the simulation layer, and no simulation code may call
+`NavigationAgent3D`, `NavigationServer3D`, or any asynchronous bake: the
+completion time of an async bake is itself nondeterministic and would break
+lockstep replay.
 
-Bake navigation meshes asynchronously at runtime from simplified static collision geometry. Do not parse high-polygon visual models when equivalent gameplay collision shapes exist. Keep the previous usable mesh active during a rebake, prevent concurrent bakes for the same chunk, and coalesce repeated dirty or rebake requests.
+Any system that adds, removes, moves, enables, or disables collision geometry
+that blocks movement must mark the affected flow field cells dirty after the
+geometry change, by routing a world AABB through
+`SimWorld.set_blocker_world_rect()`. `PlaceItemService` placement and removal
+and pickup chest appearance and disappearance go through this path. Missing a
+dirty mark leaves zombies walking around obstacles that no longer exist.
 
-Any system that adds, removes, moves, enables, or disables collision geometry used by navigation must mark the affected navigation chunk dirty after the geometry change. `NavigationAgent3D` avoidance remains disabled by default and should only be enabled for a feature that explicitly requires local crowd avoidance.
+Explosive barrels are the exception: they are simulation entities
+(`SimWorld.spawn_barrel()`), and `SimWorld` owns their blocker rectangle end to
+end -- blocked on registration, cleared on the exact tick they detonate. Their
+hit count, damaged state, fuse (counted in **ticks**, never in seconds), chain
+detonation, and zombie damage all live in the simulation; `ExplosiveBarrel` is a
+presentation node plus the player damage source, driven by
+`SimWorld.tick_barrel_events`. Never give a barrel node its own timer, its own
+hit counter, or its own physics ray: wall-clock fuses land on different ticks on
+different clients and desync every zombie the blast kills.
 
-When changing navigation behavior, verify pursuit, wandering, unreachable targets, runtime bake failure behavior, and attacks blocked by world obstacles. Navigation-unavailable fallback behavior must not become the permanent fallback for an unreachable target after a valid navigation map exists.
+`NavigationWorldManager`, `NavigationChunk3D`, and `NavigationBakeState` are
+**retired but retained**. They are still instantiated by `DemoArena` and still
+respond to geometry-changed signals, but nothing in gameplay consumes their
+navigation meshes. Do not build new features on them. They will be deleted once
+the S3 synchronisation layer lands and confirms no other consumer exists.
+
+When changing zombie movement behaviour, verify pursuit, wandering, unreachable
+targets, blocked attack paths, and runtime blocker changes with
+`tools/validation/validate_flow_field.gd`,
+`tools/validation/validate_sim_collision.gd`, and
+`tools/validation/validate_sim_determinism.gd`. When changing explosive barrels,
+also run `tools/validation/validate_sim_barrel.gd`.
 
 ## Combat FX Render Warmup
 
