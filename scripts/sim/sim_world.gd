@@ -10,6 +10,11 @@ const SimCollisionScript = preload("res://scripts/sim/sim_collision.gd")
 const ZombieBehaviorMathScript = preload("res://scripts/combat/zombie_behavior_math.gd")
 const MeleeAttackCycleScript = preload("res://scripts/combat/melee_attack_cycle.gd")
 const HitResponseMathScript = preload("res://scripts/combat/hit_response_math.gd")
+const WeaponSpreadStateScript = preload(
+	"res://scripts/combat/weapons/weapon_spread_state.gd"
+)
+const SimCombatScript = preload("res://scripts/sim/sim_combat.gd")
+const SimHitGeometryScript = preload("res://scripts/sim/sim_hit_geometry.gd")
 
 const MAX_PLAYER_SLOTS := 4
 const NO_TARGET_SLOT := 255
@@ -107,6 +112,13 @@ var tick_hit_events: Array = []
 var tick_death_events := PackedInt32Array()
 var tick_spawn_events := PackedInt32Array()
 var tick_player_damage_events: Array = []
+var tick_shot_events: Array = []
+
+# ---- 武器档案与逐槽位散布状态 ----
+var weapon_profiles: Array = []
+var player_spread_degrees := PackedFloat32Array()
+var player_spread_profile := PackedInt32Array()
+var pending_events: Array = []
 
 func _init() -> void:
 	rng = DeterministicRngScript.new()
@@ -118,6 +130,10 @@ func _init() -> void:
 	player_alive.fill(0)
 	player_present.resize(MAX_PLAYER_SLOTS)
 	player_present.fill(0)
+	player_spread_degrees.resize(MAX_PLAYER_SLOTS)
+	player_spread_degrees.fill(0.0)
+	player_spread_profile.resize(MAX_PLAYER_SLOTS)
+	player_spread_profile.fill(-1)
 
 func configure(
 	grid_origin_xz: Vector2,
@@ -157,6 +173,9 @@ func reset(room_seed: int) -> void:
 	player_alive.fill(0)
 	player_present.fill(0)
 	pending_spawn_waves = []
+	pending_events = []
+	player_spread_degrees.fill(0.0)
+	player_spread_profile.fill(-1)
 	pending_spawn_capacity = 0
 	_clear_tick_events()
 	grid.mark_dirty()
@@ -390,10 +409,14 @@ func apply_zombie_damage(
 	return true
 
 ## 推进一个模拟 tick。不接收任何真实帧时长形参：时间步长恒为 SimClock.TICK_SECONDS。
+## 顺序固定：生成 -> 散布回复 -> 玩家事件结算 -> 流场 -> 僵尸推进 ->
+## 碰撞 -> 僵尸攻击 -> 压缩删除。任何调整都会改变哈希序列，必须同步全端。
 func step_tick() -> void:
 	tick_index += 1
 	_clear_tick_events()
 	_apply_pending_spawn_waves()
+	_recover_spread()
+	_resolve_pending_events()
 	_update_flow_field()
 	_update_zombies()
 	_resolve_collisions()
@@ -405,6 +428,7 @@ func _clear_tick_events() -> void:
 	tick_death_events = PackedInt32Array()
 	tick_spawn_events = PackedInt32Array()
 	tick_player_damage_events = []
+	tick_shot_events = []
 
 func _apply_pending_spawn_waves() -> void:
 	pending_spawn_capacity = 0
@@ -801,3 +825,276 @@ func _compact_dead() -> void:
 	zombie_hit_stun_ticks = new_hit_stun_ticks
 	zombie_move_speed = new_move_speed
 	zombie_attack_state = new_attack_state
+
+## ---- 武器档案 ----
+## 由表现层在装配时按 weapon_id 注册；模拟层只认下标，不认资源。
+func configure_weapon_profile(
+	profile_index: int,
+	damage: float,
+	attack_range: float,
+	base_spread_degrees: float,
+	max_spread_degrees: float,
+	spread_increase_degrees: float,
+	spread_recovery_degrees_per_second: float,
+	max_penetration_count: int,
+	penetration_damage_coefficient: float
+) -> void:
+	if profile_index < 0:
+		return
+	while weapon_profiles.size() <= profile_index:
+		weapon_profiles.append({})
+	weapon_profiles[profile_index] = {
+		"damage": maxf(damage, 0.0),
+		"attack_range": maxf(attack_range, 0.0),
+		"base_spread_degrees": maxf(base_spread_degrees, 0.0),
+		"max_spread_degrees": maxf(max_spread_degrees, maxf(base_spread_degrees, 0.0)),
+		"spread_increase_degrees": maxf(spread_increase_degrees, 0.0),
+		"spread_recovery_degrees_per_second": maxf(spread_recovery_degrees_per_second, 0.0),
+		"max_penetration_count": clampi(max_penetration_count, 0, 16),
+		"penetration_damage_coefficient": clampf(penetration_damage_coefficient, 0.0, 1.0),
+	}
+
+## 开火事件只携带玩家的瞄准方向，不携带散布后的方向。
+## 散布由各客户端在 Stream.WEAPON_SPREAD 上各自确定性地算出。
+func queue_fire_event(
+	slot: int,
+	profile_index: int,
+	origin_xz: Vector2,
+	origin_height: float,
+	aim_direction: Vector2
+) -> void:
+	pending_events.append({
+		"kind": &"shot",
+		"slot": slot,
+		"profile_index": profile_index,
+		"origin": origin_xz,
+		"origin_height": origin_height,
+		"aim_direction": aim_direction,
+	})
+
+func queue_melee_event(
+	slot: int,
+	damage: float,
+	reach: float,
+	half_width: float,
+	origin_xz: Vector2,
+	origin_height: float,
+	aim_direction: Vector2
+) -> void:
+	pending_events.append({
+		"kind": &"melee",
+		"slot": slot,
+		"damage": damage,
+		"reach": reach,
+		"half_width": half_width,
+		"origin": origin_xz,
+		"origin_height": origin_height,
+		"aim_direction": aim_direction,
+	})
+
+func queue_explosion_event(
+	origin_xz: Vector2,
+	origin_height: float,
+	radius: float,
+	center_damage: float,
+	edge_damage: float
+) -> void:
+	pending_events.append({
+		"kind": &"explosion",
+		"origin": origin_xz,
+		"origin_height": origin_height,
+		"radius": radius,
+		"center_damage": center_damage,
+		"edge_damage": edge_damage,
+	})
+
+func queue_spread_reset(slot: int) -> void:
+	pending_events.append({"kind": &"spread_reset", "slot": slot})
+
+func reset_spread(slot: int) -> void:
+	if slot < 0 or slot >= MAX_PLAYER_SLOTS:
+		return
+	var profile := _weapon_profile(player_spread_profile[slot])
+	player_spread_degrees[slot] = float(profile.get("base_spread_degrees", 0.0))
+
+func get_spread_degrees(slot: int) -> float:
+	if slot < 0 or slot >= MAX_PLAYER_SLOTS:
+		return 0.0
+	return player_spread_degrees[slot]
+
+func _weapon_profile(profile_index: int) -> Dictionary:
+	if profile_index < 0 or profile_index >= weapon_profiles.size():
+		return {}
+	return weapon_profiles[profile_index]
+
+func _recover_spread() -> void:
+	for slot in range(MAX_PLAYER_SLOTS):
+		var profile := _weapon_profile(player_spread_profile[slot])
+		if profile.is_empty():
+			continue
+		player_spread_degrees[slot] = WeaponSpreadStateScript.recovered_degrees(
+			player_spread_degrees[slot],
+			float(profile["base_spread_degrees"]),
+			float(profile["spread_recovery_degrees_per_second"]),
+			SimClockScript.TICK_SECONDS
+		)
+
+func _resolve_pending_events() -> void:
+	if pending_events.is_empty():
+		return
+	var events := pending_events
+	pending_events = []
+	for event in events:
+		var kind: StringName = event["kind"]
+		if kind == &"shot":
+			_resolve_shot_event(event)
+		elif kind == &"melee":
+			_resolve_melee_event(event)
+		elif kind == &"explosion":
+			_resolve_explosion_event(event)
+		elif kind == &"spread_reset":
+			reset_spread(int(event["slot"]))
+
+func _resolve_shot_event(event: Dictionary) -> void:
+	var slot := int(event["slot"])
+	if slot < 0 or slot >= MAX_PLAYER_SLOTS:
+		return
+	var profile_index := int(event["profile_index"])
+	var profile := _weapon_profile(profile_index)
+	if profile.is_empty():
+		return
+	player_spread_profile[slot] = profile_index
+	var origin: Vector2 = event["origin"]
+	var origin_height: float = event["origin_height"]
+	var aim: Vector2 = event["aim_direction"]
+	if aim.length_squared() <= 0.000001:
+		aim = Vector2(0.0, -1.0)
+	aim = aim.normalized()
+
+	var spread_degrees := player_spread_degrees[slot]
+	var offset := rng.next_range(
+		DeterministicRngScript.Stream.WEAPON_SPREAD, -1.0, 1.0
+	)
+	var direction := WeaponSpreadStateScript.spread_direction(
+		aim, spread_degrees, offset
+	)
+	player_spread_degrees[slot] = WeaponSpreadStateScript.increased_degrees(
+		spread_degrees,
+		float(profile["spread_increase_degrees"]),
+		float(profile["max_spread_degrees"])
+	)
+
+	var attack_range := float(profile["attack_range"])
+	var maximum_targets := int(profile["max_penetration_count"]) + 1
+	var coefficient := float(profile["penetration_damage_coefficient"])
+	var hits := SimCombatScript.resolve_ray_hits(
+		self, origin, origin_height, direction, attack_range, maximum_targets
+	)
+	var end_position := origin + direction * attack_range
+	var did_hit := false
+	var killed := false
+	var total_damage := 0.0
+	var zone: StringName = &""
+	var current_damage := float(profile["damage"])
+	for hit in hits:
+		var index := int(hit["index"])
+		var hit_zone: StringName = hit["zone"]
+		var multiplier := SimHitGeometryScript.damage_multiplier(hit_zone)
+		var damage_points := roundi(current_damage * multiplier * float(HEALTH_SCALE))
+		var before_health := zombie_health[index]
+		if apply_zombie_damage(
+			index, damage_points, hit["point"], hit["height"], direction, hit_zone
+		):
+			did_hit = true
+			zone = hit_zone
+			total_damage += float(before_health - zombie_health[index]) / float(HEALTH_SCALE)
+			killed = killed or zombie_state[index] == STATE_DEAD
+		# 曳光终点始终落在最后一个被处理的命中点；穿透关闭时即第一个命中点。
+		end_position = hit["point"]
+		if coefficient <= 0.0:
+			break
+		current_damage *= coefficient
+	tick_shot_events.append({
+		"slot": slot,
+		"origin": origin,
+		"origin_height": origin_height,
+		"direction": direction,
+		"end": end_position,
+		"end_height": origin_height,
+		"did_hit": did_hit,
+		"killed": killed,
+		"damage": total_damage,
+		"zone": zone,
+	})
+
+func _resolve_melee_event(event: Dictionary) -> void:
+	var slot := int(event["slot"])
+	var origin: Vector2 = event["origin"]
+	var origin_height: float = event["origin_height"]
+	var aim: Vector2 = event["aim_direction"]
+	if aim.length_squared() <= 0.000001:
+		aim = Vector2(0.0, -1.0)
+	aim = aim.normalized()
+	var index := SimCombatScript.resolve_melee_target(
+		self,
+		origin,
+		origin_height,
+		aim,
+		float(event["reach"]),
+		float(event["half_width"])
+	)
+	var did_hit := false
+	var killed := false
+	var damage_dealt := 0.0
+	var end_position := origin + aim * float(event["reach"])
+	var end_height := origin_height
+	if index >= 0:
+		var hit_height := SimHitGeometryScript.aim_point_height(
+			get_zombie_height(index)
+		)
+		var before_health := zombie_health[index]
+		var damage_points := roundi(float(event["damage"]) * float(HEALTH_SCALE))
+		if apply_zombie_damage(
+			index,
+			damage_points,
+			get_zombie_position(index),
+			hit_height,
+			aim,
+			SimHitGeometryScript.ZONE_BODY
+		):
+			did_hit = true
+			killed = zombie_state[index] == STATE_DEAD
+			damage_dealt = float(before_health - zombie_health[index]) / float(HEALTH_SCALE)
+		end_position = get_zombie_position(index)
+		end_height = hit_height
+	tick_shot_events.append({
+		"slot": slot,
+		"origin": origin,
+		"origin_height": origin_height,
+		"direction": aim,
+		"end": end_position,
+		"end_height": end_height,
+		"did_hit": did_hit,
+		"killed": killed,
+		"damage": damage_dealt,
+		"zone": SimHitGeometryScript.ZONE_BODY if did_hit else &"",
+	})
+
+func _resolve_explosion_event(event: Dictionary) -> void:
+	var targets := SimCombatScript.resolve_explosion_targets(
+		self,
+		event["origin"],
+		float(event["origin_height"]),
+		float(event["radius"]),
+		float(event["center_damage"]),
+		float(event["edge_damage"])
+	)
+	for target in targets:
+		apply_zombie_damage(
+			int(target["index"]),
+			roundi(float(target["damage"]) * float(HEALTH_SCALE)),
+			target["point"],
+			float(target["height"]),
+			target["direction"],
+			SimHitGeometryScript.ZONE_BODY
+		)
