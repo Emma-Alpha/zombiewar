@@ -45,10 +45,16 @@ static func resolve_ray_hits(
 		)
 		if distance < 0.0:
 			continue
+		var hit_point := origin + unit_direction * distance
+		# 基线远程武器的 hit_mask 是 hit_collision_mask 或上 1，
+		# 物理射线命中第一个 collider 即停，层 1 的世界静态体会把子弹挡下。
+		# 模拟层用与 resolve_explosion_targets() 相同的视线闸门复刻掩体。
+		if not world.line_is_clear(origin, hit_point):
+			continue
 		hits.append({
 			"index": index,
 			"distance": distance,
-			"point": origin + unit_direction * distance,
+			"point": hit_point,
 			"height": origin_height,
 			"zone": SimHitGeometryScript.zone_for_height(zombie_height, origin_height),
 		})
@@ -59,6 +65,9 @@ static func resolve_ray_hits(
 
 ## 玩家近战：以 wielder 朝向为前向的矩形窗口，取最近的一只。
 ## 前向门限与 MeleeWeapon._resolve_melee_hit() 的 forward_distance 过滤一致。
+## 刻意不做视线判定：基线 MeleeWeapon 的 query.collision_mask 是裸的 hit_collision_mask
+## （knife.tres 未覆盖 → 默认 4，只有僵尸 hitbox 层，没有远程那句 `| 1`）
+## 且 collide_with_bodies=false，世界几何本就不参与近战判定。此处补遮挡反而会偏离基线。
 static func resolve_melee_target(
 	world,                    # SimWorld，同上：不加类型标注
 	origin: Vector2,

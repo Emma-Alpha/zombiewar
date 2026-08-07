@@ -44,17 +44,32 @@ func _run() -> void:
 	var failures: Array[String] = []
 	var table := _build_input_table(TICK_COUNT)
 
-	var first_pass := _run_scenario(table, 0.05)
+	var first_pass := _run_scenario(table, 0.05, ROOM_SEED)
 	_expect(
 		first_pass.size() == TICK_COUNT,
 		"a full pass must produce one hash per tick (got %d)" % first_pass.size(),
 		failures
 	)
-	var second_pass := _run_scenario(table, 0.05)
+	var second_pass := _run_scenario(table, 0.05, ROOM_SEED)
 	_compare("second identical run", first_pass, second_pass, failures)
 
-	var batched_pass := _run_scenario(table, 0.25)
-	_compare("five ticks per frame", first_pass, batched_pass, failures)
+	# 负向对照：换一颗房间种子必须让哈希序列真的分叉。
+	# 没有这一条，_compare() 自身若有 bug（例如两个 PackedStringArray 恒等）
+	# 上面那条「二次重放一致」就会以绿色 PASS 的形式掩盖比较器失效。
+	var perturbed := _run_scenario(table, 0.05, ROOM_SEED + 1)
+	_expect(
+		perturbed != first_pass,
+		"a different room seed must change the hash sequence -- "
+			+ "the comparison harness must be able to report a divergence",
+		failures
+	)
+
+	# 顺序不变性：同一 tick 内的四个玩家快照按槽位 3,2,1,0 施加，
+	# 哈希序列必须仍然相同。这一条真正触碰模拟状态，不是空转。
+	var reversed_pass := _run_scenario(table, 0.05, ROOM_SEED, true)
+	_compare("reversed player snapshot order", first_pass, reversed_pass, failures)
+
+	_check_clock_accounting(failures)
 
 	_expect(
 		first_pass[0] != first_pass[TICK_COUNT - 1],
@@ -90,13 +105,20 @@ func _build_input_table(tick_count: int) -> Array:
 		})
 	return table
 
-func _run_scenario(table: Array, frame_delta: float) -> PackedStringArray:
+## reversed_snapshot_order 只改变同一 tick 内四个 set_player_snapshot 的施加顺序
+## （3,2,1,0 而不是 0,1,2,3）；模拟结果必须与正序完全一致。
+func _run_scenario(
+	table: Array,
+	frame_delta: float,
+	room_seed: int,
+	reversed_snapshot_order: bool = false
+) -> PackedStringArray:
 	var clock = SimClockScript.new()
 	var world = SimWorldScript.new()
 	world.configure(GRID_ORIGIN, GRID_CELL_SIZE, GRID_WIDTH, GRID_HEIGHT)
 	for rect in BLOCKER_RECTS:
 		world.set_blocker_world_rect(rect.position, rect.end, true)
-	world.reset(ROOM_SEED)
+	world.reset(room_seed)
 	world.set_default_move_speed(1.30)
 	world.set_perception_range(60.0)   # 与 DemoArena.wave_perception_range 的默认值一致
 	world.configure_weapon_profile(
@@ -136,7 +158,12 @@ func _run_scenario(table: Array, frame_delta: float) -> PackedStringArray:
 				break
 			var entry: Dictionary = table[applied]
 			var players: PackedVector2Array = entry["players"]
-			for slot in range(PLAYER_SLOT_COUNT):
+			for order_index in range(PLAYER_SLOT_COUNT):
+				var slot := (
+					PLAYER_SLOT_COUNT - 1 - order_index
+					if reversed_snapshot_order
+					else order_index
+				)
 				world.set_player_snapshot(slot, players[slot], true, true)
 			if entry["fire"]:
 				world.queue_fire_event(
@@ -146,6 +173,52 @@ func _run_scenario(table: Array, frame_delta: float) -> PackedStringArray:
 			hashes.append(SimHasherScript.hash_world(world))
 			applied += 1
 	return hashes
+
+## 时钟核算。step_tick() 不接收 delta（Global Constraint），所以「换个喂帧节奏重放同一张表」
+## 在构造上不可能分叉——那种比较是空转。真正需要守住的是 SimClock 自己的账：
+## 单帧最多吐 MAX_CATCHUP_TICKS 个 tick、丢弃欠账时 accumulator 必须清零、
+## 以及按整 TICK_SECONDS 喂帧时 tick 数不多不少。
+func _check_clock_accounting(failures: Array[String]) -> void:
+	var clock = SimClockScript.new()
+	var burst := clock.consume_frame(1.0)
+	_expect(
+		burst == SimClockScript.MAX_CATCHUP_TICKS,
+		"a 1.0s frame must be capped at MAX_CATCHUP_TICKS (%d), got %d" % [
+			SimClockScript.MAX_CATCHUP_TICKS, burst
+		],
+		failures
+	)
+	# sim_clock.gd:27-28：丢弃欠账时清零而不是钳到 TICK_SECONDS，
+	# 否则下一帧即使 delta 为 0 也会再吐一个 tick，欠账会以「每帧多一个」的形式复活。
+	_expect(
+		clock.accumulator == 0.0,
+		"the discarded backlog must zero the accumulator, got %.17f" % clock.accumulator,
+		failures
+	)
+	_expect(
+		clock.consume_frame(0.0) == 0,
+		"a zero-delta frame after a discarded backlog must produce no tick",
+		failures
+	)
+
+	var steady = SimClockScript.new()
+	var produced := 0
+	for _frame in range(TICK_COUNT):
+		produced += steady.consume_frame(SimClockScript.TICK_SECONDS)
+	_expect(
+		produced == TICK_COUNT,
+		"%d frames of exactly TICK_SECONDS must produce %d ticks, got %d" % [
+			TICK_COUNT, TICK_COUNT, produced
+		],
+		failures
+	)
+	_expect(
+		steady.get_tick_index() == TICK_COUNT,
+		"the clock tick index must be exactly %d, got %d" % [
+			TICK_COUNT, steady.get_tick_index()
+		],
+		failures
+	)
 
 func _compare(
 	label: String,

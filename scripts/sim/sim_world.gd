@@ -360,6 +360,36 @@ func line_is_clear(from_xz: Vector2, to_xz: Vector2) -> bool:
 			current.y += step_y
 	return true
 
+## 沿射线走与 line_is_clear() 完全相同的 Bresenham 格序列，
+## 返回到第一个阻挡 cell 中心的距离；一路无阻挡时返回 max_distance。
+## 豁免规则也保持一致（起点 cell 与终点 cell 都不算阻挡），
+## 这样「命中被墙挡掉」与「曳光停在墙上」不会给出互相矛盾的结论。
+func ray_blocked_distance(origin: Vector2, direction: Vector2, max_distance: float) -> float:
+	if max_distance <= 0.0 or direction.length_squared() <= 0.000001:
+		return maxf(max_distance, 0.0)
+	var unit_direction := direction.normalized()
+	var from_cell := grid.world_to_cell(origin)
+	var to_cell := grid.world_to_cell(origin + unit_direction * max_distance)
+	var delta_x := absi(to_cell.x - from_cell.x)
+	var delta_y := absi(to_cell.y - from_cell.y)
+	var step_x := 1 if to_cell.x >= from_cell.x else -1
+	var step_y := 1 if to_cell.y >= from_cell.y else -1
+	var error := delta_x - delta_y
+	var current := from_cell
+	for _step_index in range(delta_x + delta_y + 1):
+		if current == to_cell:
+			return max_distance
+		if current != from_cell and grid.is_blocked(current):
+			return minf(origin.distance_to(grid.cell_to_world(current)), max_distance)
+		var doubled_error := error * 2
+		if doubled_error > -delta_y:
+			error -= delta_y
+			current.x += step_x
+		if doubled_error < delta_x:
+			error += delta_x
+			current.y += step_y
+	return max_distance
+
 ## 唯一的僵尸掉血入口。damage_points 已是 HEALTH_SCALE 单位的整数。
 func apply_zombie_damage(
 	index: int,
@@ -1000,7 +1030,14 @@ func _resolve_shot_event(event: Dictionary) -> void:
 		float(profile["max_spread_degrees"])
 	)
 
-	var attack_range := float(profile["attack_range"])
+	# 射程被第一堵墙截断：基线的物理射线命中层 1 静态体就 break，
+	# 未命中僵尸时曳光终点也停在墙上而不是穿墙飞满射程。
+	# 注：Step 8 的物理闸门按被禁 API 的字面名 grep 整个 scripts/sim 且不区分代码与注释，
+	# 所以这里写「物理射线」而不是那几个类名/方法名。
+	var weapon_range := float(profile["attack_range"])
+	var attack_range := minf(
+		weapon_range, ray_blocked_distance(origin, direction, weapon_range)
+	)
 	var maximum_targets := int(profile["max_penetration_count"]) + 1
 	var coefficient := float(profile["penetration_damage_coefficient"])
 	var hits := SimCombatScript.resolve_ray_hits(
