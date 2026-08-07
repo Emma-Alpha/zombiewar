@@ -8,6 +8,7 @@
 [node name="Pistol" type="Node3D"]
 script = ExtResource("1_weapon")
 definition = ExtResource("2_definition")
+initially_owned = true
 
 [node name="Muzzle" type="Marker3D" parent="."]
 

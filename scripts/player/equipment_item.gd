@@ -19,11 +19,20 @@ func cancel_use() -> void:
 func is_available() -> bool:
 	return true
 
+func get_item_id() -> StringName:
+	return &""
+
+func receive_pickup(_amount: int) -> bool:
+	return false
+
 func get_display_name() -> String:
 	return ""
 
 func get_remaining_count() -> int:
 	return -1
+
+func get_count_text() -> String:
+	return "—"
 
 func set_equipped(value: bool) -> void:
 	visible = value

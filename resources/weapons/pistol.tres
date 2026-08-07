@@ -5,7 +5,7 @@
 [resource]
 script = ExtResource("1_definition")
 weapon_id = &"pistol"
-display_name = "PISTOL"
+display_name = "手枪"
 visual_node_name = &"Pistol"
 trigger_mode = 0
 attacks_per_second = 3.0
@@ -19,6 +19,8 @@ camera_impulse_strength = 0.08
 attack_range = 24.0
 hit_collision_mask = 5
 tracer_pool_size = 6
+uses_ammo = false
+max_ammo = 0
 penetration_damage_coefficient = 0.0
 max_penetration_count = 0
 base_spread_degrees = 0.35

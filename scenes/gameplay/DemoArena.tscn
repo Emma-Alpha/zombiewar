@@ -1,4 +1,4 @@
-[gd_scene load_steps=50 format=3]
+[gd_scene load_steps=54 format=3]
 
 [ext_resource type="Script" path="res://scripts/gameplay/demo_arena.gd" id="1_arena"]
 [ext_resource type="Script" path="res://scripts/gameplay/local_player_spawner.gd" id="2_player_spawner"]
@@ -23,6 +23,10 @@
 [ext_resource type="PackedScene" path="res://scenes/props/SupplyChest.tscn" id="21_supply_chest"]
 [ext_resource type="PackedScene" path="res://scenes/fx/GroundBloodSplat.tscn" id="22_story_blood"]
 [ext_resource type="Script" path="res://scripts/gameplay/player_registry.gd" id="23_player_registry"]
+[ext_resource type="PackedScene" path="res://scenes/gameplay/PickupSpawnPoint.tscn" id="24_pickup_spawn_point"]
+[ext_resource type="PackedScene" path="res://scenes/gameplay/RiflePickupChest.tscn" id="25_rifle_pickup"]
+[ext_resource type="PackedScene" path="res://scenes/gameplay/RifleAmmoPickupChest.tscn" id="26_rifle_ammo_pickup"]
+[ext_resource type="PackedScene" path="res://scenes/gameplay/OilBarrelPickupChest.tscn" id="27_oil_barrel_pickup"]
 
 [sub_resource type="Environment" id="Environment_arena"]
 background_mode = 1
@@ -488,6 +492,26 @@ rotation_degrees = Vector3(0, 4, 0)
 [node name="ChestD" parent="World/Props/SupplyPoint/Chests" instance=ExtResource("21_supply_chest")]
 position = Vector3(12, 0, 0)
 rotation_degrees = Vector3(0, -5, 0)
+
+[node name="PickupSpawners" type="Node3D" parent="World/Props"]
+
+[node name="Rifle" parent="World/Props/PickupSpawners" instance=ExtResource("24_pickup_spawn_point")]
+position = Vector3(-4.5, 0, 6.0)
+pickup_scene = ExtResource("25_rifle_pickup")
+respawn_enabled = true
+respawn_delay_seconds = 3.0
+
+[node name="RifleAmmo" parent="World/Props/PickupSpawners" instance=ExtResource("24_pickup_spawn_point")]
+position = Vector3(0, 0, 9.0)
+pickup_scene = ExtResource("26_rifle_ammo_pickup")
+respawn_enabled = true
+respawn_delay_seconds = 3.0
+
+[node name="OilBarrel" parent="World/Props/PickupSpawners" instance=ExtResource("24_pickup_spawn_point")]
+position = Vector3(4.5, 0, 6.0)
+pickup_scene = ExtResource("27_oil_barrel_pickup")
+respawn_enabled = true
+respawn_delay_seconds = 3.0
 
 [node name="RoadDetails" type="Node3D" parent="World/Props"]
 

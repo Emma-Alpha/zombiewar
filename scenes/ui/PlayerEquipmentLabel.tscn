@@ -4,12 +4,12 @@
 [ext_resource type="FontFile" path="res://assets/fonts/NotoSansSC-UI.ttf" id="2_font"]
 
 [node name="PlayerEquipmentLabel" type="Label3D"]
-position = Vector3(0, 2.78, 0)
+position = Vector3(0, 2.72, 0)
 font = ExtResource("2_font")
-font_size = 30
-outline_size = 10
+font_size = 22
+outline_size = 7
 modulate = Color(1, 0.93, 0.72, 1)
-text = "P1 · RIFLE"
+text = "P1 · 手枪:∞"
 billboard = 1
 no_depth_test = true
 fixed_size = true

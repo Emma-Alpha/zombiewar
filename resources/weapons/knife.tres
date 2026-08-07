@@ -5,7 +5,7 @@
 [resource]
 script = ExtResource("1_definition")
 weapon_id = &"knife"
-display_name = "KNIFE"
+display_name = "匕首"
 visual_node_name = &"Knife"
 damage = 35.0
 attack_animation = &"Slash"

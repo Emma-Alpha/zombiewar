@@ -4,6 +4,7 @@ class_name EquipmentController
 const HitResult = preload("res://scripts/combat/hit_result.gd")
 const EquipmentItemScript = preload("res://scripts/player/equipment_item.gd")
 const WeaponBaseScript = preload("res://scripts/combat/weapons/weapon_base.gd")
+const RangedWeaponScript = preload("res://scripts/combat/weapons/ranged_weapon.gd")
 const EMBEDDED_WEAPON_NAMES: Array[StringName] = [
 	&"Axe", &"Guitar", &"Knife", &"Pistol", &"Rifle", &"Shotgun", &"SMG",
 	&"Spear", &"WoodenBat_Barbed", &"WoodenBat_Saw",
@@ -18,7 +19,7 @@ signal attack_resolved(
 	camera_impulse_strength: float
 )
 signal weapon_changed(definition: WeaponDefinition)
-signal equipment_changed(display_name: String, remaining_count: int)
+signal equipment_changed(display_name: String, count_text: String)
 
 @export var loadout: Array[PackedScene] = []
 @export_range(0, 8, 1) var starting_slot := 0
@@ -29,6 +30,7 @@ var current_item
 var initialized := false
 var switch_guard := Callable()
 var place_item_service
+var warned_unknown_item_ids: Dictionary = {}
 
 func set_switch_guard(value: Callable) -> void:
 	switch_guard = value
@@ -76,6 +78,40 @@ func setup(
 			_equip_slot_unchecked(fallback_slot)
 		else:
 			_clear_current()
+
+func get_item_by_id(item_id: StringName) -> EquipmentItem:
+	for item in equipment_items:
+		if item.get_item_id() == item_id:
+			return item as EquipmentItem
+	return null
+
+func get_slot_for_item(item_id: StringName) -> int:
+	for slot_index in range(equipment_items.size()):
+		if equipment_items[slot_index].get_item_id() == item_id:
+			return slot_index
+	return -1
+
+func grant_item(
+	item_id: StringName,
+	amount: int = 0,
+	auto_equip: bool = false
+) -> bool:
+	var item = get_item_by_id(item_id)
+	if item == null:
+		if not warned_unknown_item_ids.has(item_id):
+			warned_unknown_item_ids[item_id] = true
+			push_warning("Unknown equipment pickup: %s" % item_id)
+		return false
+	var changed := bool(item.receive_pickup(amount))
+	if changed and auto_equip:
+		equip_slot(get_slot_for_item(item_id))
+	return changed
+
+func add_ammo(item_id: StringName, amount: int) -> int:
+	var item = get_item_by_id(item_id)
+	if item == null or not item.is_available() or not item is RangedWeaponScript:
+		return 0
+	return (item as RangedWeapon).add_ammo(amount)
 
 func equip_previous() -> bool:
 	var slot := _find_available_slot(current_slot, -1)
@@ -137,6 +173,9 @@ func get_current_display_name() -> String:
 func get_current_count() -> int:
 	return current_item.get_remaining_count() if current_item != null else -1
 
+func get_current_count_text() -> String:
+	return current_item.get_count_text() if current_item != null else ""
+
 func get_idle_animation() -> StringName:
 	return current_item.get_idle_animation() if current_item != null else &"Idle"
 
@@ -175,10 +214,10 @@ func _clear_current() -> void:
 		current_item.set_equipped(false)
 	current_item = null
 	current_slot = -1
-	equipment_changed.emit("无可用装备", -1)
+	equipment_changed.emit("无可用装备", "")
 
 func _emit_equipment_changed() -> void:
-	equipment_changed.emit(get_current_display_name(), get_current_count())
+	equipment_changed.emit(get_current_display_name(), get_current_count_text())
 
 func _on_item_count_changed(_remaining_count: int, item) -> void:
 	if item != current_item:

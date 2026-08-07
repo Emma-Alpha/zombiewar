@@ -6,6 +6,8 @@
 [node name="OilBarrelEquipment" type="Node3D"]
 script = ExtResource("1_placeable")
 display_name = "油桶"
-initial_count = 999
+item_id = &"oil_barrel"
+initial_count = 0
+max_count = 999
 item_scene = ExtResource("2_barrel")
 placement_direction_scale = -1.0

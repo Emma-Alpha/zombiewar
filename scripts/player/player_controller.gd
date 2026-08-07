@@ -88,7 +88,7 @@ func _ready() -> void:
 	equipment.set_place_item_service(place_item_service)
 	_on_equipment_changed(
 		equipment.get_current_display_name(),
-		equipment.get_current_count()
+		equipment.get_current_count_text()
 	)
 
 func _process(delta: float) -> void:
@@ -126,6 +126,20 @@ func set_place_item_service(service) -> void:
 	place_item_service = service
 	if equipment != null:
 		equipment.set_place_item_service(place_item_service)
+
+func receive_equipment_pickup(
+	item_id: StringName,
+	amount: int,
+	auto_equip: bool = false
+) -> bool:
+	if defeated:
+		return false
+	return equipment.grant_item(item_id, amount, auto_equip)
+
+func receive_ammo_pickup(item_id: StringName, amount: int) -> bool:
+	if defeated:
+		return false
+	return equipment.add_ammo(item_id, amount) > 0
 
 func _physics_process(delta: float) -> void:
 	last_input_state = (
@@ -271,9 +285,9 @@ func _on_weapon_changed(_definition: WeaponDefinition) -> void:
 	attack_animation_remaining = 0.0
 	_update_animation(Vector2(velocity.x, velocity.z).length())
 
-func _on_equipment_changed(display_name: String, remaining_count: int) -> void:
+func _on_equipment_changed(display_name: String, count_text: String) -> void:
 	if equipment_label != null:
-		equipment_label.set_status(player_index, display_name, remaining_count)
+		equipment_label.set_status(player_index, display_name, count_text)
 
 func apply_damage(amount: float, source_position := Vector3.ZERO) -> float:
 	_ensure_health_initialized()
@@ -347,5 +361,5 @@ func _on_depleted() -> void:
 	if animation_player != null and animation_player.has_animation(&"Death"):
 		animation_player.play(&"Death", 0.08)
 	if equipment_label != null:
-		equipment_label.set_status(player_index, "倒地", -1)
+		equipment_label.set_status(player_index, "倒地", "")
 	died.emit()

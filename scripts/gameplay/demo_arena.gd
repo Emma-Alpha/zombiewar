@@ -182,11 +182,23 @@ func _wire_dependencies() -> void:
 			if (
 				barrel is ExplosiveBarrel and
 				not barrel.navigation_geometry_changed.is_connected(
-					_on_barrel_navigation_geometry_changed
+					_on_runtime_navigation_geometry_changed
 				)
 			):
 				barrel.navigation_geometry_changed.connect(
-					_on_barrel_navigation_geometry_changed
+					_on_runtime_navigation_geometry_changed
+				)
+	var pickup_spawners := get_node_or_null("World/Props/PickupSpawners")
+	if pickup_spawners != null:
+		for child in pickup_spawners.get_children():
+			if (
+				child is PickupSpawnPoint and
+				not child.navigation_geometry_changed.is_connected(
+					_on_runtime_navigation_geometry_changed
+				)
+			):
+				child.navigation_geometry_changed.connect(
+					_on_runtime_navigation_geometry_changed
 				)
 	var spawn_button := get_node_or_null("HUD/SpawnWaveButton") as Button
 	if spawn_button != null and not spawn_button.pressed.is_connected(request_spawn_wave):
@@ -204,11 +216,11 @@ func _wire_dependencies() -> void:
 	if (
 		place_item_service != null and
 		not place_item_service.placement_geometry_changed.is_connected(
-			_on_barrel_navigation_geometry_changed
+			_on_runtime_navigation_geometry_changed
 		)
 	):
 		place_item_service.placement_geometry_changed.connect(
-			_on_barrel_navigation_geometry_changed
+			_on_runtime_navigation_geometry_changed
 		)
 	var targets := get_node_or_null("World/Targets")
 	if targets != null:
@@ -360,7 +372,7 @@ func _on_navigation_chunk_bake_failed(
 	push_warning("Navigation chunk %s failed: %s" % [chunk_id, message])
 	_show_wave_status("NAVIGATION FAILED: %s" % chunk_id)
 
-func _on_barrel_navigation_geometry_changed() -> void:
+func _on_runtime_navigation_geometry_changed() -> void:
 	var navigation_manager := get_node_or_null(
 		"World/Navigation"
 	) as NavigationWorldManager

@@ -5,7 +5,7 @@
 [resource]
 script = ExtResource("1_definition")
 weapon_id = &"rifle"
-display_name = "RIFLE"
+display_name = "步枪"
 visual_node_name = &"Rifle"
 trigger_mode = 1
 attacks_per_second = 4.0
@@ -19,6 +19,8 @@ camera_impulse_strength = 0.06
 attack_range = 28.0
 hit_collision_mask = 5
 tracer_pool_size = 8
+uses_ammo = true
+max_ammo = 360
 penetration_damage_coefficient = 0.0
 max_penetration_count = 0
 base_spread_degrees = 0.5

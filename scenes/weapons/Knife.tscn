@@ -6,3 +6,4 @@
 [node name="Knife" type="Node3D" unique_id=788480330]
 script = ExtResource("1_weapon")
 definition = ExtResource("2_definition")
+initially_owned = true

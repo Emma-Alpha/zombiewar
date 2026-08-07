@@ -72,4 +72,4 @@ anchor_offset = Vector3(0, 2.35, 0)
 [node name="EquipmentController" type="Node" parent="."]
 script = ExtResource("6_equipment")
 loadout = Array[PackedScene]([ExtResource("7_pistol"), ExtResource("8_rifle"), ExtResource("9_knife"), ExtResource("12_oil_barrel")])
-starting_slot = 1
+starting_slot = 0

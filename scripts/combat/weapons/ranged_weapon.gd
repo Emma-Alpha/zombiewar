@@ -18,6 +18,7 @@ var spread_state: WeaponSpreadState
 var spread_rng := RandomNumberGenerator.new()
 var tracer_pool: Array[ShotTracer] = []
 var tracer_pool_cursor := 0
+var current_ammo := 0
 
 func _ready() -> void:
 	var ranged_definition := definition as RangedWeaponDefinition
@@ -51,9 +52,60 @@ func bind_context(
 func _physics_process(delta: float) -> void:
 	spread_state.tick(delta)
 	weapon_trigger.tick(delta)
-	if weapon_trigger.try_attack(trigger_pressed, trigger_just_pressed):
+	if (
+		has_ammo_for_shot() and
+		weapon_trigger.try_attack(trigger_pressed, trigger_just_pressed) and
+		try_consume_ammo()
+	):
 		_fire(aim_direction)
 	trigger_just_pressed = false
+
+func set_ammo_count(amount: int) -> void:
+	var next_ammo := clampi(amount, 0, get_max_ammo()) if _uses_ammo() else 0
+	if next_ammo == current_ammo:
+		return
+	current_ammo = next_ammo
+	count_changed.emit(current_ammo)
+
+func add_ammo(amount: int) -> int:
+	if not _uses_ammo() or amount <= 0:
+		return 0
+	var before := current_ammo
+	set_ammo_count(current_ammo + amount)
+	return current_ammo - before
+
+func receive_pickup(amount: int) -> bool:
+	var ownership_changed := set_owned(true)
+	var added_ammo := add_ammo(amount)
+	return ownership_changed or added_ammo > 0
+
+func get_ammo_count() -> int:
+	return current_ammo
+
+func get_max_ammo() -> int:
+	var ranged_definition := definition as RangedWeaponDefinition
+	return maxi(ranged_definition.max_ammo, 0) if ranged_definition != null else 0
+
+func get_remaining_count() -> int:
+	return current_ammo if _uses_ammo() else -1
+
+func get_count_text() -> String:
+	return str(get_ammo_count()) if _uses_ammo() else "∞"
+
+func has_ammo_for_shot() -> bool:
+	return not _uses_ammo() or current_ammo > 0
+
+func try_consume_ammo() -> bool:
+	if not _uses_ammo():
+		return true
+	if current_ammo <= 0:
+		return false
+	set_ammo_count(current_ammo - 1)
+	return true
+
+func _uses_ammo() -> bool:
+	var ranged_definition := definition as RangedWeaponDefinition
+	return ranged_definition != null and ranged_definition.uses_ammo
 
 func set_equipped(value: bool) -> void:
 	super.set_equipped(value)

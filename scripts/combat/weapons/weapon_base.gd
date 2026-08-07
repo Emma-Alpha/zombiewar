@@ -14,6 +14,7 @@ signal attack_resolved(
 )
 
 @export var definition: WeaponDefinition
+@export var initially_owned := false
 
 var wielder: CharacterBody3D
 var character_visual_root: Node3D
@@ -22,12 +23,14 @@ var visual_anchor: Node3D
 var trigger_pressed := false
 var trigger_just_pressed := false
 var aim_direction := Vector3.FORWARD
+var owned := false
 
 func bind_context(
 	value_wielder: CharacterBody3D,
 	value_visual_root: Node3D,
 	value_functional_ray_origin: Marker3D
 ) -> void:
+	owned = initially_owned
 	wielder = value_wielder
 	character_visual_root = value_visual_root
 	functional_ray_origin = value_functional_ray_origin
@@ -75,6 +78,24 @@ func cancel_use() -> void:
 
 func get_display_name() -> String:
 	return definition.display_name if definition != null else ""
+
+func get_item_id() -> StringName:
+	return definition.weapon_id if definition != null else &""
+
+func is_available() -> bool:
+	return owned
+
+func is_owned() -> bool:
+	return owned
+
+func set_owned(value: bool) -> bool:
+	if owned == value:
+		return false
+	owned = value
+	return true
+
+func receive_pickup(_amount: int) -> bool:
+	return set_owned(true)
 
 func get_remaining_count() -> int:
 	return -1
