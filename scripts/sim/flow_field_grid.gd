@@ -82,12 +82,21 @@ func set_blocked(cell: Vector2i, value: bool) -> bool:
 	return true
 
 ## 运行时增删阻挡几何统一走这里：任何改变都会置脏，下一 tick 触发流场重算。
+## 最大角按半开区间处理：`world_to_cell()` 用 floori，落在 cell 边界上的最大角本身属于下一个
+## cell，而矩形并没有真的盖住它。因此最大角先内缩千分之一个 cell 再取整，否则每面 +X / +Z 边
+## 都会多阻挡一整行；DemoArena 的原点 -24.5 让 cell 边界正好落在半整数世界坐标上，也正是轴对齐
+## 墙体范围的落点，不内缩的话几乎每面墙都会多堵一行。退化矩形则夹回最小 cell，至少标记一格。
 func set_blocked_world_rect(min_xz: Vector2, max_xz: Vector2, value: bool) -> bool:
 	var low_cell := world_to_cell(
 		Vector2(minf(min_xz.x, max_xz.x), minf(min_xz.y, max_xz.y))
 	)
+	var high_corner := Vector2(maxf(min_xz.x, max_xz.x), maxf(min_xz.y, max_xz.y))
 	var high_cell := world_to_cell(
-		Vector2(maxf(min_xz.x, max_xz.x), maxf(min_xz.y, max_xz.y))
+		high_corner - Vector2(cell_size * 0.001, cell_size * 0.001)
+	)
+	high_cell = Vector2i(
+		maxi(high_cell.x, low_cell.x),
+		maxi(high_cell.y, low_cell.y)
 	)
 	var changed := false
 	for cell_z in range(low_cell.y, high_cell.y + 1):

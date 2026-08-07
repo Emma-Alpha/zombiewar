@@ -9,6 +9,7 @@ func _init() -> void:
 func _run() -> void:
 	var failures: Array[String] = []
 	_check_grid_mapping(failures)
+	_check_world_rect_blocking(failures)
 	_check_single_source_matches_reference(failures)
 	_check_multi_source_is_minimum(failures)
 	_check_walls_and_unreachable(failures)
@@ -39,6 +40,107 @@ func _check_grid_mapping(failures: Array[String]) -> void:
 	)
 	_expect(grid.is_blocked(Vector2i(-1, 0)), "outside cells must read as blocked", failures)
 	_expect(grid.cell_index(Vector2i(49, 0)) == -1, "outside cells must have no index", failures)
+
+## 世界矩形 -> cell 的覆盖必须是半开区间：落在 cell 边界上的最大角属于下一个 cell，
+## 而矩形并没有盖住它。DemoArena 的原点让 cell 边界落在半整数世界坐标上，正是轴对齐墙体
+## 范围的落点，所以边界处多阻挡一行会影响几乎每一面墙，这里逐格对齐地锁死覆盖集合。
+func _check_world_rect_blocking(failures: Array[String]) -> void:
+	var grid = FlowFieldGridScript.new()
+	grid.configure(Vector2(-24.5, -19.5), 1.0, 49, 39)
+	_expect(
+		grid.set_blocked_world_rect(Vector2(-20.5, -15.5), Vector2(-16.5, -13.5), true),
+		"blocking a fresh world rect must report a change",
+		failures
+	)
+	var wall_cells := _blocked_cells(grid)
+	_expect(
+		wall_cells.size() == 8,
+		"a 4 x 2 world rect must block exactly 8 cells (got %d)" % wall_cells.size(),
+		failures
+	)
+	var expected_wall: Array[Vector2i] = []
+	for cell_z in range(4, 6):
+		for cell_x in range(4, 8):
+			expected_wall.append(Vector2i(cell_x, cell_z))
+	_expect(
+		wall_cells == expected_wall,
+		"a 4 x 2 world rect must block exactly cells (4..7, 4..5), got %s" % [wall_cells],
+		failures
+	)
+	_expect(
+		not grid.set_blocked_world_rect(Vector2(-20.5, -15.5), Vector2(-16.5, -13.5), true),
+		"re-blocking an unchanged rect must report no change",
+		failures
+	)
+	_expect(
+		grid.set_blocked_world_rect(Vector2(-16.5, -13.5), Vector2(-20.5, -15.5), false),
+		"corner order must not matter when clearing the same rect",
+		failures
+	)
+	_expect(
+		_blocked_cells(grid).is_empty(),
+		"clearing the rect must release exactly the cells it took",
+		failures
+	)
+
+	var single = FlowFieldGridScript.new()
+	single.configure(Vector2(-24.5, -19.5), 1.0, 49, 39)
+	single.set_blocked_world_rect(Vector2(-24.5, -19.5), Vector2(-23.5, -18.5), true)
+	var single_cells := _blocked_cells(single)
+	_expect(
+		single_cells.size() == 1 and single_cells[0] == Vector2i(0, 0),
+		"a one-cell world rect must block exactly cell (0, 0), got %s" % [single_cells],
+		failures
+	)
+
+	var partial = FlowFieldGridScript.new()
+	partial.configure(Vector2(-24.5, -19.5), 1.0, 49, 39)
+	partial.set_blocked_world_rect(Vector2(-20.5, -15.5), Vector2(-16.2, -13.5), true)
+	_expect(
+		_blocked_cells(partial).size() == 10,
+		"a rect reaching into the next cell must block that cell too (got %d)"
+			% _blocked_cells(partial).size(),
+		failures
+	)
+
+	var degenerate = FlowFieldGridScript.new()
+	degenerate.configure(Vector2(-24.5, -19.5), 1.0, 49, 39)
+	degenerate.set_blocked_world_rect(Vector2(-20.5, -15.5), Vector2(-20.5, -15.5), true)
+	var degenerate_cells := _blocked_cells(degenerate)
+	_expect(
+		degenerate_cells.size() == 1 and degenerate_cells[0] == Vector2i(4, 4),
+		"a degenerate rect must still mark the one cell holding it, got %s" % [degenerate_cells],
+		failures
+	)
+
+	var clipped = FlowFieldGridScript.new()
+	clipped.configure(Vector2(-24.5, -19.5), 1.0, 49, 39)
+	clipped.set_blocked_world_rect(Vector2(-30.0, -25.0), Vector2(-23.5, -18.5), true)
+	var clipped_cells := _blocked_cells(clipped)
+	_expect(
+		clipped_cells.size() == 1 and clipped_cells[0] == Vector2i(0, 0),
+		"cells outside the grid must be clipped away, got %s" % [clipped_cells],
+		failures
+	)
+
+	var dirty_grid = FlowFieldGridScript.new()
+	dirty_grid.configure(Vector2(-24.5, -19.5), 1.0, 49, 39)
+	dirty_grid.consume_dirty()
+	dirty_grid.set_blocked_world_rect(Vector2(-20.5, -15.5), Vector2(-16.5, -13.5), true)
+	_expect(
+		dirty_grid.consume_dirty(),
+		"blocking a world rect must leave the grid dirty",
+		failures
+	)
+
+func _blocked_cells(grid) -> Array[Vector2i]:
+	var cells: Array[Vector2i] = []
+	var bytes: PackedByteArray = grid.get_blocked_bytes()
+	for index in range(bytes.size()):
+		if bytes[index] == 1:
+			var cell: Vector2i = grid.index_to_cell(index)
+			cells.append(cell)
+	return cells
 
 func _check_single_source_matches_reference(failures: Array[String]) -> void:
 	var grid = FlowFieldGridScript.new()

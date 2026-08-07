@@ -1,7 +1,7 @@
 extends RefCounted
 class_name FlowField
 
-## 替代 300 个 NavigationAgent3D：以全部存活玩家为源做多源 BFS，
+## 替代 300 个逐僵尸导航代理：以全部存活玩家为源做多源 BFS，
 ## 整数代价，生成到最近玩家的方向场。僵尸只查自己所在 cell，寻路成本与僵尸数量无关。
 const UNREACHABLE := 0x7FFFFFFF
 

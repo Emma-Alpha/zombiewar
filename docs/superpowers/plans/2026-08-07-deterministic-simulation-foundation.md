@@ -32,6 +32,7 @@
 - 当前仓库没有持久化自动测试套件；**不得恢复 `tests/` 或 `tests/run_tests.sh`**。客户端验证一律写成 `tools/validation/validate_*.gd` 一次性脚本。
 - 静态检查命令：`/Applications/Godot.app/Contents/MacOS/Godot --headless --editor --path . --quit`。
 - 验证脚本运行方式：`/Applications/Godot.app/Contents/MacOS/Godot --headless --path . --script res://tools/validation/<name>.gd`。
+- **验证脚本的通过判据是那一行 `<name>: PASS`，不是退出码。** Godot 在脚本解析失败时（`Parse Error`、`Failed to load script`、`Could not resolve external class member`）**仍然以退出码 0 结束**，此时脚本一行都没跑，退出码却与真正通过完全无法区分——这是本计划最大的假通过风险。因此每条验证命令都写成「`2>&1 | tee` 到日志，再 `grep -q "<name>: PASS"`」的形式，本计划所有验证步骤都已按此改写；冒烟脚本同理，改为 grep 它自己那行标志性输出（例如 `^zombies=`、`^identical=`、`^empty=`）。后台运行的 `validate_sim_determinism.gd` 轮询的也是日志里的 `PASS` 行，**不是进程是否退出**：进程退出且没有 `PASS` 行 = 失败。
 - `validate_sim_determinism.gd` 单次运行在 Apple Silicon 上耗时 **10–40 分钟**（3 趟 × 3000 tick × 300 僵尸，逐字节 FNV 哈希是主要开销）。凡出现该脚本的步骤（Task 6 Step 4、Task 7、Task 8、Task 11）一律后台运行（`run_in_background` 或 `nohup ... &`），不要放进有 120 秒超时的前台 shell，也不要因为长时间无输出就中断。
 - 冒烟脚本清理一律用 `rm -f`：`.uid` 边车文件由编辑器导入过程生成，`--headless --script` 不会生成它，用 `rm` 会因文件不存在而以非 0 退出。
 - 提交信息使用 Conventional Commits，每个 Task 结束提交一次。
@@ -452,12 +453,15 @@ Run:
 ```bash
 cd /Users/liangpingbo/Desktop/4399/game/zombiewar
 /Applications/Godot.app/Contents/MacOS/Godot \
-  --headless --path . --script res://tools/validation/validate_deterministic_rng.gd
+  --headless --path . --script res://tools/validation/validate_deterministic_rng.gd 2>&1 \
+  | tee /tmp/zw_deterministic_rng.log
+grep -q "validate_deterministic_rng: PASS" /tmp/zw_deterministic_rng.log \
+  || { echo "FAILED: validate_deterministic_rng"; exit 1; }
 /Applications/Godot.app/Contents/MacOS/Godot \
   --headless --editor --path . --quit
 ```
 
-Expected: 第一条命令打印 `validate_deterministic_rng: PASS` 并以退出码 0 结束；第二条命令退出码为 0，输出没有本次改动引入的 `SCRIPT ERROR` 或 `Parse Error`。
+Expected: 第一条命令打印 `validate_deterministic_rng: PASS`，`grep` 静默通过而**没有**打印 `FAILED: validate_deterministic_rng`；第二条命令退出码为 0，输出没有本次改动引入的 `SCRIPT ERROR` 或 `Parse Error`。判据是 `PASS` 行而不是退出码：Godot 解析失败时也返回 0（见 Global Constraints）。
 
 - [ ] **Step 6: 审查确定性闸门**
 
@@ -472,6 +476,8 @@ rg -n "\bdelta\b" scripts/sim | rg -v "^scripts/sim/sim_clock.gd:" \
 ```
 
 Expected: 分别输出 `sim layer has no nondeterministic api` 与 `only sim_clock touches real delta`。`sim_clock.gd` 的 `consume_frame(frame_delta)` 是表现层与模拟层之间唯一允许接触真实 delta 的边界函数，第二条命令已按文件名把它排除；两条命令中的任何一条有输出（而非上述固定字符串）都视为缺陷。
+
+> 第一条闸门不区分代码与注释：`scripts/sim/**` 的注释里也**不得逐字写出 `randf` / `randi` / `randomize` / `get_tree` / `move_and_slide` / `NavigationAgent3D` / `Time.` 这些被禁 API 的名字**，否则闸门会假红。要说明「本实现取代了谁」时用中文描述（例如 `flow_field.gd` 写的是「替代 300 个逐僵尸导航代理」而不是那个类名），不要把类名写回去。
 
 > 第二条用的是 `\bdelta\b` 而不是裸 `delta`：`sim_world.line_is_clear()` 的 Bresenham 里有 `delta_x` / `delta_y`，`sim_clock.gd` 的形参叫 `frame_delta`，这三个标识符两侧都紧邻下划线，不构成词边界，因此不会被误报；只有独立出现的 `delta` 标识符才会命中。同理，`scripts/sim/**` 的注释里也不要写独立的 `delta` 一词，否则这条闸门会假红。
 
@@ -607,12 +613,21 @@ func set_blocked(cell: Vector2i, value: bool) -> bool:
 	return true
 
 ## 运行时增删阻挡几何统一走这里：任何改变都会置脏，下一 tick 触发流场重算。
+## 最大角按半开区间处理：`world_to_cell()` 用 floori，落在 cell 边界上的最大角本身属于下一个
+## cell，而矩形并没有真的盖住它。因此最大角先内缩千分之一个 cell 再取整，否则每面 +X / +Z 边
+## 都会多阻挡一整行；DemoArena 的原点 -24.5 让 cell 边界正好落在半整数世界坐标上，也正是轴对齐
+## 墙体范围的落点，不内缩的话几乎每面墙都会多堵一行。退化矩形则夹回最小 cell，至少标记一格。
 func set_blocked_world_rect(min_xz: Vector2, max_xz: Vector2, value: bool) -> bool:
 	var low_cell := world_to_cell(
 		Vector2(minf(min_xz.x, max_xz.x), minf(min_xz.y, max_xz.y))
 	)
+	var high_corner := Vector2(maxf(min_xz.x, max_xz.x), maxf(min_xz.y, max_xz.y))
 	var high_cell := world_to_cell(
-		Vector2(maxf(min_xz.x, max_xz.x), maxf(min_xz.y, max_xz.y))
+		high_corner - Vector2(cell_size * 0.001, cell_size * 0.001)
+	)
+	high_cell = Vector2i(
+		maxi(high_cell.x, low_cell.x),
+		maxi(high_cell.y, low_cell.y)
 	)
 	var changed := false
 	for cell_z in range(low_cell.y, high_cell.y + 1):
@@ -638,7 +653,7 @@ func consume_dirty() -> bool:
 extends RefCounted
 class_name FlowField
 
-## 替代 300 个 NavigationAgent3D：以全部存活玩家为源做多源 BFS，
+## 替代 300 个逐僵尸导航代理：以全部存活玩家为源做多源 BFS，
 ## 整数代价，生成到最近玩家的方向场。僵尸只查自己所在 cell，寻路成本与僵尸数量无关。
 const UNREACHABLE := 0x7FFFFFFF
 
@@ -795,6 +810,7 @@ func _init() -> void:
 func _run() -> void:
 	var failures: Array[String] = []
 	_check_grid_mapping(failures)
+	_check_world_rect_blocking(failures)
 	_check_single_source_matches_reference(failures)
 	_check_multi_source_is_minimum(failures)
 	_check_walls_and_unreachable(failures)
@@ -825,6 +841,107 @@ func _check_grid_mapping(failures: Array[String]) -> void:
 	)
 	_expect(grid.is_blocked(Vector2i(-1, 0)), "outside cells must read as blocked", failures)
 	_expect(grid.cell_index(Vector2i(49, 0)) == -1, "outside cells must have no index", failures)
+
+## 世界矩形 -> cell 的覆盖必须是半开区间：落在 cell 边界上的最大角属于下一个 cell，
+## 而矩形并没有盖住它。DemoArena 的原点让 cell 边界落在半整数世界坐标上，正是轴对齐墙体
+## 范围的落点，所以边界处多阻挡一行会影响几乎每一面墙，这里逐格对齐地锁死覆盖集合。
+func _check_world_rect_blocking(failures: Array[String]) -> void:
+	var grid = FlowFieldGridScript.new()
+	grid.configure(Vector2(-24.5, -19.5), 1.0, 49, 39)
+	_expect(
+		grid.set_blocked_world_rect(Vector2(-20.5, -15.5), Vector2(-16.5, -13.5), true),
+		"blocking a fresh world rect must report a change",
+		failures
+	)
+	var wall_cells := _blocked_cells(grid)
+	_expect(
+		wall_cells.size() == 8,
+		"a 4 x 2 world rect must block exactly 8 cells (got %d)" % wall_cells.size(),
+		failures
+	)
+	var expected_wall: Array[Vector2i] = []
+	for cell_z in range(4, 6):
+		for cell_x in range(4, 8):
+			expected_wall.append(Vector2i(cell_x, cell_z))
+	_expect(
+		wall_cells == expected_wall,
+		"a 4 x 2 world rect must block exactly cells (4..7, 4..5), got %s" % [wall_cells],
+		failures
+	)
+	_expect(
+		not grid.set_blocked_world_rect(Vector2(-20.5, -15.5), Vector2(-16.5, -13.5), true),
+		"re-blocking an unchanged rect must report no change",
+		failures
+	)
+	_expect(
+		grid.set_blocked_world_rect(Vector2(-16.5, -13.5), Vector2(-20.5, -15.5), false),
+		"corner order must not matter when clearing the same rect",
+		failures
+	)
+	_expect(
+		_blocked_cells(grid).is_empty(),
+		"clearing the rect must release exactly the cells it took",
+		failures
+	)
+
+	var single = FlowFieldGridScript.new()
+	single.configure(Vector2(-24.5, -19.5), 1.0, 49, 39)
+	single.set_blocked_world_rect(Vector2(-24.5, -19.5), Vector2(-23.5, -18.5), true)
+	var single_cells := _blocked_cells(single)
+	_expect(
+		single_cells.size() == 1 and single_cells[0] == Vector2i(0, 0),
+		"a one-cell world rect must block exactly cell (0, 0), got %s" % [single_cells],
+		failures
+	)
+
+	var partial = FlowFieldGridScript.new()
+	partial.configure(Vector2(-24.5, -19.5), 1.0, 49, 39)
+	partial.set_blocked_world_rect(Vector2(-20.5, -15.5), Vector2(-16.2, -13.5), true)
+	_expect(
+		_blocked_cells(partial).size() == 10,
+		"a rect reaching into the next cell must block that cell too (got %d)"
+			% _blocked_cells(partial).size(),
+		failures
+	)
+
+	var degenerate = FlowFieldGridScript.new()
+	degenerate.configure(Vector2(-24.5, -19.5), 1.0, 49, 39)
+	degenerate.set_blocked_world_rect(Vector2(-20.5, -15.5), Vector2(-20.5, -15.5), true)
+	var degenerate_cells := _blocked_cells(degenerate)
+	_expect(
+		degenerate_cells.size() == 1 and degenerate_cells[0] == Vector2i(4, 4),
+		"a degenerate rect must still mark the one cell holding it, got %s" % [degenerate_cells],
+		failures
+	)
+
+	var clipped = FlowFieldGridScript.new()
+	clipped.configure(Vector2(-24.5, -19.5), 1.0, 49, 39)
+	clipped.set_blocked_world_rect(Vector2(-30.0, -25.0), Vector2(-23.5, -18.5), true)
+	var clipped_cells := _blocked_cells(clipped)
+	_expect(
+		clipped_cells.size() == 1 and clipped_cells[0] == Vector2i(0, 0),
+		"cells outside the grid must be clipped away, got %s" % [clipped_cells],
+		failures
+	)
+
+	var dirty_grid = FlowFieldGridScript.new()
+	dirty_grid.configure(Vector2(-24.5, -19.5), 1.0, 49, 39)
+	dirty_grid.consume_dirty()
+	dirty_grid.set_blocked_world_rect(Vector2(-20.5, -15.5), Vector2(-16.5, -13.5), true)
+	_expect(
+		dirty_grid.consume_dirty(),
+		"blocking a world rect must leave the grid dirty",
+		failures
+	)
+
+func _blocked_cells(grid) -> Array[Vector2i]:
+	var cells: Array[Vector2i] = []
+	var bytes: PackedByteArray = grid.get_blocked_bytes()
+	for index in range(bytes.size()):
+		if bytes[index] == 1:
+			var cell: Vector2i = grid.index_to_cell(index)
+			cells.append(cell)
+	return cells
 
 func _check_single_source_matches_reference(failures: Array[String]) -> void:
 	var grid = FlowFieldGridScript.new()
@@ -1006,12 +1123,15 @@ Run:
 ```bash
 cd /Users/liangpingbo/Desktop/4399/game/zombiewar
 /Applications/Godot.app/Contents/MacOS/Godot \
-  --headless --path . --script res://tools/validation/validate_flow_field.gd
+  --headless --path . --script res://tools/validation/validate_flow_field.gd 2>&1 \
+  | tee /tmp/zw_flow_field.log
+grep -q "validate_flow_field: PASS" /tmp/zw_flow_field.log \
+  || { echo "FAILED: validate_flow_field"; exit 1; }
 /Applications/Godot.app/Contents/MacOS/Godot \
   --headless --editor --path . --quit
 ```
 
-Expected: 打印 `validate_flow_field: PASS`，退出码 0；编辑器导入检查退出码 0 且无新增解析错误。
+Expected: 打印 `validate_flow_field: PASS` 且没有 `FAILED: validate_flow_field`（判据是 `PASS` 行而不是退出码，见 Global Constraints）；编辑器导入检查退出码 0 且无新增解析错误。
 
 - [ ] **Step 5: 提交**
 
@@ -1404,12 +1524,15 @@ Run:
 ```bash
 cd /Users/liangpingbo/Desktop/4399/game/zombiewar
 /Applications/Godot.app/Contents/MacOS/Godot \
-  --headless --path . --script res://tools/validation/validate_sim_collision.gd
+  --headless --path . --script res://tools/validation/validate_sim_collision.gd 2>&1 \
+  | tee /tmp/zw_sim_collision.log
+grep -q "validate_sim_collision: PASS" /tmp/zw_sim_collision.log \
+  || { echo "FAILED: validate_sim_collision"; exit 1; }
 /Applications/Godot.app/Contents/MacOS/Godot \
   --headless --editor --path . --quit
 ```
 
-Expected: 打印 `validate_sim_collision: PASS`，退出码 0；编辑器导入检查退出码 0。
+Expected: 打印 `validate_sim_collision: PASS` 且没有 `FAILED: validate_sim_collision`（判据是 `PASS` 行而不是退出码，见 Global Constraints）；编辑器导入检查退出码 0。
 
 - [ ] **Step 4: 确认没有引入物理查询**
 
@@ -2410,11 +2533,14 @@ func _init() -> void:
 	quit(0)
 EOF
 /Applications/Godot.app/Contents/MacOS/Godot \
-  --headless --path . --script res://tools/validation/zw_sim_world_smoke.gd
+  --headless --path . --script res://tools/validation/zw_sim_world_smoke.gd 2>&1 \
+  | tee /tmp/zw_sim_world_smoke.log
+grep -q "^zombies=" /tmp/zw_sim_world_smoke.log \
+  || { echo "FAILED: zw_sim_world_smoke produced no result line"; exit 1; }
 rm -f tools/validation/zw_sim_world_smoke.gd tools/validation/zw_sim_world_smoke.gd.uid
 ```
 
-Expected: 输出形如 `zombies=8 ascending=true lookup=true tick=200 next_id=9 pending=0`；`zombies` 在 8 到 12 之间（每角 2–3 只），`ascending` 与 `lookup` 均为 `true`，`tick` 为 200，`pending` 为 0（排队的名额已在第一个 tick 兑现并清零）。冒烟脚本运行后必须删除，不进入提交；`.uid` 只有在编辑器导入过一次后才存在，因此用 `rm -f` 而不是 `rm`。
+Expected: 输出形如 `zombies=8 ascending=true lookup=true tick=200 next_id=9 pending=0`；`grep` 用来把「脚本真的跑了」和「解析失败但退出码仍为 0」区分开（见 Global Constraints）；`zombies` 在 8 到 12 之间（每角 2–3 只），`ascending` 与 `lookup` 均为 `true`，`tick` 为 200，`pending` 为 0（排队的名额已在第一个 tick 兑现并清零）。冒烟脚本运行后必须删除，不进入提交；`.uid` 只有在编辑器导入过一次后才存在，因此用 `rm -f` 而不是 `rm`。
 
 - [ ] **Step 6: 提交**
 
@@ -3101,11 +3227,14 @@ func _init() -> void:
 	quit(0)
 EOF
 /Applications/Godot.app/Contents/MacOS/Godot \
-  --headless --path . --script res://tools/validation/zw_sim_combat_smoke.gd
+  --headless --path . --script res://tools/validation/zw_sim_combat_smoke.gd 2>&1 \
+  | tee /tmp/zw_sim_combat_smoke.log
+grep -q "^identical=" /tmp/zw_sim_combat_smoke.log \
+  || { echo "FAILED: zw_sim_combat_smoke produced no result line"; exit 1; }
 rm -f tools/validation/zw_sim_combat_smoke.gd tools/validation/zw_sim_combat_smoke.gd.uid
 ```
 
-Expected: 输出 `identical=true`，`samples` 为 42，`tail` 形如 `["spread", 5.0]`（连射 40 发后散布已顶到 `max_spread_degrees = 5.0`）。冒烟脚本运行后必须删除；`.uid` 只有在编辑器导入过一次后才存在，因此用 `rm -f` 而不是 `rm`。
+Expected: 输出 `identical=true`（`grep` 把「脚本真的跑了」和「解析失败但退出码仍为 0」区分开，见 Global Constraints），`samples` 为 42，`tail` 形如 `["spread", 5.0]`（连射 40 发后散布已顶到 `max_spread_degrees = 5.0`）。冒烟脚本运行后必须删除；`.uid` 只有在编辑器导入过一次后才存在，因此用 `rm -f` 而不是 `rm`。
 
 - [ ] **Step 8: 运行静态检查并确认开火事件不携带散布方向**
 
@@ -3468,11 +3597,14 @@ func _init() -> void:
 	quit(0)
 EOF
 /Applications/Godot.app/Contents/MacOS/Godot \
-  --headless --path . --script res://tools/validation/zw_hasher_smoke.gd
+  --headless --path . --script res://tools/validation/zw_hasher_smoke.gd 2>&1 \
+  | tee /tmp/zw_hasher_smoke.log
+grep -q "^empty=" /tmp/zw_hasher_smoke.log \
+  || { echo "FAILED: zw_hasher_smoke produced no result line"; exit 1; }
 rm -f tools/validation/zw_hasher_smoke.gd tools/validation/zw_hasher_smoke.gd.uid
 ```
 
-Expected: 逐行完全等于下列参考值（由独立的 FNV-1a 64 参考实现算出）：
+Expected: 六行逐行完全等于下列参考值（由独立的 FNV-1a 64 参考实现算出），且没有 `FAILED: zw_hasher_smoke`：
 
 ```
 empty=cbf29ce484222325
@@ -3496,10 +3628,19 @@ cd /Users/liangpingbo/Desktop/4399/game/zombiewar
 nohup /usr/bin/time -p /Applications/Godot.app/Contents/MacOS/Godot \
   --headless --path . --script res://tools/validation/validate_sim_determinism.gd \
   > /tmp/zw_determinism.log 2>&1 &
-echo "started pid $!; tail -f /tmp/zw_determinism.log"
+echo "started pid $!"
 ```
 
-Expected: 日志里先打印 `validate_sim_determinism: 3000 ticks, final hash <16 位十六进制>`，再打印 `validate_sim_determinism: PASS`，退出码 0。三趟 3000 tick × 300 僵尸的模拟在 Apple Silicon 上预计耗时 **10–40 分钟**（`SimHasher.hash_world()` 每 tick 逐字节消费约 8 KB Packed 数据，每字节一次 `_multiply_prime()` GDScript 调用，逐字节 FNV 哈希是主要开销），期间无输出属正常，不要中断。若需要更快的迭代循环，可临时把 `TICK_COUNT` 降到 300 定位问题，但**提交前必须以 3000 复跑一次**。任何 `diverged at tick N` 都必须定位到具体子系统后再继续，不得放宽断言。
+轮询（**判据是日志里的 `PASS` 行，不是进程有没有退出**；进程已退出但日志里没有 `PASS` 行就是失败）：
+
+```bash
+tail -5 /tmp/zw_determinism.log
+grep -q "validate_sim_determinism: PASS" /tmp/zw_determinism.log \
+  && echo "DETERMINISM OK" \
+  || echo "not finished yet, or FAILED - grep the log for 'diverged at tick' / 'Parse Error' / 'Failed to load script'"
+```
+
+Expected: 日志里先打印 `validate_sim_determinism: 3000 ticks, final hash <16 位十六进制>`，再打印 `validate_sim_determinism: PASS`，轮询最终输出 `DETERMINISM OK`。**不要拿退出码当判据**：Godot 解析失败时也返回 0，日志里会只有 `Parse Error` / `Failed to load script` 而没有任何 `PASS`（见 Global Constraints）。三趟 3000 tick × 300 僵尸的模拟在 Apple Silicon 上预计耗时 **10–40 分钟**（`SimHasher.hash_world()` 每 tick 逐字节消费约 8 KB Packed 数据，每字节一次 `_multiply_prime()` GDScript 调用，逐字节 FNV 哈希是主要开销），期间无输出属正常，不要中断。若需要更快的迭代循环，可临时把 `TICK_COUNT` 降到 300 定位问题，但**提交前必须以 3000 复跑一次**。任何 `diverged at tick N` 都必须定位到具体子系统后再继续，不得放宽断言。
 
 - [ ] **Step 5: 静态检查**
 
@@ -4501,7 +4642,9 @@ rg -n "PHYSICS_INTERPOLATION_MODE_OFF" scripts/render/zombie_renderer.gd \
 rg -n "maximum_active_zombies" scripts/gameplay/demo_arena.gd scenes/gameplay/DemoArena.tscn
 for script in validate_mobile_equipment_controls validate_local_player_spawning; do
   /Applications/Godot.app/Contents/MacOS/Godot \
-    --headless --path . --script "res://tools/validation/$script.gd" || echo "FAILED: $script"
+    --headless --path . --script "res://tools/validation/$script.gd" 2>&1 \
+    | tee "/tmp/zw_$script.log"
+  grep -q "$script: PASS" "/tmp/zw_$script.log" || echo "FAILED: $script"
 done
 ```
 
@@ -4512,9 +4655,19 @@ cd /Users/liangpingbo/Desktop/4399/game/zombiewar
 nohup /Applications/Godot.app/Contents/MacOS/Godot \
   --headless --path . --script res://tools/validation/validate_sim_determinism.gd \
   > /tmp/zw_determinism_task7.log 2>&1 &
+echo "started pid $!"
 ```
 
-Expected: 导入检查退出码 0 且无新增 `SCRIPT ERROR` / `Parse Error`；两条搜索分别输出 `arena no longer instantiates zombies or owns a wave rng`（注意这条已从 `ZOMBIE_SCENE\.instantiate` 收紧为 `ZOMBIE_SCENE`：Step 8 删掉了那个 `const`，留着孤儿常量也算失败）与 `zombie view is presentation only`；第三条搜索在两个文件里各命中一行 `physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF`；第四条搜索显示脚本里是 `@export_range(4, 400, 1) var maximum_active_zombies := 300`、场景里是 `maximum_active_zombies = 300`；`validate_mobile_equipment_controls` 与 `validate_local_player_spawning` 各打印 `: PASS` 且没有 `FAILED:` 行（这两个脚本会实例化 `DemoArena.tscn` 并断言 `_wire_dependencies()` 的注入路径，正是本任务重写的部分）；确定性验证日志最终打印 `validate_sim_determinism: PASS`。
+轮询（**判据是日志里的 `PASS` 行，不是进程有没有退出**；进程已退出但日志里没有 `PASS` 行就是失败）：
+
+```bash
+tail -5 /tmp/zw_determinism_task7.log
+grep -q "validate_sim_determinism: PASS" /tmp/zw_determinism_task7.log \
+  && echo "DETERMINISM OK" \
+  || echo "not finished yet, or FAILED - grep the log for 'diverged at tick' / 'Parse Error' / 'Failed to load script'"
+```
+
+Expected: 导入检查退出码 0 且无新增 `SCRIPT ERROR` / `Parse Error`；两条搜索分别输出 `arena no longer instantiates zombies or owns a wave rng`（注意这条已从 `ZOMBIE_SCENE\.instantiate` 收紧为 `ZOMBIE_SCENE`：Step 8 删掉了那个 `const`，留着孤儿常量也算失败）与 `zombie view is presentation only`；第三条搜索在两个文件里各命中一行 `physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF`；第四条搜索显示脚本里是 `@export_range(4, 400, 1) var maximum_active_zombies := 300`、场景里是 `maximum_active_zombies = 300`；`validate_mobile_equipment_controls` 与 `validate_local_player_spawning` 各打印 `: PASS` 且没有 `FAILED:` 行（这两个脚本会实例化 `DemoArena.tscn` 并断言 `_wire_dependencies()` 的注入路径，正是本任务重写的部分）；确定性验证的轮询最终输出 `DETERMINISM OK`（即 `/tmp/zw_determinism_task7.log` 里出现 `validate_sim_determinism: PASS`；进程退出而日志没有该行即为失败，见 Global Constraints）。
 
 - [ ] **Step 15: 人工确认渲染与阻挡（需要用户执行并截图）**
 
@@ -4928,17 +5081,29 @@ rg -n "RandomNumberGenerator" scripts | rg -v "^scripts/fx/" \
   || echo "RandomNumberGenerator only survives in fx"
 rg -n "intersect_ray|intersect_shape" scripts/combat/weapons \
   || echo "weapons perform no physics queries"
-/Applications/Godot.app/Contents/MacOS/Godot \
-  --headless --path . --script res://tools/validation/validate_local_disconnect_contract.gd
-/Applications/Godot.app/Contents/MacOS/Godot \
-  --headless --path . --script res://tools/validation/validate_equipment_cycle.gd
+for script in validate_local_disconnect_contract validate_equipment_cycle; do
+  /Applications/Godot.app/Contents/MacOS/Godot \
+    --headless --path . --script "res://tools/validation/$script.gd" 2>&1 \
+    | tee "/tmp/zw_$script.log"
+  grep -q "$script: PASS" "/tmp/zw_$script.log" || echo "FAILED: $script"
+done
 # 确定性回归耗时 10–40 分钟，后台跑（见 Global Constraints）
 nohup /Applications/Godot.app/Contents/MacOS/Godot \
   --headless --path . --script res://tools/validation/validate_sim_determinism.gd \
   > /tmp/zw_determinism_task8.log 2>&1 &
+echo "started pid $!"
 ```
 
-Expected: 导入检查退出码 0；`no randomize() left in scripts`；`RandomNumberGenerator only survives in fx`（若有命中，必须全部位于 `scripts/fx/`）；`weapons perform no physics queries`；`validate_local_disconnect_contract` 与 `validate_equipment_cycle` 各打印 `: PASS`；`/tmp/zw_determinism_task8.log` 最终打印 `validate_sim_determinism: PASS`。
+轮询（**判据是日志里的 `PASS` 行，不是进程有没有退出**；进程已退出但日志里没有 `PASS` 行就是失败）：
+
+```bash
+tail -5 /tmp/zw_determinism_task8.log
+grep -q "validate_sim_determinism: PASS" /tmp/zw_determinism_task8.log \
+  && echo "DETERMINISM OK" \
+  || echo "not finished yet, or FAILED - grep the log for 'diverged at tick' / 'Parse Error' / 'Failed to load script'"
+```
+
+Expected: 导入检查退出码 0；`no randomize() left in scripts`；`RandomNumberGenerator only survives in fx`（若有命中，必须全部位于 `scripts/fx/`）；`weapons perform no physics queries`；`validate_local_disconnect_contract` 与 `validate_equipment_cycle` 各打印 `: PASS`；确定性验证的轮询最终输出 `DETERMINISM OK`（即 `/tmp/zw_determinism_task8.log` 里出现 `validate_sim_determinism: PASS`；进程退出而日志没有该行即为失败，见 Global Constraints）。
 
 - [ ] **Step 9: 人工确认射击链路（需要用户执行并截图）**
 
@@ -5285,11 +5450,14 @@ func _init() -> void:
 	quit(0)
 EOF
 /Applications/Godot.app/Contents/MacOS/Godot \
-  --headless --path . --script res://tools/validation/zw_blocker_dirty_smoke.gd
+  --headless --path . --script res://tools/validation/zw_blocker_dirty_smoke.gd 2>&1 \
+  | tee /tmp/zw_blocker_dirty_smoke.log
+grep -q "^baseline=" /tmp/zw_blocker_dirty_smoke.log \
+  || { echo "FAILED: zw_blocker_dirty_smoke produced no result line"; exit 1; }
 rm -f tools/validation/zw_blocker_dirty_smoke.gd tools/validation/zw_blocker_dirty_smoke.gd.uid
 ```
 
-Expected: 输出 `baseline=1 idle=1 after_add=2 after_remove=3` —— 玩家不动且阻挡未变时不重算，增删阻挡各触发一次重算。冒烟脚本运行后必须删除；`.uid` 只有在编辑器导入过一次后才存在，因此用 `rm -f` 而不是 `rm`。
+Expected: 输出 `baseline=1 idle=1 after_add=2 after_remove=3`（`grep` 把「脚本真的跑了」和「解析失败但退出码仍为 0」区分开，见 Global Constraints）—— 玩家不动且阻挡未变时不重算，增删阻挡各触发一次重算。冒烟脚本运行后必须删除；`.uid` 只有在编辑器导入过一次后才存在，因此用 `rm -f` 而不是 `rm`。
 
 - [ ] **Step 7: 静态检查与确定性回归**
 
@@ -5299,14 +5467,16 @@ Run:
 cd /Users/liangpingbo/Desktop/4399/game/zombiewar
 /Applications/Godot.app/Contents/MacOS/Godot \
   --headless --editor --path . --quit
-/Applications/Godot.app/Contents/MacOS/Godot \
-  --headless --path . --script res://tools/validation/validate_flow_field.gd
-/Applications/Godot.app/Contents/MacOS/Godot \
-  --headless --path . --script res://tools/validation/validate_pickup_spawn_point.gd
+for script in validate_flow_field validate_pickup_spawn_point; do
+  /Applications/Godot.app/Contents/MacOS/Godot \
+    --headless --path . --script "res://tools/validation/$script.gd" 2>&1 \
+    | tee "/tmp/zw_$script.log"
+  grep -q "$script: PASS" "/tmp/zw_$script.log" || echo "FAILED: $script"
+done
 git status --short
 ```
 
-Expected: 导入检查退出码 0；两个验证脚本各打印 `: PASS`；`git status --short` 中不含 `zw_blocker_dirty_smoke.gd`。
+Expected: 导入检查退出码 0；两个验证脚本各打印 `: PASS` 且没有任何 `FAILED:` 行（判据是 `PASS` 行而不是退出码，见 Global Constraints）；`git status --short` 中不含 `zw_blocker_dirty_smoke.gd`。
 
 - [ ] **Step 8: 人工确认阻挡随几何变化（需要用户执行并截图）**
 
@@ -5572,15 +5742,17 @@ Run:
 
 ```bash
 cd /Users/liangpingbo/Desktop/4399/game/zombiewar
-/Applications/Godot.app/Contents/MacOS/Godot \
-  --headless --path . --script res://tools/validation/validate_player_screen_bounds.gd
-/Applications/Godot.app/Contents/MacOS/Godot \
-  --headless --path . --script res://tools/validation/validate_shared_camera_scene.gd
+for script in validate_player_screen_bounds validate_shared_camera_scene; do
+  /Applications/Godot.app/Contents/MacOS/Godot \
+    --headless --path . --script "res://tools/validation/$script.gd" 2>&1 \
+    | tee "/tmp/zw_$script.log"
+  grep -q "$script: PASS" "/tmp/zw_$script.log" || echo "FAILED: $script"
+done
 /Applications/Godot.app/Contents/MacOS/Godot \
   --headless --editor --path . --quit
 ```
 
-Expected: `validate_player_screen_bounds: PASS` 与 `validate_shared_camera_scene: PASS`；导入检查退出码 0。
+Expected: `validate_player_screen_bounds: PASS` 与 `validate_shared_camera_scene: PASS`，没有任何 `FAILED:` 行（判据是 `PASS` 行而不是退出码，见 Global Constraints）；导入检查退出码 0。
 
 - [ ] **Step 7: 提交**
 
@@ -5725,11 +5897,13 @@ for script in validate_deterministic_rng validate_flow_field validate_sim_collis
   validate_local_team_state validate_lobby_player_preview validate_mobile_equipment_controls \
   validate_single_player_input_wiring; do
   /Applications/Godot.app/Contents/MacOS/Godot \
-    --headless --path . --script "res://tools/validation/$script.gd" || echo "FAILED: $script"
+    --headless --path . --script "res://tools/validation/$script.gd" 2>&1 \
+    | tee "/tmp/zw_$script.log"
+  grep -q "$script: PASS" "/tmp/zw_$script.log" || echo "FAILED: $script"
 done
 ```
 
-Expected: 19 个脚本各打印一行 `<name>: PASS`，没有任何 `FAILED:` 行。若 `ls tools/validation/validate_*.gd` 的实际清单与上面不一致（例如主线又新增了验证脚本），以实际清单为准跑全量，不得只跑列出的这些。
+Expected: 19 个脚本各打印一行 `<name>: PASS`，没有任何 `FAILED:` 行（循环的判据是每个脚本的 `PASS` 行而不是退出码，见 Global Constraints）。若 `ls tools/validation/validate_*.gd` 的实际清单与上面不一致（例如主线又新增了验证脚本），以实际清单为准跑全量，不得只跑列出的这些。
 
 - [ ] **Step 6: 人工验收（需要用户执行并提供截图，不使用 CUA）**
 
