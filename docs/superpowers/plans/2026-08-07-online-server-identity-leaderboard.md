@@ -1735,6 +1735,7 @@ Run:
 ```bash
 cd /Users/liangpingbo/Desktop/4399/game/zombiewar-server && npx tsx -e "
 import { openDatabase } from './src/lib/db.ts';
+import { SessionStore, normalizeNickname } from './src/lib/sessions.ts';
 import { crossValidateReports, readLeaderboard, readTeamLeaderboard, countLeaderboard, submitMatchResult } from './src/lib/leaderboard.ts';
 const r = (id, w, k) => ({ player_id: id, team_wave: w, player_kills: k });
 console.log('unanimous', crossValidateReports([r('a',7,{'0':10,'1':12}), r('b',7,{'0':10,'1':12})], ['a','b'], 60000).status);
@@ -1748,11 +1749,15 @@ console.log('over_wave', crossValidateReports([r('a',201,{'0':1}), r('b',201,{'0
 console.log('over_kills', crossValidateReports([r('a',2,{'0':33}), r('b',2,{'0':33})], ['a','b'], 60000).status);
 console.log('too_short', crossValidateReports([r('a',7,{'0':10}), r('b',7,{'0':10})], ['a','b'], 1000).status);
 const db = openDatabase(':memory:');
-const slots = [{ slot: 0, player_id: 'a' }, { slot: 1, player_id: 'b' }];
-submitMatchResult(db, { roomId: 'R1', season: 0, slots, reports: [r('a',5,{'0':10,'1':4}), r('b',5,{'0':10,'1':4})], durationMs: 60000, now: () => 1000 });
-submitMatchResult(db, { roomId: 'R2', season: 0, slots, reports: [r('a',9,{'0':3,'1':40}), r('b',9,{'0':3,'1':40})], durationMs: 60000, now: () => 2000 });
-console.log('kills_board', JSON.stringify(readLeaderboard(db, 'player_kills', 0, 10, 0)));
-console.log('team_board', JSON.stringify(readTeamLeaderboard(db, 0, 10, 0).map((e) => [e.rank, e.player_id, e.value, e.members.length])));
+const store = new SessionStore({ db, maxSessions: 10 });
+const sa = store.authenticateDevice('11111111-1111-4111-8111-111111111111', normalizeNickname('阿波'));
+const sb = store.authenticateDevice('22222222-2222-4222-8222-222222222222', normalizeNickname('小明'));
+const label = (id) => (id === sa.playerId ? 'a' : 'b');
+const slots = [{ slot: 0, player_id: sa.playerId }, { slot: 1, player_id: sb.playerId }];
+submitMatchResult(db, { roomId: 'R1', season: 0, slots, reports: [r(sa.playerId,5,{'0':10,'1':4}), r(sb.playerId,5,{'0':10,'1':4})], durationMs: 60000, now: () => 1000 });
+submitMatchResult(db, { roomId: 'R2', season: 0, slots, reports: [r(sa.playerId,9,{'0':3,'1':40}), r(sb.playerId,9,{'0':3,'1':40})], durationMs: 60000, now: () => 2000 });
+console.log('kills_board', JSON.stringify(readLeaderboard(db, 'player_kills', 0, 10, 0).map((e) => [e.rank, label(e.player_id), e.nickname, e.value, e.created_at])));
+console.log('team_board', JSON.stringify(readTeamLeaderboard(db, 0, 10, 0).map((e) => [e.rank, e.player_id, e.value, e.members.length, e.nickname])));
 console.log('totals', countLeaderboard(db, 'team_waves', 0), countLeaderboard(db, 'player_kills', 0));
 db.close();
 "
@@ -1770,8 +1775,8 @@ outsider_ignored []
 over_wave out_of_range
 over_kills out_of_range
 too_short too_short
-kills_board [{"rank":1,"player_id":"b","nickname":"","value":40,"created_at":2000},{"rank":2,"player_id":"a","nickname":"","value":10,"created_at":1000}]
-team_board [[1,"R2",9,2],[2,"R1",5,2]]
+kills_board [[1,"b","小明",40,2000],[2,"a","阿波",10,1000]]
+team_board [[1,"R2",9,2,"阿波、小明"],[2,"R1",5,2,"阿波、小明"]]
 totals 2 2
 ```
 
@@ -1780,7 +1785,7 @@ totals 2 2
 - `one_reporter_of_two` —— 2 人房只有 1 个客户端上报时**不写榜**。这是投票按席位计而不是按上报条数计的直接结果：一个人说了不算。
 - `ballot_stuffing` —— 同一个 `player_id` 连发 3 份伪造上报，仍然只算 1 票，最终采信另外两人的 `7`。若按上报条数计票，这里会是 `99`。
 - `outsider_ignored` —— 不在 `slots` 里的 `x` 连 `dissenters` 都进不去，因为它压根没有投票权。
-- `kills_board` / `team_board` —— `b` 有两条击杀成绩（4 与 40）而个人榜上只出现一次且取 40；队伍榜按 `room_id` 分组，两场比赛两行，每行 2 名成员。
+- `kills_board` / `team_board` —— `b` 有两条击杀成绩（4 与 40）而个人榜上只出现一次且取 40；队伍榜按 `room_id` 分组，两场比赛两行，每行 2 名成员，昵称由 `LEFT JOIN players` 取回。这一行**只有在 `players` 表里真有对应行时才成立**，所以脚本先用 `SessionStore.authenticateDevice()` 建出「阿波」「小明」两名玩家、再拿他们的 `player_id` 提交成绩 —— 这正是线上的路径（`players` 由 `/api/auth/anon` 写入，`scores.player_id` 引用它）。若跳过这一步、直接拿字面量 `'a'` / `'b'` 当 `player_id`，join 全部落空，`GROUP_CONCAT(COALESCE(p.nickname, ''), char(31))` 只会拼出空昵称，`members` 被 `filter((name) => name !== '')` 清成 `[]`，`members.length` 就是 `0` —— 那是「查无此玩家」的正确表现，不是实现缺陷。
 
 - [ ] **Step 6: 提交**
 
