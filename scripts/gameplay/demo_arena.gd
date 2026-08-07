@@ -9,6 +9,7 @@ const SinglePlayerInputSourceScript = preload(
 	"res://scripts/input/single_player_input_source.gd"
 )
 const LocalTeamStateScript = preload("res://scripts/gameplay/local_team_state.gd")
+const BARREL_PLACE_SOUND := preload("res://assets/sfx/boxhead/barrel_place.mp3")
 const AUTO_WAVE_STATUS := "下一波即将到来"
 const ARENA_CAMERA_BOUNDS := Rect2(Vector2(-10.0, -7.0), Vector2(20.0, 14.0))
 const SPAWN_POINT_NAMES: Array[StringName] = [
@@ -28,6 +29,8 @@ const SPAWN_POINT_NAMES: Array[StringName] = [
 @export_range(0.0, 4.0, 0.05) var minimum_spawn_spacing := 1.1
 @export_range(1.0, 100.0, 0.5) var wave_perception_range := 60.0
 @export var random_seed: int = 0
+
+@onready var game_over_audio: AudioStreamPlayer = $GameOverAudio
 
 var hit_confirm_tween: Tween
 var damage_flash_tween: Tween
@@ -222,9 +225,9 @@ func _wire_dependencies() -> void:
 	var mobile_controls := get_node_or_null("MobileControls") as MobileControls
 	if mobile_controls != null:
 		single_player_input.set_touch_source(mobile_controls.get_input_source())
-	var place_item_service = get_node_or_null(
+	var place_item_service := get_node_or_null(
 		"PlaceItemService"
-	)
+	) as PlaceItemService
 	if (
 		place_item_service != null and
 		not place_item_service.placement_geometry_changed.is_connected(
@@ -234,6 +237,11 @@ func _wire_dependencies() -> void:
 		place_item_service.placement_geometry_changed.connect(
 			_on_runtime_navigation_geometry_changed
 		)
+	if (
+		place_item_service != null and
+		not place_item_service.item_placed.is_connected(_on_item_placed)
+	):
+		place_item_service.item_placed.connect(_on_item_placed)
 	var targets := get_node_or_null("World/Targets")
 	if targets != null:
 		for target in targets.get_children():
@@ -409,6 +417,11 @@ func _on_runtime_navigation_geometry_changed() -> void:
 	if navigation_manager != null:
 		navigation_manager.mark_chunk_dirty(&"demo_arena")
 
+func _on_item_placed(world_position: Vector3) -> void:
+	var pool := SpatialSfxPool.find_for(self)
+	if pool != null:
+		pool.play_at(BARREL_PLACE_SOUND, world_position, -4.0, 1.0, 24.0)
+
 func _on_player_attack(
 	direction: Vector3,
 	result: HitResult,
@@ -442,6 +455,8 @@ func _on_all_players_defeated() -> void:
 	if team_defeated:
 		return
 	team_defeated = true
+	if game_over_audio != null:
+		game_over_audio.play()
 	_cancel_auto_wave()
 	var game_over := get_node_or_null("HUD/GameOver") as Label
 	if game_over != null:

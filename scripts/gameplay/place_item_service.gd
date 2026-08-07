@@ -3,6 +3,7 @@ class_name PlaceItemService
 
 signal placement_geometry_changed
 signal placement_rejected(reason: StringName)
+signal item_placed(world_position: Vector3)
 
 @export var default_item_scene: PackedScene
 @export_node_path("PlaceItemGrid") var grid_path: NodePath
@@ -45,6 +46,7 @@ func request_place_item(
 	tracked_items[item.get_instance_id()] = item
 	item.tree_exiting.connect(_on_item_tree_exiting.bind(item), CONNECT_ONE_SHOT)
 	placement_geometry_changed.emit()
+	item_placed.emit(item.global_position)
 	return true
 
 func _reject(reason: StringName) -> bool:

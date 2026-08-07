@@ -12,6 +12,10 @@ const RangedWeaponDefinition = preload(
 	"res://scripts/combat/weapons/ranged_weapon_definition.gd"
 )
 const PlayerInputStateScript = preload("res://scripts/input/player_input_state.gd")
+const DEATH_VOICE_SOUNDS := [
+	preload("res://assets/sfx/boxhead/player_scream_1.mp3"),
+	preload("res://assets/sfx/boxhead/player_scream_2.mp3"),
+]
 
 signal attack_resolved(
 	direction: Vector3,
@@ -49,6 +53,8 @@ signal died
 @onready var equipment_label = get_node_or_null(
 	"PlayerEquipmentLabel"
 )
+@onready var death_voice_audio: AudioStreamPlayer3D = $DeathVoiceAudio
+@onready var fall_audio: AudioStreamPlayer3D = $FallAudio
 
 var movement_camera: Camera3D
 var screen_camera: Camera3D
@@ -358,6 +364,11 @@ func _on_depleted() -> void:
 	knockback_velocity = Vector3.ZERO
 	velocity.x = 0.0
 	velocity.z = 0.0
+	if death_voice_audio != null:
+		death_voice_audio.stream = DEATH_VOICE_SOUNDS.pick_random()
+		death_voice_audio.play()
+	if fall_audio != null:
+		fall_audio.play()
 	if animation_player != null and animation_player.has_animation(&"Death"):
 		animation_player.play(&"Death", 0.08)
 	if equipment_label != null:

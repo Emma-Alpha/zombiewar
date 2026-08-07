@@ -11,6 +11,13 @@ const ZombieTargetSelectorScript = preload(
 )
 const BloodTrailState = preload("res://scripts/fx/blood_trail_state.gd")
 const BLOOD_IMPACT_SCENE := preload("res://scenes/fx/BloodImpact.tscn")
+const AMBIENT_SOUNDS := [
+	preload("res://assets/sfx/boxhead/zombie_ambience_1.mp3"),
+	preload("res://assets/sfx/boxhead/zombie_ambience_2.mp3"),
+	preload("res://assets/sfx/boxhead/zombie_ambience_3.mp3"),
+	preload("res://assets/sfx/boxhead/zombie_ambience_4.mp3"),
+]
+const HIT_SOUND := preload("res://assets/sfx/boxhead/zombie_hit.mp3")
 
 signal ground_blood_requested(
 	origin: Vector3,
@@ -68,6 +75,9 @@ signal died(world_position: Vector3)
 @onready var hitbox_root: Node3D = $Hitboxes
 @onready var health_label: Label3D = $HealthLabel
 @onready var navigation_agent: NavigationAgent3D = $NavigationAgent3D
+@onready var voice_audio: AudioStreamPlayer3D = $VoiceAudio
+@onready var attack_audio: AudioStreamPlayer3D = $AttackAudio
+@onready var death_audio: AudioStreamPlayer3D = $DeathAudio
 
 var health: Health
 var animation_player: AnimationPlayer
@@ -90,11 +100,16 @@ var has_navigation_target := false
 var last_navigation_target := Vector3.ZERO
 var navigation_manager: NavigationWorldManager
 var player_registry: PlayerRegistry
+var audio_rng := RandomNumberGenerator.new()
+var ambient_audio_remaining := 0.0
+var hit_audio_cooldown := 0.0
 
 func _ready() -> void:
 	_ensure_initialized()
 	home_position = global_position
 	wander_rng.seed = hash(str(get_path()))
+	audio_rng.seed = hash("%s/audio" % get_path())
+	ambient_audio_remaining = audio_rng.randf_range(2.0, 8.0)
 	_select_wander_target()
 
 func _ensure_initialized() -> void:
@@ -153,6 +168,8 @@ func apply_hit(
 	var applied_damage := health.apply_damage(maxf(amount, 0.0))
 	if applied_damage <= 0.0:
 		return HitResult.miss(hit_position)
+	if not depleted:
+		_play_hit_sound()
 
 	var knockback_multiplier := 1.0
 	var impulse := HitResponseMath.knockback_velocity(
@@ -409,6 +426,8 @@ func _attack_path_is_clear() -> bool:
 func _process(delta: float) -> void:
 	hit_animation_cooldown = maxf(hit_animation_cooldown - delta, 0.0)
 	attack_animation_remaining = maxf(attack_animation_remaining - delta, 0.0)
+	hit_audio_cooldown = maxf(hit_audio_cooldown - delta, 0.0)
+	_update_ambient_audio(delta)
 	visual_root.scale = visual_root.scale.move_toward(Vector3.ONE, delta * 1.5)
 
 func _target_is_alive() -> bool:
@@ -420,8 +439,34 @@ func _target_is_alive() -> bool:
 
 func _play_attack_animation() -> void:
 	attack_animation_remaining = attack_animation_duration
+	if attack_audio != null:
+		attack_audio.play()
 	if animation_player != null and animation_player.has_animation(&"Punch"):
 		animation_player.play(&"Punch", 0.08)
+
+func _play_hit_sound() -> void:
+	if voice_audio == null or hit_audio_cooldown > 0.0:
+		return
+	voice_audio.stop()
+	voice_audio.stream = HIT_SOUND
+	voice_audio.pitch_scale = audio_rng.randf_range(0.96, 1.04)
+	voice_audio.play()
+	hit_audio_cooldown = 0.12
+
+func _update_ambient_audio(delta: float) -> void:
+	if depleted:
+		return
+	ambient_audio_remaining -= delta
+	if ambient_audio_remaining > 0.0:
+		return
+	ambient_audio_remaining = audio_rng.randf_range(8.0, 18.0)
+	if voice_audio == null or voice_audio.playing:
+		return
+	voice_audio.stream = AMBIENT_SOUNDS[
+		audio_rng.randi_range(0, AMBIENT_SOUNDS.size() - 1)
+	]
+	voice_audio.pitch_scale = audio_rng.randf_range(0.96, 1.04)
+	voice_audio.play()
 
 func _update_locomotion_animation() -> void:
 	if animation_player == null or depleted:
@@ -498,6 +543,12 @@ func _on_health_changed(_current: float, _maximum: float) -> void:
 
 func _on_depleted() -> void:
 	depleted = true
+	if voice_audio != null:
+		voice_audio.stop()
+	if attack_audio != null:
+		attack_audio.stop()
+	if death_audio != null:
+		death_audio.play()
 	var death_position := global_position if is_inside_tree() else position
 	died.emit(death_position)
 	attack_target = null
@@ -514,6 +565,8 @@ func _on_depleted() -> void:
 	if animation_player != null and animation_player.has_animation(&"Death"):
 		animation_player.play(&"Death", 0.08)
 		death_duration = minf(animation_player.get_animation(&"Death").length, 1.2)
+	if death_audio != null and death_audio.stream != null:
+		death_duration = maxf(death_duration, death_audio.stream.get_length())
 	await get_tree().create_timer(death_duration).timeout
 	queue_free()
 

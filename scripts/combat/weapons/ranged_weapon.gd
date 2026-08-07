@@ -5,6 +5,11 @@ const TRACER_SCENE := preload("res://scenes/fx/ShotTracer.tscn")
 const MuzzleFlash = preload("res://scripts/fx/muzzle_flash.gd")
 const WeaponTrigger = preload("res://scripts/combat/weapons/weapon_trigger.gd")
 const MAX_PENETRATION_QUERY_COUNT := 64
+const WALL_IMPACT_SOUNDS := [
+	preload("res://assets/sfx/boxhead/bullet_wall_1.mp3"),
+	preload("res://assets/sfx/boxhead/bullet_wall_2.mp3"),
+	preload("res://assets/sfx/boxhead/bullet_wall_3.mp3"),
+]
 const WeaponSpreadState = preload(
 	"res://scripts/combat/weapons/weapon_spread_state.gd"
 )
@@ -19,6 +24,7 @@ var spread_rng := RandomNumberGenerator.new()
 var tracer_pool: Array[ShotTracer] = []
 var tracer_pool_cursor := 0
 var current_ammo := 0
+var spatial_sfx_pool: SpatialSfxPool
 
 func _ready() -> void:
 	var ranged_definition := definition as RangedWeaponDefinition
@@ -33,6 +39,7 @@ func _ready() -> void:
 		ranged_definition.spread_recovery_degrees_per_second
 	)
 	spread_rng.randomize()
+	spatial_sfx_pool = SpatialSfxPool.find_for(self)
 	_prewarm_tracers()
 
 func bind_context(
@@ -151,12 +158,24 @@ func _fire(shot_direction: Vector3) -> void:
 	var resolution := _resolve_shot(ray_origin, ray_end, ray_direction)
 	var hit_position: Vector3 = resolution["end_position"]
 	var hit_result: HitResult = resolution["hit_result"]
+	var hit_world_surface: bool = resolution["hit_world_surface"]
 
 	var tracer := _acquire_tracer()
 	tracer.setup(ray_origin, hit_position)
 	muzzle_flash.flash()
 	shot_audio.pitch_scale = randf_range(0.97, 1.03)
 	shot_audio.play()
+	if hit_world_surface and spatial_sfx_pool != null:
+		var wall_stream: AudioStream = WALL_IMPACT_SOUNDS[
+			spread_rng.randi_range(0, WALL_IMPACT_SOUNDS.size() - 1)
+		]
+		spatial_sfx_pool.play_at(
+			wall_stream,
+			hit_position,
+			-7.0,
+			spread_rng.randf_range(0.96, 1.04),
+			24.0
+		)
 	attack_resolved.emit(
 		ray_origin,
 		ray_direction,
@@ -196,6 +215,7 @@ func _resolve_shot(
 	var current_damage := maxf(ranged_definition.damage, 0.0)
 	var end_position := to
 	var summary := HitResult.miss(to)
+	var hit_world_surface := false
 
 	for _query_index in range(MAX_PENETRATION_QUERY_COUNT):
 		var collision := _intersect_shot(from, to, excluded)
@@ -210,10 +230,14 @@ func _resolve_shot(
 
 		var target := _find_damage_target(collider)
 		if target == null:
-			_merge_hit_result(
-				summary,
-				_apply_damage(collider, ranged_definition.damage, end_position, shot_direction)
+			var resolved := _apply_damage(
+				collider,
+				ranged_definition.damage,
+				end_position,
+				shot_direction
 			)
+			hit_world_surface = not summary.did_hit and not resolved.did_hit
+			_merge_hit_result(summary, resolved)
 			break
 
 		var target_id := target.get_instance_id()
@@ -236,6 +260,7 @@ func _resolve_shot(
 	return {
 		"end_position": end_position,
 		"hit_result": summary,
+		"hit_world_surface": hit_world_surface,
 	}
 
 func _find_damage_target(collider: Object) -> Node3D:

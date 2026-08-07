@@ -1,4 +1,4 @@
-[gd_scene load_steps=55 format=3]
+[gd_scene load_steps=57 format=3]
 
 [ext_resource type="Script" path="res://scripts/gameplay/demo_arena.gd" id="1_arena"]
 [ext_resource type="Script" path="res://scripts/gameplay/local_player_spawner.gd" id="2_player_spawner"]
@@ -28,6 +28,8 @@
 [ext_resource type="Resource" path="res://resources/pickups/rifle_ammo_pickup.tres" id="26_rifle_ammo_pickup"]
 [ext_resource type="Resource" path="res://resources/pickups/oil_barrel_pickup.tres" id="27_oil_barrel_pickup"]
 [ext_resource type="PackedScene" path="res://scenes/gameplay/RandomPickupDropManager.tscn" id="28_random_pickup_drops"]
+[ext_resource type="Script" path="res://scripts/fx/spatial_sfx_pool.gd" id="29_spatial_sfx_pool"]
+[ext_resource type="AudioStream" path="res://assets/sfx/boxhead/world_end.mp3" id="30_world_end_audio"]
 
 [sub_resource type="Environment" id="Environment_arena"]
 background_mode = 1
@@ -167,6 +169,13 @@ corner_radius_bottom_left = 10
 [node name="DemoArena" type="Node3D"]
 script = ExtResource("1_arena")
 zombie_difficulty = ExtResource("8_zombie_difficulty")
+
+[node name="SpatialSfxPool" type="Node3D" parent="." groups=["spatial_sfx_pool"]]
+script = ExtResource("29_spatial_sfx_pool")
+capacity = 16
+
+[node name="GameOverAudio" type="AudioStreamPlayer" parent="."]
+stream = ExtResource("30_world_end_audio")
 
 [node name="WorldEnvironment" type="WorldEnvironment" parent="."]
 environment = SubResource("Environment_arena")

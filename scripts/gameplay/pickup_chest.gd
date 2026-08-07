@@ -2,6 +2,7 @@ extends StaticBody3D
 class_name PickupChest
 
 const PickupDefinition = preload("res://scripts/gameplay/pickup_definition.gd")
+const PICKUP_SOUND := preload("res://assets/sfx/boxhead/pickup.mp3")
 
 signal collected(pickup: PickupChest)
 
@@ -13,8 +14,10 @@ signal collected(pickup: PickupChest)
 @onready var reward_label: Label3D = $RewardLabel
 
 var claim_locked := false
+var spatial_sfx_pool: SpatialSfxPool
 
 func _ready() -> void:
+	spatial_sfx_pool = SpatialSfxPool.find_for(self)
 	claim_area.body_entered.connect(_on_body_entered)
 	_apply_reward_visuals()
 
@@ -31,6 +34,8 @@ func _on_body_entered(body: Node3D) -> void:
 		return
 	claim_locked = true
 	claim_area.set_deferred("monitoring", false)
+	if spatial_sfx_pool != null:
+		spatial_sfx_pool.play_at(PICKUP_SOUND, global_position, -5.0, 1.0, 24.0)
 	collected.emit(self)
 	queue_free()
 
