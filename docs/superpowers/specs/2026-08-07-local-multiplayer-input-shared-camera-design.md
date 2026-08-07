@@ -106,11 +106,12 @@ var previous_equipment_just_pressed := false
 var next_equipment_just_pressed := false
 var use_pressed := false
 var use_just_pressed := false
+var confirm_just_pressed := false
 ```
 
 输入状态不包含场景节点、武器对象或网络状态。未来网络输入源只需产生相同快照。
 
-### `LocalInputSource`
+### `PlayerInputSource`
 
 输入源负责：
 
@@ -129,6 +130,8 @@ var use_just_pressed := false
 - `TouchInputSource`
 
 `CompositeInputSource` 用于单人模式。它合并全部键盘、已连接手柄和触控输入：移动向量相加后限制长度，动作状态按逻辑或合并。相反方向会自然抵消。
+
+输入源不产生瞄准向量，也不覆盖现有角色朝向或攻击方向逻辑。键盘、手柄左摇杆和触控摇杆只控制移动；装备使用继续接收 PlayerController 当前的角色朝向/攻击方向。
 
 ## 控制映射
 
@@ -158,6 +161,7 @@ var use_just_pressed := false
 - P1 开始：`Menu/Start`
 - 菜单确认：`A`
 - 菜单返回：`B`
+- 失败后重新开始：`A`
 
 手柄移动使用正常移动死区。大厅加入使用更高的有效输入阈值，避免摇杆漂移自动加入。
 
@@ -347,12 +351,14 @@ var use_just_pressed := false
 
 触控输入通过 `TouchInputSource` 产生与键盘和手柄相同的 `PlayerInputState`。触屏设备显示虚拟控件时隐藏桌面键盘和手柄操作说明。
 
+正常游戏中“使用”按钮产生装备使用状态；进入全员倒地失败状态后，该按钮的按下边沿还映射为 `confirm_just_pressed`，供单人 P1 重新开始。离开失败状态后关闭该映射。
+
 ## 战斗 HUD
 
 桌面战斗底部固定显示两行操作说明，不按最近输入设备切换，也不按玩家数量重复：
 
 ```text
-键盘：P1 WASD 移动 / Q E 切换 / Space 使用 | P2 方向键移动 / < > 切换 / / 使用
+键盘：WASD 移动 / Q E 切换 / Space 使用 | 方向键移动 / < > 切换 / / 使用
 手柄：LS 移动 / LB RB 切换 / RT 使用
 ```
 
@@ -428,6 +434,8 @@ Xbox 按键使用统一徽标样式。相同手柄映射只显示一次。
 
 武器镜头冲击应用于相机视觉子节点，不修改共享镜头锚点、玩家中心或边缘推动状态。
 
+屏幕边缘投影使用未叠加视觉冲击的共享镜头锚点。`VisualOffset` 只影响最终画面，不得进入玩家屏幕位置、屏幕移动方向或共同推动的采样计算。
+
 ### 屏幕安全边界
 
 共享镜头保留外层安全区域：
@@ -461,7 +469,7 @@ Xbox 按键使用统一徽标样式。相同手柄映射只显示一次。
 - 第一版不提供复活和救援。
 - 失败后只有 P1 的输入源可以重新开始。
 
-单人模式下 P1 使用组合输入源，因此任一本地键盘、手柄或触控主确认输入都可重新开始。多人模式下必须由 P1 对应的独占输入源触发。
+单人模式下 P1 使用组合输入源，因此 Enter、任一手柄 A 或触控“使用”按钮都可重新开始。多人模式下必须由 P1 对应的独占输入源触发：键盘 P1 使用 Enter，手柄 P1 使用 A。
 
 ## 手柄断线与恢复
 
@@ -479,7 +487,7 @@ Xbox 按键使用统一徽标样式。相同手柄映射只显示一次。
 
 ```mermaid
 flowchart TD
-    Raw["键盘 / 手柄 / 触控状态"] --> Source["LocalInputSource"]
+    Raw["键盘 / 手柄 / 触控状态"] --> Source["PlayerInputSource"]
     Source --> State["PlayerInputState"]
     State --> Player["PlayerController"]
     Player --> Motion["移动与朝向"]
@@ -504,9 +512,11 @@ flowchart TD
 - 出生点被阻挡：尝试同一出生区域的备用偏移；任一会话玩家全部尝试失败时，显示场景初始化失败并返回上一界面，不能静默少生成玩家或生成到障碍内部。
 - 玩家节点在运行时失效：从镜头和僵尸注册表移除。
 
-## 测试策略
+## 验证策略
 
-### 单元测试
+仓库当前没有持久自动化测试套件。本功能只为不随游戏手感调参频繁变化的稳定、高价值契约保留聚焦验证脚本，不恢复原 `tests/` 框架。
+
+### 高价值契约验证
 
 - 两套键盘映射互不串扰。
 - 不同手柄设备 ID 互不串扰。
@@ -525,7 +535,7 @@ flowchart TD
 - 平滑移动收敛且不改变缩放、旋转和高度。
 - 僵尸最近目标选择和切换迟滞。
 
-### 集成测试
+### 场景与源码契约验证
 
 - 主菜单包含单人、多人和退出操作。
 - 大厅场景加载并拥有四个真实 3D 站位。
@@ -548,7 +558,13 @@ flowchart TD
 
 ```bash
 /Applications/Godot.app/Contents/MacOS/Godot --headless --editor --path . --quit
-./tests/run_tests.sh
+```
+
+聚焦验证脚本使用独立命令运行，不新增全局测试运行器。例如：
+
+```bash
+/Applications/Godot.app/Contents/MacOS/Godot --headless --path . --script res://tools/validation/validate_local_input_contracts.gd
+/Applications/Godot.app/Contents/MacOS/Godot --headless --path . --script res://tools/validation/validate_shared_camera_math.gd
 ```
 
 ### 人工验收
