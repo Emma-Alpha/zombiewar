@@ -52,6 +52,7 @@ signal died
 
 var movement_camera: Camera3D
 var screen_camera: Camera3D
+var world_bounds_anchor: Node3D
 var animation_player: AnimationPlayer
 var aim_direction := Vector3.FORWARD
 var visual_rest_position := Vector3.ZERO
@@ -114,6 +115,19 @@ func set_movement_camera(camera: Camera3D) -> void:
 
 func set_screen_camera(camera: Camera3D) -> void:
 	screen_camera = camera
+
+func set_world_bounds_anchor(anchor: Node3D) -> void:
+	world_bounds_anchor = anchor
+
+## 只有联机模式才用世界坐标矩形；单人与本地多人保持现有屏幕安全区行为。
+func uses_world_bounds() -> bool:
+	if world_bounds_anchor == null or not is_instance_valid(world_bounds_anchor):
+		return false
+	var session := get_node_or_null("/root/GameSession")
+	return (
+		session != null and
+		session.mode == GameSessionState.Mode.ONLINE_MULTIPLAYER
+	)
 
 func set_input_source(value) -> void:
 	input_source = value
@@ -193,13 +207,8 @@ func _physics_process(delta: float) -> void:
 		gravity
 	)
 	var desired_motion := Vector3(velocity.x, 0.0, velocity.z) * delta
-	if screen_camera != null and is_input_online():
-		desired_motion = PlayerScreenBoundsScript.limit_motion(
-			screen_camera,
-			global_position,
-			desired_motion,
-			screen_safe_margin_ratio
-		)
+	if _bounds_are_active():
+		desired_motion = _limit_desired_motion(desired_motion)
 		if delta > 0.000001:
 			velocity.x = desired_motion.x / delta
 			velocity.z = desired_motion.z / delta
@@ -236,6 +245,27 @@ func _physics_process(delta: float) -> void:
 		velocity.x = knockback_velocity.x
 		velocity.z = knockback_velocity.z
 	_update_animation(Vector2(velocity.x, velocity.z).length())
+
+func _bounds_are_active() -> bool:
+	if uses_world_bounds():
+		return true
+	return screen_camera != null and is_input_online()
+
+func _limit_desired_motion(desired_motion: Vector3) -> Vector3:
+	if uses_world_bounds():
+		return PlayerScreenBoundsScript.limit_motion_in_world_rect(
+			world_bounds_anchor.global_position,
+			global_position,
+			desired_motion,
+			PlayerScreenBoundsScript.ONLINE_BOUNDS_HALF_WIDTH,
+			PlayerScreenBoundsScript.ONLINE_BOUNDS_HALF_DEPTH
+		)
+	return PlayerScreenBoundsScript.limit_motion(
+		screen_camera,
+		global_position,
+		desired_motion,
+		screen_safe_margin_ratio
+	)
 
 func _actual_ranged_attack_direction() -> Vector3:
 	return WeaponMath.flat_direction(-global_basis.z)

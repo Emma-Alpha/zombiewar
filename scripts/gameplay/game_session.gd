@@ -4,6 +4,7 @@ class_name GameSessionState
 enum Mode {
 	SINGLE,
 	LOCAL_MULTIPLAYER,
+	ONLINE_MULTIPLAYER,
 }
 
 var mode := Mode.SINGLE

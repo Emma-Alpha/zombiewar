@@ -606,6 +606,7 @@ func _wire_dependencies() -> void:
 		var player := current_players[slot_index]
 		player.set_movement_camera(movement_camera)
 		player.set_place_item_service(place_item_service)
+		player.set_world_bounds_anchor(follow_camera)
 		player.set_sim_request_sink(
 			Callable(self, "_on_sim_request").bind(slot_index)
 		)
