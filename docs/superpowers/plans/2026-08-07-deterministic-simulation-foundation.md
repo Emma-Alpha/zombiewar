@@ -33,7 +33,7 @@
 - 静态检查命令：`/Applications/Godot.app/Contents/MacOS/Godot --headless --editor --path . --quit`。
 - 验证脚本运行方式：`/Applications/Godot.app/Contents/MacOS/Godot --headless --path . --script res://tools/validation/<name>.gd`。
 - **验证脚本的通过判据是那一行 `<name>: PASS`，不是退出码。** Godot 在脚本解析失败时（`Parse Error`、`Failed to load script`、`Could not resolve external class member`）**仍然以退出码 0 结束**，此时脚本一行都没跑，退出码却与真正通过完全无法区分——这是本计划最大的假通过风险。因此每条验证命令都写成「`2>&1 | tee` 到日志，再 `grep -q "<name>: PASS"`」的形式，本计划所有验证步骤都已按此改写；冒烟脚本同理，改为 grep 它自己那行标志性输出（例如 `^zombies=`、`^identical=`、`^empty=`）。后台运行的 `validate_sim_determinism.gd` 轮询的也是日志里的 `PASS` 行，**不是进程是否退出**：进程退出且没有 `PASS` 行 = 失败。
-- `validate_sim_determinism.gd` 单次运行在 Apple Silicon 上耗时 **10–40 分钟**（3 趟 × 3000 tick × 300 僵尸，逐字节 FNV 哈希是主要开销）。凡出现该脚本的步骤（Task 6 Step 4、Task 7、Task 8、Task 11）一律后台运行（`run_in_background` 或 `nohup ... &`），不要放进有 120 秒超时的前台 shell，也不要因为长时间无输出就中断。
+- `validate_sim_determinism.gd` 单次运行耗时**约 80 秒**（实测 78.8 s，Apple Silicon / Godot 4.7.1；4 趟 × 3000 tick × 300 僵尸，逐字节 FNV 哈希是主要开销。旧的 3 趟版本是 57 s，Task 6 Step 2 把恒真的 batched 比较换成了负向对照与顺序不变性两趟）。凡出现该脚本的步骤（Task 6 Step 4、Task 7、Task 8、Task 11）**一律后台运行**（`run_in_background` 或 `nohup ... &`）：80 秒已经吃掉前台 shell 120 秒超时的三分之二，任何一趟变慢都会顶穿。判据永远是 grep 日志里的 `PASS` 行，**不是退出码**（Godot 解析失败时也返回 0）。
 - 冒烟脚本清理一律用 `rm -f`：`.uid` 边车文件由编辑器导入过程生成，`--headless --script` 不会生成它，用 `rm` 会因文件不存在而以非 0 退出。
 - 提交信息使用 Conventional Commits，每个 Task 结束提交一次。
 
@@ -1592,6 +1592,7 @@ Expected: 提交只包含 `sim_collision.gd`、验证脚本及其 `.uid`。
   - `SimWorld.get_player_position(slot: int) -> Vector2`、`is_player_alive(slot: int) -> bool`、`is_player_present(slot: int) -> bool`
   - `SimWorld.set_blocker_world_rect(min_xz: Vector2, max_xz: Vector2, blocked: bool) -> void`
   - `SimWorld.line_is_clear(from_xz: Vector2, to_xz: Vector2) -> bool`
+  - `SimWorld.ray_blocked_distance(origin: Vector2, direction: Vector2, max_distance: float) -> float`
   - `SimWorld.apply_zombie_damage(index: int, damage_points: int, hit_position: Vector2, hit_height: float, direction: Vector2, zone: StringName) -> bool`
   - `SimWorld.step_tick() -> void`
   - `SimWorld.tick_hit_events: Array`（元素为 `{zombie_id: int, position: Vector2, height: float, direction: Vector2, damage: float, zone: StringName, killed: bool}`）
@@ -2012,6 +2013,36 @@ func line_is_clear(from_xz: Vector2, to_xz: Vector2) -> bool:
 			error += delta_x
 			current.y += step_y
 	return true
+
+## 沿射线走与 line_is_clear() 完全相同的 Bresenham 格序列，
+## 返回到第一个阻挡 cell 中心的距离；一路无阻挡时返回 max_distance。
+## 豁免规则也保持一致（起点 cell 与终点 cell 都不算阻挡），
+## 这样「命中被墙挡掉」与「曳光停在墙上」不会给出互相矛盾的结论。
+func ray_blocked_distance(origin: Vector2, direction: Vector2, max_distance: float) -> float:
+	if max_distance <= 0.0 or direction.length_squared() <= 0.000001:
+		return maxf(max_distance, 0.0)
+	var unit_direction := direction.normalized()
+	var from_cell := grid.world_to_cell(origin)
+	var to_cell := grid.world_to_cell(origin + unit_direction * max_distance)
+	var delta_x := absi(to_cell.x - from_cell.x)
+	var delta_y := absi(to_cell.y - from_cell.y)
+	var step_x := 1 if to_cell.x >= from_cell.x else -1
+	var step_y := 1 if to_cell.y >= from_cell.y else -1
+	var error := delta_x - delta_y
+	var current := from_cell
+	for _step_index in range(delta_x + delta_y + 1):
+		if current == to_cell:
+			return max_distance
+		if current != from_cell and grid.is_blocked(current):
+			return minf(origin.distance_to(grid.cell_to_world(current)), max_distance)
+		var doubled_error := error * 2
+		if doubled_error > -delta_y:
+			error -= delta_y
+			current.x += step_x
+		if doubled_error < delta_x:
+			error += delta_x
+			current.y += step_y
+	return max_distance
 
 ## 唯一的僵尸掉血入口。damage_points 已是 HEALTH_SCALE 单位的整数。
 func apply_zombie_damage(
@@ -2743,10 +2774,17 @@ static func resolve_ray_hits(
 		)
 		if distance < 0.0:
 			continue
+		var hit_point := origin + unit_direction * distance
+		# 基线远程武器的 hit_mask 是 hit_collision_mask 或上 1，
+		# 物理射线命中第一个 collider 即停，层 1 的世界静态体会把子弹挡下。
+		# 模拟层用与 resolve_explosion_targets() 相同的视线闸门复刻掩体。
+		# 少了这个闸门，DemoArena 里所有掩体在模拟层都会失效（子弹穿墙）。
+		if not world.line_is_clear(origin, hit_point):
+			continue
 		hits.append({
 			"index": index,
 			"distance": distance,
-			"point": origin + unit_direction * distance,
+			"point": hit_point,
 			"height": origin_height,
 			"zone": SimHitGeometryScript.zone_for_height(zombie_height, origin_height),
 		})
@@ -2757,6 +2795,9 @@ static func resolve_ray_hits(
 
 ## 玩家近战：以 wielder 朝向为前向的矩形窗口，取最近的一只。
 ## 前向门限与 MeleeWeapon._resolve_melee_hit() 的 forward_distance 过滤一致。
+## 刻意不做视线判定：基线 MeleeWeapon 的 query.collision_mask 是裸的 hit_collision_mask
+## （knife.tres 未覆盖 → 默认 4，只有僵尸 hitbox 层，没有远程那句 `| 1`）
+## 且 collide_with_bodies=false，世界几何本就不参与近战判定。此处补遮挡反而会偏离基线。
 static func resolve_melee_target(
 	world,                    # SimWorld，同上：不加类型标注
 	origin: Vector2,
@@ -3071,7 +3112,14 @@ func _resolve_shot_event(event: Dictionary) -> void:
 		float(profile["max_spread_degrees"])
 	)
 
-	var attack_range := float(profile["attack_range"])
+	# 射程被第一堵墙截断：基线的物理射线命中层 1 静态体就 break，
+	# 未命中僵尸时曳光终点也停在墙上而不是穿墙飞满射程。
+	# 注：Step 8 的物理闸门按被禁 API 的字面名 grep 整个 scripts/sim 且不区分代码与注释，
+	# 所以这里写「物理射线」而不是那几个类名/方法名。
+	var weapon_range := float(profile["attack_range"])
+	var attack_range := minf(
+		weapon_range, ray_blocked_distance(origin, direction, weapon_range)
+	)
 	var maximum_targets := int(profile["max_penetration_count"]) + 1
 	var coefficient := float(profile["penetration_damage_coefficient"])
 	var hits := SimCombatScript.resolve_ray_hits(
@@ -3449,17 +3497,32 @@ func _run() -> void:
 	var failures: Array[String] = []
 	var table := _build_input_table(TICK_COUNT)
 
-	var first_pass := _run_scenario(table, 0.05)
+	var first_pass := _run_scenario(table, 0.05, ROOM_SEED)
 	_expect(
 		first_pass.size() == TICK_COUNT,
 		"a full pass must produce one hash per tick (got %d)" % first_pass.size(),
 		failures
 	)
-	var second_pass := _run_scenario(table, 0.05)
+	var second_pass := _run_scenario(table, 0.05, ROOM_SEED)
 	_compare("second identical run", first_pass, second_pass, failures)
 
-	var batched_pass := _run_scenario(table, 0.25)
-	_compare("five ticks per frame", first_pass, batched_pass, failures)
+	# 负向对照：换一颗房间种子必须让哈希序列真的分叉。
+	# 没有这一条，_compare() 自身若有 bug（例如两个 PackedStringArray 恒等）
+	# 上面那条「二次重放一致」就会以绿色 PASS 的形式掩盖比较器失效。
+	var perturbed := _run_scenario(table, 0.05, ROOM_SEED + 1)
+	_expect(
+		perturbed != first_pass,
+		"a different room seed must change the hash sequence -- "
+			+ "the comparison harness must be able to report a divergence",
+		failures
+	)
+
+	# 顺序不变性：同一 tick 内的四个玩家快照按槽位 3,2,1,0 施加，
+	# 哈希序列必须仍然相同。这一条真正触碰模拟状态，不是空转。
+	var reversed_pass := _run_scenario(table, 0.05, ROOM_SEED, true)
+	_compare("reversed player snapshot order", first_pass, reversed_pass, failures)
+
+	_check_clock_accounting(failures)
 
 	_expect(
 		first_pass[0] != first_pass[TICK_COUNT - 1],
@@ -3495,13 +3558,20 @@ func _build_input_table(tick_count: int) -> Array:
 		})
 	return table
 
-func _run_scenario(table: Array, frame_delta: float) -> PackedStringArray:
+## reversed_snapshot_order 只改变同一 tick 内四个 set_player_snapshot 的施加顺序
+## （3,2,1,0 而不是 0,1,2,3）；模拟结果必须与正序完全一致。
+func _run_scenario(
+	table: Array,
+	frame_delta: float,
+	room_seed: int,
+	reversed_snapshot_order: bool = false
+) -> PackedStringArray:
 	var clock = SimClockScript.new()
 	var world = SimWorldScript.new()
 	world.configure(GRID_ORIGIN, GRID_CELL_SIZE, GRID_WIDTH, GRID_HEIGHT)
 	for rect in BLOCKER_RECTS:
 		world.set_blocker_world_rect(rect.position, rect.end, true)
-	world.reset(ROOM_SEED)
+	world.reset(room_seed)
 	world.set_default_move_speed(1.30)
 	world.set_perception_range(60.0)   # 与 DemoArena.wave_perception_range 的默认值一致
 	world.configure_weapon_profile(
@@ -3541,7 +3611,12 @@ func _run_scenario(table: Array, frame_delta: float) -> PackedStringArray:
 				break
 			var entry: Dictionary = table[applied]
 			var players: PackedVector2Array = entry["players"]
-			for slot in range(PLAYER_SLOT_COUNT):
+			for order_index in range(PLAYER_SLOT_COUNT):
+				var slot := (
+					PLAYER_SLOT_COUNT - 1 - order_index
+					if reversed_snapshot_order
+					else order_index
+				)
 				world.set_player_snapshot(slot, players[slot], true, true)
 			if entry["fire"]:
 				world.queue_fire_event(
@@ -3551,6 +3626,52 @@ func _run_scenario(table: Array, frame_delta: float) -> PackedStringArray:
 			hashes.append(SimHasherScript.hash_world(world))
 			applied += 1
 	return hashes
+
+## 时钟核算。step_tick() 不接收 delta（Global Constraint），所以「换个喂帧节奏重放同一张表」
+## 在构造上不可能分叉——那种比较是空转。真正需要守住的是 SimClock 自己的账：
+## 单帧最多吐 MAX_CATCHUP_TICKS 个 tick、丢弃欠账时 accumulator 必须清零、
+## 以及按整 TICK_SECONDS 喂帧时 tick 数不多不少。
+func _check_clock_accounting(failures: Array[String]) -> void:
+	var clock = SimClockScript.new()
+	var burst := clock.consume_frame(1.0)
+	_expect(
+		burst == SimClockScript.MAX_CATCHUP_TICKS,
+		"a 1.0s frame must be capped at MAX_CATCHUP_TICKS (%d), got %d" % [
+			SimClockScript.MAX_CATCHUP_TICKS, burst
+		],
+		failures
+	)
+	# sim_clock.gd:27-28：丢弃欠账时清零而不是钳到 TICK_SECONDS，
+	# 否则下一帧即使 delta 为 0 也会再吐一个 tick，欠账会以「每帧多一个」的形式复活。
+	_expect(
+		clock.accumulator == 0.0,
+		"the discarded backlog must zero the accumulator, got %.17f" % clock.accumulator,
+		failures
+	)
+	_expect(
+		clock.consume_frame(0.0) == 0,
+		"a zero-delta frame after a discarded backlog must produce no tick",
+		failures
+	)
+
+	var steady = SimClockScript.new()
+	var produced := 0
+	for _frame in range(TICK_COUNT):
+		produced += steady.consume_frame(SimClockScript.TICK_SECONDS)
+	_expect(
+		produced == TICK_COUNT,
+		"%d frames of exactly TICK_SECONDS must produce %d ticks, got %d" % [
+			TICK_COUNT, TICK_COUNT, produced
+		],
+		failures
+	)
+	_expect(
+		steady.get_tick_index() == TICK_COUNT,
+		"the clock tick index must be exactly %d, got %d" % [
+			TICK_COUNT, steady.get_tick_index()
+		],
+		failures
+	)
 
 func _compare(
 	label: String,
@@ -3637,7 +3758,7 @@ f32_neg0=4d24f67f9dcd3a75
 
 - [ ] **Step 4: 运行确定性回归**
 
-这一步耗时以十分钟计，**必须放到后台运行**（`run_in_background`，或下面的 `nohup` 写法），不要放在有 120 秒超时的前台 shell 里。
+这一步耗时约 80 秒（实测 78.8 s，Apple Silicon / Godot 4.7.1），**必须放到后台运行**（`run_in_background`，或下面的 `nohup` 写法）：它已经吃掉 120 秒前台 shell 超时的三分之二，四趟场景中任何一趟变慢都会顶穿，后台 + 轮询日志是唯一稳妥的做法。
 
 Run:
 
@@ -3658,7 +3779,25 @@ grep -q "validate_sim_determinism: PASS" /tmp/zw_determinism.log \
   || echo "not finished yet, or FAILED - grep the log for 'diverged at tick' / 'Parse Error' / 'Failed to load script'"
 ```
 
-Expected: 日志里先打印 `validate_sim_determinism: 3000 ticks, final hash <16 位十六进制>`，再打印 `validate_sim_determinism: PASS`，轮询最终输出 `DETERMINISM OK`。**不要拿退出码当判据**：Godot 解析失败时也返回 0，日志里会只有 `Parse Error` / `Failed to load script` 而没有任何 `PASS`（见 Global Constraints）。三趟 3000 tick × 300 僵尸的模拟在 Apple Silicon 上预计耗时 **10–40 分钟**（`SimHasher.hash_world()` 每 tick 逐字节消费约 8 KB Packed 数据，每字节一次 `_multiply_prime()` GDScript 调用，逐字节 FNV 哈希是主要开销），期间无输出属正常，不要中断。若需要更快的迭代循环，可临时把 `TICK_COUNT` 降到 300 定位问题，但**提交前必须以 3000 复跑一次**。任何 `diverged at tick N` 都必须定位到具体子系统后再继续，不得放宽断言。
+Expected: 日志里先打印
+
+```
+validate_sim_determinism: 3000 ticks, final hash 3e266a164d160e89
+validate_sim_determinism: PASS
+```
+
+轮询最终输出 `DETERMINISM OK`。**最终哈希必须逐字符等于 `3e266a164d160e89`**——这是修复射线遮挡（Task 5 Step 3 的 `line_is_clear` 闸门 + Task 5 Step 4 的 `ray_blocked_distance` 截断）之后的实测值。把它写死在这里是刻意的：`TICK_COUNT`、`ZOMBIE_COUNT`、`ROOM_SEED`、`BLOCKER_RECTS` 或任何模拟常量被悄悄改小/改动，都会让哈希对不上而当场暴露，光看 `PASS` 是发现不了的。哈希变了就先查是不是自己动了模拟语义，不要直接把这里的期望值改掉。
+
+**不要拿退出码当判据**：Godot 解析失败时也返回 0，日志里会只有 `Parse Error` / `Failed to load script` 而没有任何 `PASS`（见 Global Constraints）。四趟 3000 tick × 300 僵尸的模拟在 Apple Silicon / Godot 4.7.1 上实测 **78.8 秒**（`/usr/bin/time -p` 的 real），期间无输出属正常。若需要更快的迭代循环，可临时把 `TICK_COUNT` 降到 300 定位问题，但**提交前必须以 3000 复跑一次并核对上面的哈希**。任何 `diverged at tick N` 都必须定位到具体子系统后再继续，不得放宽断言。
+
+这一步真正守住的四条闸门（Step 2 的脚本）：
+
+1. **二次重放一致** —— 同种子同输入表跑两遍，逐 tick 哈希必须相同。
+2. **负向对照** —— `ROOM_SEED + 1` 跑出的序列**必须**与基准不同，失败信息是 `the comparison harness must be able to report a divergence`。这一条不是在测模拟，是在测 `_compare()` / `!=` 本身还有没有报差异的能力：没有它，比较器一旦失效（例如两个 `PackedStringArray` 恒等），上面第 1 条就会以绿色 `PASS` 的形式掩盖失效。
+3. **玩家快照施加顺序不变性** —— 同一张表重放，但每 tick 内四个 `set_player_snapshot` 按槽位 3,2,1,0 施加，哈希序列必须仍然相同。这一条会真正改变对 `SimWorld` 的调用序列。
+4. **时钟核算** —— `SimClock` 自己的账：单帧 1.0 s 只吐 `MAX_CATCHUP_TICKS` 个 tick；丢弃欠账后 `accumulator` 必须**恰好为 0.0**（守住 `sim_clock.gd` 里「清零而不是钳到 `TICK_SECONDS`」那段注释所记录的行为）；紧接着一个 0 秒帧不得再吐 tick；连喂 `TICK_COUNT` 个整 `TICK_SECONDS` 帧后 `get_tick_index()` 恰好是 `TICK_COUNT`。
+
+> 这里**没有**「换个喂帧节奏重放同一张表、断言哈希相同」那一条，是故意删掉的：`step_tick()` 不接收 delta（Global Constraint），而 `_run_scenario()` 的内层循环无论 `consume_frame()` 返回几个 tick 都按同一顺序消费同一张输入表，所以那条断言在构造上不可能失败——`frame_delta` 取 0.25 / 1.0 / 100.0 都恰好 200 个 tick 且 `identical=true`，其中 100.0 意味着时钟已经静默丢弃了 99.75% 的墙钟时间，它依然报 `PASS`。空转的绿色比没有断言更危险。要守时钟就直接断言时钟的账（第 4 条），别用一个恒真的比较冒充。
 
 - [ ] **Step 5: 静态检查**
 
@@ -4666,7 +4805,7 @@ for script in validate_mobile_equipment_controls validate_local_player_spawning;
 done
 ```
 
-随后**后台**运行确定性回归（10–40 分钟，见 Global Constraints）：
+随后**后台**运行确定性回归（约 80 秒，实测 78.8 s；见 Global Constraints）：
 
 ```bash
 cd /Users/liangpingbo/Desktop/4399/game/zombiewar
@@ -5117,7 +5256,7 @@ for script in validate_local_disconnect_contract validate_equipment_cycle; do
     | tee "/tmp/zw_$script.log"
   grep -q "$script: PASS" "/tmp/zw_$script.log" || echo "FAILED: $script"
 done
-# 确定性回归耗时 10–40 分钟，后台跑（见 Global Constraints）
+# 确定性回归耗时约 80 秒（实测 78.8 s），后台跑（见 Global Constraints）
 nohup /Applications/Godot.app/Contents/MacOS/Godot \
   --headless --path . --script res://tools/validation/validate_sim_determinism.gd \
   > /tmp/zw_determinism_task8.log 2>&1 &
@@ -5913,7 +6052,7 @@ Expected: 三个导航脚本各命中一处 `RETIRED`；`AGENTS.md` 命中新的
 
 复跑范围必须是 `tools/validation/` 在 Task 7 删除 `validate_zombie_multiplayer_wiring.gd` 之后**剩下的全部脚本**，而不是只跑本计划新增的那几个。其中 `validate_mobile_equipment_controls.gd` 与 `validate_local_player_spawning.gd` 会实例化 `scenes/gameplay/DemoArena.tscn` 并断言 `_wire_dependencies()` 的注入路径与 `Players` 容器，正是 Task 7 / 8 / 9 重写的代码路径；漏跑它们会让回归静默漏网。
 
-这一步整体耗时以小时计（`validate_sim_determinism` 一项就要 10–40 分钟），**放到后台跑**。
+这一步整体耗时以十分钟计（`validate_sim_determinism` 一项约 80 秒，实测 78.8 s），**放到后台跑**。
 
 Run:
 
