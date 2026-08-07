@@ -1,0 +1,19 @@
+[remap]
+
+importer="csv_translation"
+type="Translation"
+uid="uid://cboykdcuwoth1"
+
+[deps]
+
+files=["res://docs/sounds_975 2/sound_usage.SWF资源名.translation", "res://docs/sounds_975 2/sound_usage.用途.translation", "res://docs/sounds_975 2/sound_usage.游戏触发点.translation", "res://docs/sounds_975 2/sound_usage.状态.translation"]
+
+source_file="res://docs/sounds_975 2/sound_usage.csv"
+dest_files=["res://docs/sounds_975 2/sound_usage.SWF资源名.translation", "res://docs/sounds_975 2/sound_usage.用途.translation", "res://docs/sounds_975 2/sound_usage.游戏触发点.translation", "res://docs/sounds_975 2/sound_usage.状态.translation"]
+
+[params]
+
+compress=1
+delimiter=0
+unescape_keys=false
+unescape_translations=true

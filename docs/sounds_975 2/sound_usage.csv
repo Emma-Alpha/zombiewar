@@ -1,0 +1,32 @@
+file,SWF资源名,用途,游戏触发点,状态
+sound_174.mp3,,未命名嵌入音频,未在资源链接表或 ActionScript 调用中找到,用途不明
+sound_175.mp3,,未命名嵌入音频,未在资源链接表或 ActionScript 调用中找到,用途不明
+sound_184.mp3,,未命名嵌入音频,未在资源链接表或 ActionScript 调用中找到,用途不明
+sound_192.mp3,,未命名嵌入音频,未在资源链接表或 ActionScript 调用中找到,用途不明
+sound_193.mp3,,未命名嵌入音频,未在资源链接表或 ActionScript 调用中找到,用途不明
+sound_539.mp3,Creature.HitFloor.wav,生物倒地声,玩家/僵尸/恶魔死亡后进入尸体状态,脚本调用确认
+sound_540.mp3,Creature.Player.Scream.1.wav,玩家死亡惨叫,玩家死亡,脚本调用确认
+sound_541.mp3,Creature.Player.Scream.2.wav,玩家惨叫备用变体,同类资源；当前脚本未见直接调用,资源名确认/调用未见
+sound_542.mp3,Creature.Zombie.Ambience.1.wav,僵尸呻吟/环境声变体 1,场上僵尸环境音；亦被僵尸类作为受击声变体池引用,脚本动态拼接确认
+sound_543.mp3,Creature.Zombie.Ambience.2.wav,僵尸呻吟/环境声变体 2,场上僵尸环境音；亦被僵尸类作为受击声变体池引用,脚本动态拼接确认
+sound_544.mp3,Creature.Zombie.Ambience.3.wav,僵尸呻吟/环境声变体 3,场上僵尸环境音；亦被僵尸类作为受击声变体池引用,脚本动态拼接确认
+sound_545.mp3,Creature.Zombie.Ambience.4.wav,僵尸呻吟/环境声变体 4,场上僵尸环境音；亦被僵尸类作为受击声变体池引用,脚本动态拼接确认
+sound_546.mp3,Creature.Zombie.Attack.wav,僵尸攻击声,资源名表明用于僵尸攻击；当前游戏逻辑未见直接调用,资源名确认/调用未见
+sound_547.mp3,Creature.Zombie.Hit.wav,僵尸受击声,资源名表明用于僵尸受击；当前游戏逻辑未见直接调用,资源名确认/调用未见
+sound_548.mp3,Effect.Explosion.wav,通用爆炸声,手雷/火箭/油桶/地雷/遥控炸药等创建爆炸效果时,脚本调用确认
+sound_549.mp3,Object.Barrel.Place.wav,放置物体声,放油桶、假墙时,脚本调用确认
+sound_550.mp3,Object.Mine.Detonate.wav,地雷/遥控炸药爆炸声,地雷触发或 Charge Pack 引爆时,脚本调用确认
+sound_551.mp3,Object.Pickup.wav,拾取声,玩家捡到武器、弹药或生命时,脚本调用确认
+sound_552.mp3,Shot.Grenade.Bounce.wav,手雷弹跳/撞墙声,手雷飞行时撞到地形,脚本调用确认
+sound_553.mp3,Shot.HitWall.1.wav,子弹命中墙面变体 1,手枪/UZI/霰弹枪子弹撞墙时随机播放,脚本动态拼接确认
+sound_554.mp3,Shot.HitWall.2.wav,子弹命中墙面变体 2,手枪/UZI/霰弹枪子弹撞墙时随机播放,脚本动态拼接确认
+sound_555.mp3,Shot.HitWall.3.wav,子弹命中墙面变体 3,手枪/UZI/霰弹枪子弹撞墙时随机播放,脚本动态拼接确认
+sound_556.mp3,Shot.Rocket.Fire.wav,火箭发射备用声,资源名表明是火箭发射；玩家火箭筒实际调用 560,资源名确认/调用未见
+sound_557.mp3,Weapon.Mine.Place.wav,布雷/放置 Charge Pack 声,放置 Claymore 或 Charge Pack 时,脚本调用确认
+sound_558.mp3,Weapon.Pistol.Fire.wav,手枪射击声,手枪开火,脚本调用确认
+sound_559.mp3,Weapon.Railgun.Fire.wav,轨道炮射击声,轨道炮开火,脚本调用确认
+sound_560.mp3,Weapon.Rocket.Fire.wav,火箭筒射击声,玩家火箭筒开火,脚本调用确认
+sound_561.mp3,Weapon.ShotGun.Fire.wav,霰弹枪射击声,霰弹枪开火,脚本调用确认
+sound_562.mp3,Weapon.UZI.Fire.wav,UZI 冲锋枪射击声,UZI 开火,脚本调用确认
+sound_563.mp3,World.End.wav,对局结束提示声,死亡、胜负结算画面出现时,脚本调用确认
+sound_564.mp3,CLICK.wav,UI 点击声,菜单按钮和升级/武器解锁提示等,脚本调用确认
