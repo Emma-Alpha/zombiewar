@@ -3,7 +3,9 @@ class_name PickupSpawnPoint
 
 signal navigation_geometry_changed
 
-@export var pickup_scene: PackedScene
+const PICKUP_SCENE := preload("res://scenes/gameplay/PickupChest.tscn")
+
+@export var pickup_definition: PickupDefinition
 @export var respawn_enabled := false
 @export_range(0.0, 300.0, 0.1) var respawn_delay_seconds := 3.0
 
@@ -20,15 +22,11 @@ func _ready() -> void:
 func _spawn_pickup() -> void:
 	if current_pickup != null and is_instance_valid(current_pickup):
 		return
-	if pickup_scene == null:
-		push_warning("PickupSpawnPoint has no pickup scene: %s" % get_path())
+	if pickup_definition == null:
+		push_warning("PickupSpawnPoint has no pickup Definition: %s" % get_path())
 		return
-	var instance := pickup_scene.instantiate()
-	if not instance is PickupChest:
-		push_warning("PickupSpawnPoint requires a PickupChest scene: %s" % get_path())
-		instance.free()
-		return
-	current_pickup = instance as PickupChest
+	current_pickup = PICKUP_SCENE.instantiate() as PickupChest
+	current_pickup.configure(pickup_definition)
 	add_child(current_pickup)
 	current_pickup.transform = _next_spawn_transform()
 	current_pickup_id = current_pickup.get_instance_id()
