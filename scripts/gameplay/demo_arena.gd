@@ -8,6 +8,7 @@ const ZOMBIE_SCENE := preload("res://scenes/targets/ZombieTarget.tscn")
 const SinglePlayerInputSourceScript = preload(
 	"res://scripts/input/single_player_input_source.gd"
 )
+const LocalTeamStateScript = preload("res://scripts/gameplay/local_team_state.gd")
 const AUTO_WAVE_STATUS := "下一波即将到来"
 const SPAWN_POINT_NAMES: Array[StringName] = [
 	&"NorthWest",
@@ -31,12 +32,13 @@ var hit_confirm_tween: Tween
 var damage_flash_tween: Tween
 var wave_rng := RandomNumberGenerator.new()
 var wave_number := 0
-var player_defeated := false
+var team_defeated := false
 var restart_pending := false
 var startup_pending := false
 var warmup_overlay_tween: Tween
 var single_player_input = SinglePlayerInputSourceScript.new()
 var players: Array[PlayerController] = []
+var local_team_state = LocalTeamStateScript.new()
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_SCENE_INSTANTIATED:
@@ -46,9 +48,13 @@ func _enter_tree() -> void:
 	_wire_dependencies()
 
 func _ready() -> void:
+	add_child(local_team_state)
 	if not _spawn_session_players():
 		_handle_player_spawn_failure()
 		return
+	local_team_state.all_players_defeated.connect(_on_all_players_defeated)
+	local_team_state.setup(players)
+	_set_touch_game_over_active(false)
 	_wire_dependencies()
 	if random_seed == 0:
 		wave_rng.randomize()
@@ -61,6 +67,17 @@ func _ready() -> void:
 	for player in players:
 		player.set_physics_process(false)
 	call_deferred("_run_combat_startup")
+
+func _process(_delta: float) -> void:
+	if (
+		team_defeated and
+		not restart_pending and
+		local_team_state.sample_restart_requested()
+	):
+		request_restart()
+
+func _exit_tree() -> void:
+	_set_touch_game_over_active(false)
 
 func _unhandled_input(event: InputEvent) -> void:
 	if startup_pending:
@@ -76,15 +93,16 @@ func _unhandled_input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 
 func request_spawn_wave() -> int:
-	if startup_pending or player_defeated:
+	if startup_pending or team_defeated:
 		return 0
 	_cancel_auto_wave()
 	return spawn_wave()
 
 func request_restart() -> void:
-	if startup_pending or not player_defeated or restart_pending:
+	if startup_pending or not team_defeated or restart_pending:
 		return
 	restart_pending = true
+	_set_touch_game_over_active(false)
 	restart_requested.emit()
 	call_deferred("_reload_current_scene")
 
@@ -228,22 +246,20 @@ func _wire_dependencies() -> void:
 			player.attack_resolved.connect(_on_player_attack)
 		if not player.damaged.is_connected(_on_player_damaged):
 			player.damaged.connect(_on_player_damaged)
-		if not player.died.is_connected(_on_player_died):
-			player.died.connect(_on_player_died)
 
 func _wire_target(target: Node) -> void:
 	_wire_target_blood(target)
 	if not target is ZombieTarget:
 		return
-	var current_players := _get_spawned_players()
 	var zombie := target as ZombieTarget
+	var player_registry := get_node_or_null("PlayerRegistry") as PlayerRegistry
 	var navigation_manager := get_node_or_null(
 		"World/Navigation"
 	) as NavigationWorldManager
 	if navigation_manager != null:
 		zombie.set_navigation_manager(navigation_manager)
-	if not current_players.is_empty():
-		zombie.set_attack_target(current_players[0])
+	if player_registry != null:
+		zombie.set_player_registry(player_registry)
 	if zombie_difficulty != null:
 		zombie.set_perception_move_speed(zombie_difficulty.perception_move_speed)
 
@@ -265,6 +281,10 @@ func _spawn_session_players() -> bool:
 		place_item_service,
 		single_player_input
 	)
+	var player_registry := get_node_or_null("PlayerRegistry") as PlayerRegistry
+	if player_registry != null:
+		for player in players:
+			player_registry.register_player(player)
 	return not players.is_empty()
 
 func _get_player_spawn_points() -> Array[Marker3D]:
@@ -375,28 +395,37 @@ func _on_player_damaged(_amount: float) -> void:
 	damage_flash_tween = create_tween()
 	damage_flash_tween.tween_property(flash, "color:a", 0.0, 0.20)
 
-func _on_player_died() -> void:
-	if player_defeated:
+func _on_all_players_defeated() -> void:
+	if team_defeated:
 		return
-	player_defeated = true
+	team_defeated = true
 	_cancel_auto_wave()
 	var game_over := get_node_or_null("HUD/GameOver") as Label
 	if game_over != null:
-		game_over.text = "PLAYER DOWN"
+		game_over.text = "全员倒地"
 		game_over.visible = true
+	_set_touch_game_over_active(true)
 	_sync_command_controls()
 	_update_wave_hud()
+
+func _set_touch_game_over_active(active: bool) -> void:
+	var mobile_controls := get_node_or_null("MobileControls") as MobileControls
+	if mobile_controls == null:
+		return
+	var touch_source = mobile_controls.get_input_source()
+	if touch_source != null:
+		touch_source.set_game_over_active(active)
 
 func _sync_command_controls() -> void:
 	var spawn_button := get_node_or_null("HUD/SpawnWaveButton") as Button
 	if spawn_button != null:
-		spawn_button.visible = not player_defeated
+		spawn_button.visible = not team_defeated
 	var restart_button := get_node_or_null("HUD/RestartButton") as Button
 	if restart_button != null:
-		restart_button.visible = player_defeated
+		restart_button.visible = team_defeated
 
 func spawn_wave() -> int:
-	if player_defeated:
+	if team_defeated:
 		return 0
 	var targets := get_node_or_null("World/Targets") as Node3D
 	if targets == null:
@@ -517,7 +546,7 @@ func _refresh_wave_state_after_target_exit() -> void:
 	_schedule_auto_wave_if_empty()
 
 func _schedule_auto_wave_if_empty() -> bool:
-	if player_defeated or get_active_zombie_count() != 0:
+	if team_defeated or get_active_zombie_count() != 0:
 		return false
 	var timer := get_node_or_null("AutoWaveTimer") as Timer
 	if timer == null or not timer.is_stopped():
@@ -541,7 +570,7 @@ func _cancel_auto_wave() -> void:
 		status.visible = false
 
 func _on_auto_wave_timeout() -> void:
-	if player_defeated or get_active_zombie_count() != 0:
+	if team_defeated or get_active_zombie_count() != 0:
 		return
 	_hide_wave_status()
 	spawn_wave()
@@ -551,7 +580,7 @@ func _update_wave_hud() -> void:
 	if objective == null:
 		return
 	var active_count := get_active_zombie_count()
-	if player_defeated:
+	if team_defeated:
 		objective.text = "FINAL WAVE %d    ZOMBIES %d" % [
 			wave_number,
 			active_count,

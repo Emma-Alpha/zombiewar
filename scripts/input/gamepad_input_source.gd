@@ -33,3 +33,6 @@ func is_online() -> bool:
 
 func get_source_key() -> StringName:
 	return StringName("gamepad_%d" % device_id)
+
+func get_device_id() -> int:
+	return device_id

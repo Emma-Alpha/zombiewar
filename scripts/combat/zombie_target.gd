@@ -6,6 +6,9 @@ const HitResponseMath = preload("res://scripts/combat/hit_response_math.gd")
 const HitResult = preload("res://scripts/combat/hit_result.gd")
 const MeleeAttackCycle = preload("res://scripts/combat/melee_attack_cycle.gd")
 const ZombieBehaviorMath = preload("res://scripts/combat/zombie_behavior_math.gd")
+const ZombieTargetSelectorScript = preload(
+	"res://scripts/combat/zombie_target_selector.gd"
+)
 const BloodTrailState = preload("res://scripts/fx/blood_trail_state.gd")
 const BLOOD_IMPACT_SCENE := preload("res://scenes/fx/BloodImpact.tscn")
 
@@ -34,6 +37,7 @@ signal ground_blood_trail_requested(
 @export_group("Ambient Behavior")
 @export var perception_range := 7.0
 @export var perception_exit_margin := 1.0
+@export var target_switch_margin := 0.5
 @export var wander_speed := 0.55
 @export var wander_radius := 3.5
 @export var wander_arrive_range := 0.25
@@ -79,6 +83,7 @@ var blood_trail_state := BloodTrailState.new()
 var has_navigation_target := false
 var last_navigation_target := Vector3.ZERO
 var navigation_manager: NavigationWorldManager
+var player_registry: PlayerRegistry
 
 func _ready() -> void:
 	_ensure_initialized()
@@ -112,6 +117,9 @@ func _ensure_initialized() -> void:
 
 func set_attack_target(target: PlayerController) -> void:
 	attack_target = target
+
+func set_player_registry(registry: PlayerRegistry) -> void:
+	player_registry = registry
 
 func set_navigation_manager(manager: NavigationWorldManager) -> void:
 	navigation_manager = manager
@@ -173,6 +181,14 @@ func apply_damage(amount: float, hit_position: Vector3) -> HitResult:
 
 func _physics_process(delta: float) -> void:
 	_ensure_initialized()
+	if player_registry != null:
+		attack_target = ZombieTargetSelectorScript.select_target(
+			global_position,
+			attack_target,
+			player_registry.get_players(),
+			perception_range,
+			target_switch_margin
+		)
 	var gravity := float(ProjectSettings.get_setting("physics/3d/default_gravity", 9.8))
 	if not is_on_floor():
 		velocity.y -= gravity * gravity_multiplier * delta
