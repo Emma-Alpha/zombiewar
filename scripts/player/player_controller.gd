@@ -67,6 +67,12 @@ var missing_health_bar_warned := false
 var input_source
 var last_input_state = PlayerInputStateScript.new()
 var place_item_service
+var sim_request_sink := Callable()
+
+func set_sim_request_sink(value: Callable) -> void:
+	sim_request_sink = value
+	if equipment != null:
+		equipment.set_sim_request_sink(sim_request_sink)
 
 func _ready() -> void:
 	_ensure_health_initialized()
@@ -86,6 +92,7 @@ func _ready() -> void:
 		Callable(weapon_clearance, "try_bind_weapon")
 	)
 	equipment.set_place_item_service(place_item_service)
+	equipment.set_sim_request_sink(sim_request_sink)
 	_on_equipment_changed(
 		equipment.get_current_display_name(),
 		equipment.get_current_count_text()

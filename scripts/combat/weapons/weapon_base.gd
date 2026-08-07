@@ -24,6 +24,17 @@ var trigger_pressed := false
 var trigger_just_pressed := false
 var aim_direction := Vector3.FORWARD
 var owned := false
+var sim_request_sink := Callable()
+
+## 武器不认识玩家槽位，也不认识模拟层的武器档案下标：
+## 它只把「我要开火 / 我要挥击」的原始意图交给上层，
+## 由竞技场翻译成 SimWorld 事件。武器因此不依赖 scripts/sim/。
+func set_sim_request_sink(value: Callable) -> void:
+	sim_request_sink = value
+
+func emit_sim_request(request: Dictionary) -> void:
+	if sim_request_sink.is_valid():
+		sim_request_sink.call(request)
 
 func bind_context(
 	value_wielder: CharacterBody3D,

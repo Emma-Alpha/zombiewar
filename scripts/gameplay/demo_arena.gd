@@ -21,6 +21,8 @@ const ARENA_SIM_GRID_HEIGHT := 39
 const DEFAULT_SIM_SEED := 20260807
 const ZOMBIE_MAX_HEALTH := 50.0
 const BLOCKER_GROUP: StringName = &"place_item_obstacle"
+const PISTOL_DEFINITION := preload("res://resources/weapons/pistol.tres")
+const RIFLE_DEFINITION := preload("res://resources/weapons/rifle.tres")
 const SPAWN_POINT_NAMES: Array[StringName] = [
 	&"NorthWest",
 	&"NorthEast",
@@ -44,6 +46,7 @@ var damage_flash_tween: Tween
 var sim_clock = SimClockScript.new()
 var sim_world = SimWorldScript.new()
 var zombie_renderer: ZombieRenderer
+var weapon_profile_indices: Dictionary = {}
 var wave_number := 0
 var team_defeated := false
 var restart_pending := false
@@ -120,7 +123,90 @@ func _setup_simulation() -> void:
 	# 导出默认值 7.0；模拟层没有这一步的话，生成角 (±19, ±14) 上的僵尸
 	# 在 48 × 38 的场地里永远够不到玩家，会原地游荡而不汇聚。
 	sim_world.set_perception_range(wave_perception_range)
+	register_weapon_profiles()
 	sim_clock.reset()
+
+## 模拟层只认档案下标；这里把 weapon_id 映射到下标，顺序即注册顺序。
+func register_weapon_profiles() -> void:
+	weapon_profile_indices = {}
+	var definitions: Array[RangedWeaponDefinition] = [
+		PISTOL_DEFINITION,
+		RIFLE_DEFINITION,
+	]
+	for profile_index in range(definitions.size()):
+		var definition := definitions[profile_index]
+		weapon_profile_indices[definition.weapon_id] = profile_index
+		sim_world.configure_weapon_profile(
+			profile_index,
+			definition.damage,
+			definition.attack_range,
+			definition.base_spread_degrees,
+			definition.max_spread_degrees,
+			definition.spread_increase_per_shot_degrees,
+			definition.spread_recovery_degrees_per_second,
+			definition.max_penetration_count,
+			definition.penetration_damage_coefficient
+		)
+
+func get_weapon_profile_index(weapon_id: StringName) -> int:
+	return int(weapon_profile_indices.get(weapon_id, -1))
+
+func _on_sim_request(request: Dictionary, slot: int) -> void:
+	var kind: StringName = request["kind"]
+	if kind == &"shot":
+		var profile_index := get_weapon_profile_index(request["weapon_id"])
+		if profile_index < 0:
+			return
+		var shot_origin: Vector3 = request["origin"]
+		var shot_aim: Vector3 = request["aim_direction"]
+		sim_world.queue_fire_event(
+			slot,
+			profile_index,
+			Vector2(shot_origin.x, shot_origin.z),
+			shot_origin.y,
+			Vector2(shot_aim.x, shot_aim.z)
+		)
+		return
+	if kind == &"melee":
+		var melee_origin: Vector3 = request["origin"]
+		var melee_aim: Vector3 = request["aim_direction"]
+		sim_world.queue_melee_event(
+			slot,
+			float(request["damage"]),
+			float(request["reach"]),
+			float(request["half_width"]),
+			Vector2(melee_origin.x, melee_origin.z),
+			melee_origin.y,
+			Vector2(melee_aim.x, melee_aim.z)
+		)
+		return
+	if kind == &"spread_reset":
+		# 传「换上」的那把武器的档案下标；传旧下标会把新武器重置到上一把枪的 base。
+		sim_world.queue_spread_reset(
+			slot, get_weapon_profile_index(request["weapon_id"])
+		)
+
+func _on_sim_shot_event(event: Dictionary) -> void:
+	var origin: Vector2 = event["origin"]
+	var end_point: Vector2 = event["end"]
+	var from_position := Vector3(origin.x, float(event["origin_height"]), origin.y)
+	var to_position := Vector3(end_point.x, float(event["end_height"]), end_point.y)
+	var shooter := _player_for_slot(int(event["slot"]))
+	if shooter != null:
+		var weapon = shooter.equipment.get_current_weapon()
+		if weapon is RangedWeapon:
+			(weapon as RangedWeapon).show_tracer(from_position, to_position)
+	if not bool(event["did_hit"]):
+		return
+	var label := get_node_or_null("HUD/HitConfirm") as Label
+	if label == null:
+		return
+	label.text = "KILL" if bool(event["killed"]) else "HIT"
+	label.modulate = Color.WHITE
+	if hit_confirm_tween != null and hit_confirm_tween.is_valid():
+		hit_confirm_tween.kill()
+	hit_confirm_tween = create_tween()
+	hit_confirm_tween.tween_property(label, "modulate:a", 0.0, 0.18)
 
 func _bake_static_blockers() -> void:
 	if not is_inside_tree():
@@ -163,6 +249,8 @@ func _push_player_snapshot() -> void:
 		)
 
 func _consume_sim_events() -> void:
+	for event in sim_world.tick_shot_events:
+		_on_sim_shot_event(event)
 	for event in sim_world.tick_hit_events:
 		_on_sim_hit_event(event)
 	for event in sim_world.tick_player_damage_events:
@@ -385,9 +473,13 @@ func _wire_dependencies() -> void:
 	var player_registry := get_node_or_null("PlayerRegistry") as PlayerRegistry
 	follow_camera.set_player_registry(player_registry)
 	follow_camera.set_world_bounds(ARENA_CAMERA_BOUNDS)
-	for player in current_players:
+	for slot_index in range(current_players.size()):
+		var player := current_players[slot_index]
 		player.set_movement_camera(movement_camera)
 		player.set_place_item_service(place_item_service)
+		player.set_sim_request_sink(
+			Callable(self, "_on_sim_request").bind(slot_index)
+		)
 		if not player.attack_resolved.is_connected(_on_player_attack):
 			player.attack_resolved.connect(_on_player_attack)
 		if not player.damaged.is_connected(_on_player_damaged):
@@ -464,22 +556,14 @@ func _on_runtime_navigation_geometry_changed() -> void:
 	if navigation_manager != null:
 		navigation_manager.mark_chunk_dirty(&"demo_arena")
 
+## 镜头后坐力是纯表现，命中确认改由模拟层的射击事件驱动。
 func _on_player_attack(
 	direction: Vector3,
-	result: HitResult,
+	_result: HitResult,
 	camera_impulse_strength: float
 ) -> void:
 	var follow_camera := get_node("FollowCamera") as FollowCamera
 	follow_camera.add_shot_impulse(direction, camera_impulse_strength)
-	if not result.did_hit:
-		return
-	var label := get_node("HUD/HitConfirm") as Label
-	label.text = "KILL" if result.killed else "HIT"
-	label.modulate = Color.WHITE
-	if hit_confirm_tween != null and hit_confirm_tween.is_valid():
-		hit_confirm_tween.kill()
-	hit_confirm_tween = create_tween()
-	hit_confirm_tween.tween_property(label, "modulate:a", 0.0, 0.18)
 
 func _on_player_damaged(_amount: float) -> void:
 	var flash := get_node_or_null("HUD/DamageFlash") as ColorRect

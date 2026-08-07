@@ -31,6 +31,13 @@ var initialized := false
 var switch_guard := Callable()
 var place_item_service
 var warned_unknown_item_ids: Dictionary = {}
+var sim_request_sink := Callable()
+
+func set_sim_request_sink(value: Callable) -> void:
+	sim_request_sink = value
+	for item in equipment_items:
+		if item.has_method("set_sim_request_sink"):
+			item.set_sim_request_sink(sim_request_sink)
 
 func set_switch_guard(value: Callable) -> void:
 	switch_guard = value
@@ -70,6 +77,8 @@ func setup(
 		item.count_changed.connect(_on_item_count_changed.bind(item))
 		if item.has_method("set_place_item_service"):
 			item.set_place_item_service(place_item_service)
+		if item.has_method("set_sim_request_sink"):
+			item.set_sim_request_sink(sim_request_sink)
 		item.set_equipped(false)
 		equipment_items.append(item)
 	if not equip_slot(starting_slot):
