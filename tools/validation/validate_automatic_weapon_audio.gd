@@ -1,6 +1,7 @@
 extends SceneTree
 
 const SMG_SCENE_PATH := "res://scenes/weapons/Smg.tscn"
+const PISTOL_SCENE_PATH := "res://scenes/weapons/Pistol.tscn"
 
 
 func _init() -> void:
@@ -25,8 +26,29 @@ func _run() -> void:
 				"automatic fire audio must let each shot finish without cutting off its tail",
 				failures
 			)
+		_test_shot_volume_compensates_for_quieter_sample(shot_audio, failures)
 		smg.free()
 	_finish(failures)
+
+
+func _test_shot_volume_compensates_for_quieter_sample(
+	shot_audio: AudioStreamPlayer3D,
+	failures: Array[String]
+) -> void:
+	if shot_audio == null:
+		return
+	var pistol_scene := load(PISTOL_SCENE_PATH) as PackedScene
+	_expect(pistol_scene != null, "pistol scene must load", failures)
+	if pistol_scene == null:
+		return
+	var pistol = pistol_scene.instantiate()
+	var pistol_audio := pistol.get_node("ShotAudio") as AudioStreamPlayer3D
+	_expect(
+		shot_audio.volume_db >= pistol_audio.volume_db + 6.0,
+		"SMG playback must compensate for its quieter source sample",
+		failures
+	)
+	pistol.free()
 
 
 func _finish(failures: Array[String]) -> void:
