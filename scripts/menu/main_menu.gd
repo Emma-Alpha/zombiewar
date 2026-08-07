@@ -3,8 +3,10 @@ extends Node3D
 const MenuFlow = preload("res://scripts/menu/menu_flow.gd")
 
 @export_file("*.tscn") var game_scene_path := "res://scenes/gameplay/DemoArena.tscn"
+@export_file("*.tscn") var local_lobby_scene_path := "res://scenes/menu/LocalMultiplayerLobby.tscn"
 
-@onready var start_button: Button = %StartButton
+@onready var single_player_button: Button = %SinglePlayerButton
+@onready var local_multiplayer_button: Button = %LocalMultiplayerButton
 @onready var quit_button: Button = %QuitButton
 @onready var exit_dialog: Control = %ExitDialog
 @onready var confirm_exit_button: Button = %ConfirmExitButton
@@ -16,23 +18,34 @@ const MenuFlow = preload("res://scripts/menu/menu_flow.gd")
 var flow := MenuFlow.new()
 
 func _ready() -> void:
-	start_button.grab_focus()
+	single_player_button.grab_focus()
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("ui_cancel") and flow.state == MenuFlow.State.EXIT_CONFIRM:
 		_on_cancel_exit_button_pressed()
 		get_viewport().set_input_as_handled()
 
-func _on_start_button_pressed() -> void:
-	if not flow.request_start():
+func _on_single_player_button_pressed() -> void:
+	if not flow.request_single():
 		return
+	GameSession.configure_single()
+	_start_transition(game_scene_path)
+
+func _on_local_multiplayer_button_pressed() -> void:
+	if not flow.request_local():
+		return
+	GameSession.clear()
+	_start_transition(local_lobby_scene_path)
+
+func _start_transition(scene_path: String) -> void:
 	confirm_audio.play()
-	start_button.disabled = true
+	single_player_button.disabled = true
+	local_multiplayer_button.disabled = true
 	quit_button.disabled = true
 	var tween := create_tween()
 	tween.tween_property(fade_overlay, "color:a", 1.0, 0.32)
 	await tween.finished
-	get_tree().change_scene_to_file(game_scene_path)
+	get_tree().change_scene_to_file(scene_path)
 
 func _on_quit_button_pressed() -> void:
 	if not flow.request_exit():

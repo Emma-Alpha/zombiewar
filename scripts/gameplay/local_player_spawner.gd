@@ -1,0 +1,92 @@
+extends Node
+class_name LocalPlayerSpawner
+
+const GameSessionScript = preload("res://scripts/gameplay/game_session.gd")
+const PLAYER_SHAPE_RADIUS := 0.45
+const PLAYER_SHAPE_HEIGHT := 1.8
+const PLAYER_SHAPE_CENTER_Y := 0.93
+const FALLBACK_OFFSETS := [
+	Vector3.ZERO,
+	Vector3(1.2, 0.0, 0.0),
+	Vector3(-1.2, 0.0, 0.0),
+	Vector3(0.0, 0.0, 1.2),
+	Vector3(0.0, 0.0, -1.2),
+]
+
+@export var player_scene: PackedScene = preload("res://scenes/player/Player.tscn")
+
+func spawn_players(
+	container: Node3D,
+	spawn_points: Array[Marker3D],
+	place_item_service,
+	single_player_input
+) -> Array[PlayerController]:
+	var spawned: Array[PlayerController] = []
+	var session := get_node_or_null("/root/GameSession")
+	if session == null:
+		return _fail_spawn(spawned, "GameSession is unavailable")
+	session.last_error = ""
+	var descriptors: Array = []
+	if session.mode == GameSessionScript.Mode.LOCAL_MULTIPLAYER:
+		descriptors = session.local_players
+	else:
+		descriptors = [null]
+	if descriptors.is_empty() or descriptors.size() > spawn_points.size():
+		return _fail_spawn(spawned, "Local player session has no valid spawn slots")
+	if player_scene == null:
+		return _fail_spawn(spawned, "Player scene is unavailable")
+
+	for index in range(descriptors.size()):
+		var input_source = single_player_input
+		if descriptors[index] != null:
+			input_source = descriptors[index].create_input_source()
+		if input_source == null:
+			return _fail_spawn(spawned, "Player %d has an invalid input source" % (index + 1))
+		var spawn_position = _find_open_spawn_position(container, spawn_points[index])
+		if spawn_position == null:
+			return _fail_spawn(spawned, "Player %d has no open spawn position" % (index + 1))
+		var player := player_scene.instantiate() as PlayerController
+		if player == null:
+			return _fail_spawn(spawned, "Player %d could not be instantiated" % (index + 1))
+		player.name = "P%d" % (index + 1)
+		player.player_index = index
+		player.set_input_source(input_source)
+		player.set_place_item_service(place_item_service)
+		container.add_child(player)
+		player.global_position = spawn_position
+		spawned.append(player)
+	return spawned
+
+func _find_open_spawn_position(container: Node3D, marker: Marker3D):
+	var world := container.get_world_3d()
+	if world == null:
+		return marker.global_position
+	var shape := CapsuleShape3D.new()
+	shape.radius = PLAYER_SHAPE_RADIUS
+	shape.height = PLAYER_SHAPE_HEIGHT
+	var query := PhysicsShapeQueryParameters3D.new()
+	query.shape = shape
+	query.collision_mask = 1
+	query.collide_with_areas = true
+	query.collide_with_bodies = true
+	for offset in FALLBACK_OFFSETS:
+		var candidate: Vector3 = marker.global_position + offset
+		query.transform = Transform3D(
+			Basis.IDENTITY,
+			candidate + Vector3(0.0, PLAYER_SHAPE_CENTER_Y, 0.0)
+		)
+		if world.direct_space_state.intersect_shape(query, 1).is_empty():
+			return candidate
+	return null
+
+func _fail_spawn(
+	spawned: Array[PlayerController],
+	message: String
+) -> Array[PlayerController]:
+	for player in spawned:
+		if is_instance_valid(player):
+			player.free()
+	var session := get_node_or_null("/root/GameSession")
+	if session != null:
+		session.last_error = message
+	return []

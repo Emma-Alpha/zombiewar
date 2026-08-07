@@ -1,7 +1,7 @@
 [gd_scene load_steps=49 format=3]
 
 [ext_resource type="Script" path="res://scripts/gameplay/demo_arena.gd" id="1_arena"]
-[ext_resource type="PackedScene" path="res://scenes/player/Player.tscn" id="2_player"]
+[ext_resource type="Script" path="res://scripts/gameplay/local_player_spawner.gd" id="2_player_spawner"]
 [ext_resource type="PackedScene" path="res://scenes/camera/FollowCamera.tscn" id="3_camera"]
 [ext_resource type="PackedScene" path="res://scenes/targets/ZombieTarget.tscn" id="4_target"]
 [ext_resource type="PackedScene" path="res://assets/vehicles/Vehicle_Pickup.gltf" id="5_pickup"]
@@ -570,8 +570,24 @@ position = Vector3(-19, 0, 14)
 [node name="SouthEast" type="Marker3D" parent="World/SpawnPoints"]
 position = Vector3(19, 0, 14)
 
-[node name="Player" parent="." instance=ExtResource("2_player")]
-position = Vector3(0, 0, 6)
+[node name="Players" type="Node3D" parent="."]
+
+[node name="PlayerSpawnPoints" type="Node3D" parent="."]
+
+[node name="P1" type="Marker3D" parent="PlayerSpawnPoints"]
+position = Vector3(-1.2, 0, 6.2)
+
+[node name="P2" type="Marker3D" parent="PlayerSpawnPoints"]
+position = Vector3(1.2, 0, 6.2)
+
+[node name="P3" type="Marker3D" parent="PlayerSpawnPoints"]
+position = Vector3(-1.2, 0, 4.2)
+
+[node name="P4" type="Marker3D" parent="PlayerSpawnPoints"]
+position = Vector3(1.2, 0, 4.2)
+
+[node name="LocalPlayerSpawner" type="Node" parent="."]
+script = ExtResource("2_player_spawner")
 
 [node name="PlaceItemService" type="Node" parent="."]
 script = ExtResource("17_place_service")
@@ -669,8 +685,8 @@ anchors_preset = 2
 anchor_top = 1.0
 anchor_bottom = 1.0
 offset_left = 24.0
-offset_top = -66.0
-offset_right = 920.0
+offset_top = -94.0
+offset_right = 1180.0
 offset_bottom = -20.0
 grow_vertical = 0
 theme_override_styles/panel = SubResource("StyleBoxFlat_controls")
@@ -678,8 +694,8 @@ theme_override_styles/panel = SubResource("StyleBoxFlat_controls")
 [node name="Controls" type="Label" parent="HUD/ControlsPanel"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.952941, 0.933333, 0.894118, 1)
-theme_override_font_sizes/font_size = 16
-text = "WASD  MOVE + FACE    K  PLACE ITEM    J  FIRE    1-3  WEAPON    T  WAVE    R  RESTART"
+theme_override_font_sizes/font_size = 15
+text = "键盘：WASD 移动 / Q E 切换 / Space 使用 | 方向键移动 / < > 切换 / / 使用\n手柄：LS 移动 / LB RB 切换 / RT 使用"
 
 [node name="GameOver" type="Label" parent="HUD"]
 visible = false

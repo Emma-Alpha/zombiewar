@@ -1,0 +1,207 @@
+[gd_scene load_steps=8 format=3]
+
+[ext_resource type="Script" path="res://scripts/menu/local_multiplayer_lobby.gd" id="1_lobby"]
+[ext_resource type="FontFile" path="res://assets/fonts/NotoSansSC-UI.ttf" id="2_font"]
+[ext_resource type="PackedScene" path="res://scenes/ui/MobileOrientationGuard.tscn" id="3_guard"]
+
+[sub_resource type="Environment" id="Environment_lobby"]
+background_mode = 1
+background_color = Color(0.008, 0.012, 0.014, 1)
+ambient_light_source = 2
+ambient_light_color = Color(0.24, 0.31, 0.34, 1)
+ambient_light_energy = 0.52
+fog_enabled = true
+fog_light_color = Color(0.1, 0.04, 0.035, 1)
+fog_density = 0.014
+
+[sub_resource type="StandardMaterial3D" id="Material_ground"]
+albedo_color = Color(0.045, 0.052, 0.054, 1)
+roughness = 0.94
+
+[sub_resource type="PlaneMesh" id="Mesh_ground"]
+material = SubResource("Material_ground")
+size = Vector2(24, 16)
+
+[sub_resource type="StandardMaterial3D" id="Material_slot"]
+transparency = 1
+albedo_color = Color(0.82, 0.19, 0.1, 0.42)
+emission_enabled = true
+emission = Color(0.62, 0.08, 0.035, 1)
+emission_energy_multiplier = 1.8
+
+[sub_resource type="CylinderMesh" id="Mesh_slot"]
+material = SubResource("Material_slot")
+top_radius = 0.82
+bottom_radius = 0.82
+height = 0.035
+
+[node name="LocalMultiplayerLobby" type="Node3D"]
+script = ExtResource("1_lobby")
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_lobby")
+
+[node name="KeyLight" type="DirectionalLight3D" parent="."]
+rotation_degrees = Vector3(-52, -28, 0)
+light_color = Color(0.62, 0.75, 0.8, 1)
+light_energy = 1.35
+shadow_enabled = true
+
+[node name="WarningLight" type="OmniLight3D" parent="."]
+position = Vector3(0, 4.5, 1.2)
+light_color = Color(1, 0.18, 0.07, 1)
+light_energy = 5.0
+omni_range = 12.0
+
+[node name="Camera3D" type="Camera3D" parent="."]
+position = Vector3(0, 5.6, 10.8)
+rotation_degrees = Vector3(-17, 0, 0)
+current = true
+fov = 44.0
+
+[node name="LobbyWorld" type="Node3D" parent="."]
+
+[node name="Ground" type="MeshInstance3D" parent="LobbyWorld"]
+mesh = SubResource("Mesh_ground")
+
+[node name="Slots" type="Node3D" parent="LobbyWorld"]
+
+[node name="P1" type="Marker3D" parent="LobbyWorld/Slots"]
+position = Vector3(-3.45, 0.03, -1.1)
+
+[node name="Pad" type="MeshInstance3D" parent="LobbyWorld/Slots/P1"]
+mesh = SubResource("Mesh_slot")
+
+[node name="WorldLabel" type="Label3D" parent="LobbyWorld/Slots/P1"]
+position = Vector3(0, 0.08, 0)
+text = "P1"
+font_size = 42
+outline_size = 10
+billboard = 1
+
+[node name="P2" type="Marker3D" parent="LobbyWorld/Slots"]
+position = Vector3(-1.15, 0.03, -1.1)
+
+[node name="Pad" type="MeshInstance3D" parent="LobbyWorld/Slots/P2"]
+mesh = SubResource("Mesh_slot")
+
+[node name="WorldLabel" type="Label3D" parent="LobbyWorld/Slots/P2"]
+position = Vector3(0, 0.08, 0)
+text = "P2"
+font_size = 42
+outline_size = 10
+billboard = 1
+
+[node name="P3" type="Marker3D" parent="LobbyWorld/Slots"]
+position = Vector3(1.15, 0.03, -1.1)
+
+[node name="Pad" type="MeshInstance3D" parent="LobbyWorld/Slots/P3"]
+mesh = SubResource("Mesh_slot")
+
+[node name="WorldLabel" type="Label3D" parent="LobbyWorld/Slots/P3"]
+position = Vector3(0, 0.08, 0)
+text = "P3"
+font_size = 42
+outline_size = 10
+billboard = 1
+
+[node name="P4" type="Marker3D" parent="LobbyWorld/Slots"]
+position = Vector3(3.45, 0.03, -1.1)
+
+[node name="Pad" type="MeshInstance3D" parent="LobbyWorld/Slots/P4"]
+mesh = SubResource("Mesh_slot")
+
+[node name="WorldLabel" type="Label3D" parent="LobbyWorld/Slots/P4"]
+position = Vector3(0, 0.08, 0)
+text = "P4"
+font_size = 42
+outline_size = 10
+billboard = 1
+
+[node name="MobileOrientationGuard" parent="." instance=ExtResource("3_guard")]
+
+[node name="MenuLayer" type="CanvasLayer" parent="."]
+
+[node name="Shade" type="ColorRect" parent="MenuLayer"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0.005, 0.008, 0.009, 0.26)
+
+[node name="Title" type="Label" parent="MenuLayer"]
+anchor_left = 0.06
+anchor_top = 0.06
+anchor_right = 0.94
+anchor_bottom = 0.16
+theme_override_colors/font_color = Color(0.97, 0.95, 0.9, 1)
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 42
+text = "本地多人 · 设备加入"
+
+[node name="JoinHint" type="Label" parent="MenuLayer"]
+anchor_left = 0.06
+anchor_top = 0.15
+anchor_right = 0.94
+anchor_bottom = 0.22
+theme_override_colors/font_color = Color(0.76, 0.78, 0.74, 1)
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 18
+text = "按 WASD、方向键或手柄 A 加入 · 最多 4 人"
+
+[node name="StatusRoot" type="HBoxContainer" parent="MenuLayer"]
+anchor_left = 0.06
+anchor_top = 0.72
+anchor_right = 0.94
+anchor_bottom = 0.81
+theme_override_constants/separation = 26
+alignment = 1
+
+[node name="P1Status" type="Label" parent="MenuLayer/StatusRoot"]
+custom_minimum_size = Vector2(250, 56)
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.54, 0.35, 1)
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 18
+text = "P1 · 等待加入"
+horizontal_alignment = 1
+
+[node name="P2Status" type="Label" parent="MenuLayer/StatusRoot"]
+custom_minimum_size = Vector2(250, 56)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.86, 0.88, 0.84, 1)
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 18
+text = "P2 · 等待加入"
+horizontal_alignment = 1
+
+[node name="P3Status" type="Label" parent="MenuLayer/StatusRoot"]
+custom_minimum_size = Vector2(250, 56)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.86, 0.88, 0.84, 1)
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 18
+text = "P3 · 等待加入"
+horizontal_alignment = 1
+
+[node name="P4Status" type="Label" parent="MenuLayer/StatusRoot"]
+custom_minimum_size = Vector2(250, 56)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.86, 0.88, 0.84, 1)
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 18
+text = "P4 · 等待加入"
+horizontal_alignment = 1
+
+[node name="P1Hint" type="Label" parent="MenuLayer"]
+anchor_left = 0.06
+anchor_top = 0.88
+anchor_right = 0.94
+anchor_bottom = 0.96
+theme_override_colors/font_color = Color(0.72, 0.75, 0.72, 1)
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 17
+text = "P1：ENTER / START 开始 · ESC / B 返回"
+horizontal_alignment = 1

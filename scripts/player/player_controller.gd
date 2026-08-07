@@ -20,6 +20,7 @@ signal damaged(amount: float)
 signal died
 
 @export_group("Survivability")
+@export var player_index := 0
 @export var max_health := 100.0
 @export var hit_reaction_duration := 0.24
 @export var hit_attack_lock_duration := 1.2
@@ -41,6 +42,9 @@ signal died
 @onready var functional_ray_origin: Marker3D = $FunctionalRayOrigin
 @onready var weapon_clearance: WeaponClearanceController = $WeaponClearanceController
 @onready var health_bar: HealthBar3D = get_node_or_null("HealthBar3D") as HealthBar3D
+@onready var equipment_label = get_node_or_null(
+	"PlayerEquipmentLabel"
+)
 
 var movement_camera: Camera3D
 var animation_player: AnimationPlayer
@@ -69,6 +73,7 @@ func _ready() -> void:
 	equipment.attack_started.connect(_on_weapon_attack_started)
 	equipment.attack_resolved.connect(_on_weapon_attack_resolved)
 	equipment.weapon_changed.connect(_on_weapon_changed)
+	equipment.equipment_changed.connect(_on_equipment_changed)
 	equipment.setup(
 		self,
 		visual_root,
@@ -76,6 +81,10 @@ func _ready() -> void:
 		Callable(weapon_clearance, "try_bind_weapon")
 	)
 	equipment.set_place_item_service(place_item_service)
+	_on_equipment_changed(
+		equipment.get_current_display_name(),
+		equipment.get_current_count()
+	)
 
 func _process(delta: float) -> void:
 	hit_reaction_remaining = maxf(hit_reaction_remaining - delta, 0.0)
@@ -241,6 +250,10 @@ func _on_weapon_changed(_definition: WeaponDefinition) -> void:
 	attack_animation_remaining = 0.0
 	_update_animation(Vector2(velocity.x, velocity.z).length())
 
+func _on_equipment_changed(display_name: String, remaining_count: int) -> void:
+	if equipment_label != null:
+		equipment_label.set_status(player_index, display_name, remaining_count)
+
 func apply_damage(amount: float, source_position := Vector3.ZERO) -> float:
 	_ensure_health_initialized()
 	if defeated:
@@ -312,4 +325,6 @@ func _on_depleted() -> void:
 	velocity.z = 0.0
 	if animation_player != null and animation_player.has_animation(&"Death"):
 		animation_player.play(&"Death", 0.08)
+	if equipment_label != null:
+		equipment_label.set_status(player_index, "倒地", -1)
 	died.emit()

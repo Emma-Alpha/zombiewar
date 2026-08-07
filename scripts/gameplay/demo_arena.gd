@@ -36,6 +36,7 @@ var restart_pending := false
 var startup_pending := false
 var warmup_overlay_tween: Tween
 var single_player_input = SinglePlayerInputSourceScript.new()
+var players: Array[PlayerController] = []
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_SCENE_INSTANTIATED:
@@ -45,6 +46,10 @@ func _enter_tree() -> void:
 	_wire_dependencies()
 
 func _ready() -> void:
+	if not _spawn_session_players():
+		_handle_player_spawn_failure()
+		return
+	_wire_dependencies()
 	if random_seed == 0:
 		wave_rng.randomize()
 	else:
@@ -53,8 +58,7 @@ func _ready() -> void:
 	if DisplayServer.get_name() == "headless":
 		_complete_combat_startup(false)
 		return
-	var player := get_node_or_null("Player") as PlayerController
-	if player != null:
+	for player in players:
 		player.set_physics_process(false)
 	call_deferred("_run_combat_startup")
 
@@ -112,8 +116,7 @@ func _complete_combat_startup(animate_overlay: bool) -> void:
 	if mobile_controls != null:
 		mobile_controls.cancel_all_input()
 	_release_startup_actions()
-	var player := get_node_or_null("Player") as PlayerController
-	if player != null:
+	for player in players:
 		player.set_physics_process(true)
 	startup_pending = false
 	spawn_wave()
@@ -173,17 +176,12 @@ func _wire_dependencies() -> void:
 	if restart_button != null and not restart_button.pressed.is_connected(request_restart):
 		restart_button.pressed.connect(request_restart)
 	_sync_command_controls()
-	var player := get_node_or_null("Player") as PlayerController
 	var mobile_controls := get_node_or_null("MobileControls") as MobileControls
 	if mobile_controls != null:
 		single_player_input.set_touch_source(mobile_controls.get_input_source())
 	var place_item_service = get_node_or_null(
 		"PlaceItemService"
 	)
-	if player != null:
-		if player.get_input_source() == null:
-			player.set_input_source(single_player_input)
-		player.set_place_item_service(place_item_service)
 	if (
 		place_item_service != null and
 		not place_item_service.placement_geometry_changed.is_connected(
@@ -215,35 +213,91 @@ func _wire_dependencies() -> void:
 		auto_wave_timer.timeout.connect(_on_auto_wave_timeout)
 	var follow_camera := get_node_or_null("FollowCamera") as FollowCamera
 	var movement_camera := get_node_or_null("FollowCamera/Camera3D") as Camera3D
-	if player == null or follow_camera == null or movement_camera == null:
+	var current_players := _get_spawned_players()
+	if current_players.is_empty() or follow_camera == null or movement_camera == null:
 		return
+	var primary_player := current_players[0]
 	if follow_camera.is_inside_tree():
-		follow_camera.set_target(player)
+		follow_camera.set_target(primary_player)
 	else:
-		follow_camera.target = player
-	player.set_movement_camera(movement_camera)
-	if not player.attack_resolved.is_connected(_on_player_attack):
-		player.attack_resolved.connect(_on_player_attack)
-	if not player.damaged.is_connected(_on_player_damaged):
-		player.damaged.connect(_on_player_damaged)
-	if not player.died.is_connected(_on_player_died):
-		player.died.connect(_on_player_died)
+		follow_camera.target = primary_player
+	for player in current_players:
+		player.set_movement_camera(movement_camera)
+		player.set_place_item_service(place_item_service)
+		if not player.attack_resolved.is_connected(_on_player_attack):
+			player.attack_resolved.connect(_on_player_attack)
+		if not player.damaged.is_connected(_on_player_damaged):
+			player.damaged.connect(_on_player_damaged)
+		if not player.died.is_connected(_on_player_died):
+			player.died.connect(_on_player_died)
 
 func _wire_target(target: Node) -> void:
 	_wire_target_blood(target)
 	if not target is ZombieTarget:
 		return
-	var player := get_node_or_null("Player") as PlayerController
+	var current_players := _get_spawned_players()
 	var zombie := target as ZombieTarget
 	var navigation_manager := get_node_or_null(
 		"World/Navigation"
 	) as NavigationWorldManager
 	if navigation_manager != null:
 		zombie.set_navigation_manager(navigation_manager)
-	if player != null:
-		zombie.set_attack_target(player)
+	if not current_players.is_empty():
+		zombie.set_attack_target(current_players[0])
 	if zombie_difficulty != null:
 		zombie.set_perception_move_speed(zombie_difficulty.perception_move_speed)
+
+func _spawn_session_players() -> bool:
+	var mobile_controls := get_node_or_null("MobileControls") as MobileControls
+	if mobile_controls != null:
+		single_player_input.set_touch_source(mobile_controls.get_input_source())
+	var spawner = get_node_or_null("LocalPlayerSpawner")
+	var container := get_node_or_null("Players") as Node3D
+	var place_item_service = get_node_or_null("PlaceItemService")
+	if spawner == null or container == null:
+		var session := get_node_or_null("/root/GameSession")
+		if session != null:
+			session.last_error = "DemoArena player spawning nodes are missing"
+		return false
+	players = spawner.spawn_players(
+		container,
+		_get_player_spawn_points(),
+		place_item_service,
+		single_player_input
+	)
+	return not players.is_empty()
+
+func _get_player_spawn_points() -> Array[Marker3D]:
+	var points: Array[Marker3D] = []
+	for index in range(1, 5):
+		var marker := get_node_or_null(
+			"PlayerSpawnPoints/P%d" % index
+		) as Marker3D
+		if marker == null:
+			return []
+		points.append(marker)
+	return points
+
+func _get_spawned_players() -> Array[PlayerController]:
+	var result: Array[PlayerController] = []
+	var container := get_node_or_null("Players")
+	if container == null:
+		return result
+	for child in container.get_children():
+		if child is PlayerController:
+			result.append(child)
+	players = result
+	return result
+
+func _handle_player_spawn_failure() -> void:
+	startup_pending = false
+	if DisplayServer.get_name() == "headless":
+		return
+	var session := get_node_or_null("/root/GameSession")
+	var destination := "res://scenes/menu/MainMenu.tscn"
+	if session != null and session.mode == 1:
+		destination = "res://scenes/menu/LocalMultiplayerLobby.tscn"
+	get_tree().change_scene_to_file.call_deferred(destination)
 
 func _wire_target_blood(target: Node) -> void:
 	if not target is ZombieTarget:

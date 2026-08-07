@@ -9,7 +9,13 @@ enum State {
 
 var state: State = State.READY
 
-func request_start() -> bool:
+func request_single() -> bool:
+	return _request_start()
+
+func request_local() -> bool:
+	return _request_start()
+
+func _request_start() -> bool:
 	if state != State.READY:
 		return false
 	state = State.STARTING

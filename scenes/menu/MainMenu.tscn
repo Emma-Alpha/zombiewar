@@ -158,10 +158,29 @@ text = "冲出尸潮，活到最后。"
 layout_mode = 2
 theme_override_constants/separation = 14
 
-[node name="StartButton" type="Button" parent="MenuLayer/MenuRoot/LeftColumn/Actions"]
+[node name="SinglePlayerButton" type="Button" parent="MenuLayer/MenuRoot/LeftColumn/Actions"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(390, 66)
 layout_mode = 2
+focus_neighbor_bottom = NodePath("../LocalMultiplayerButton")
+theme_override_colors/font_color = Color(0.97, 0.95, 0.9, 1)
+theme_override_colors/font_hover_color = Color(1, 1, 1, 1)
+theme_override_colors/font_focus_color = Color(1, 1, 1, 1)
+theme_override_fonts/font = ExtResource("6_cjk_font")
+theme_override_font_sizes/font_size = 26
+theme_override_styles/normal = SubResource("StyleBox_button_normal")
+theme_override_styles/hover = SubResource("StyleBox_button_hover")
+theme_override_styles/pressed = SubResource("StyleBox_button_hover")
+theme_override_styles/focus = SubResource("StyleBox_button_hover")
+theme_override_styles/disabled = SubResource("StyleBox_button_disabled")
+text = "单人游戏"
+alignment = 0
+
+[node name="LocalMultiplayerButton" type="Button" parent="MenuLayer/MenuRoot/LeftColumn/Actions"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(390, 66)
+layout_mode = 2
+focus_neighbor_top = NodePath("../SinglePlayerButton")
 focus_neighbor_bottom = NodePath("../QuitButton")
 theme_override_colors/font_color = Color(0.97, 0.95, 0.9, 1)
 theme_override_colors/font_hover_color = Color(1, 1, 1, 1)
@@ -173,14 +192,14 @@ theme_override_styles/hover = SubResource("StyleBox_button_hover")
 theme_override_styles/pressed = SubResource("StyleBox_button_hover")
 theme_override_styles/focus = SubResource("StyleBox_button_hover")
 theme_override_styles/disabled = SubResource("StyleBox_button_disabled")
-text = "开始游戏"
+text = "本地多人"
 alignment = 0
 
 [node name="QuitButton" type="Button" parent="MenuLayer/MenuRoot/LeftColumn/Actions"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(390, 66)
 layout_mode = 2
-focus_neighbor_top = NodePath("../StartButton")
+focus_neighbor_top = NodePath("../LocalMultiplayerButton")
 theme_override_colors/font_color = Color(0.97, 0.95, 0.9, 1)
 theme_override_colors/font_hover_color = Color(1, 1, 1, 1)
 theme_override_colors/font_focus_color = Color(1, 1, 1, 1)
@@ -325,9 +344,12 @@ theme_override_styles/pressed = SubResource("StyleBox_button_hover")
 theme_override_styles/focus = SubResource("StyleBox_button_hover")
 text = "确认退出"
 
-[connection signal="focus_entered" from="MenuLayer/MenuRoot/LeftColumn/Actions/StartButton" to="." method="_on_action_focused"]
-[connection signal="mouse_entered" from="MenuLayer/MenuRoot/LeftColumn/Actions/StartButton" to="." method="_on_action_focused"]
-[connection signal="pressed" from="MenuLayer/MenuRoot/LeftColumn/Actions/StartButton" to="." method="_on_start_button_pressed"]
+[connection signal="focus_entered" from="MenuLayer/MenuRoot/LeftColumn/Actions/SinglePlayerButton" to="." method="_on_action_focused"]
+[connection signal="mouse_entered" from="MenuLayer/MenuRoot/LeftColumn/Actions/SinglePlayerButton" to="." method="_on_action_focused"]
+[connection signal="pressed" from="MenuLayer/MenuRoot/LeftColumn/Actions/SinglePlayerButton" to="." method="_on_single_player_button_pressed"]
+[connection signal="focus_entered" from="MenuLayer/MenuRoot/LeftColumn/Actions/LocalMultiplayerButton" to="." method="_on_action_focused"]
+[connection signal="mouse_entered" from="MenuLayer/MenuRoot/LeftColumn/Actions/LocalMultiplayerButton" to="." method="_on_action_focused"]
+[connection signal="pressed" from="MenuLayer/MenuRoot/LeftColumn/Actions/LocalMultiplayerButton" to="." method="_on_local_multiplayer_button_pressed"]
 [connection signal="focus_entered" from="MenuLayer/MenuRoot/LeftColumn/Actions/QuitButton" to="." method="_on_action_focused"]
 [connection signal="mouse_entered" from="MenuLayer/MenuRoot/LeftColumn/Actions/QuitButton" to="." method="_on_action_focused"]
 [connection signal="pressed" from="MenuLayer/MenuRoot/LeftColumn/Actions/QuitButton" to="." method="_on_quit_button_pressed"]
