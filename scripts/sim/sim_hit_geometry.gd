@@ -55,3 +55,25 @@ static func ray_circle_distance(
 	if distance < 0.0 or distance > max_distance:
 		return -1.0
 	return distance
+
+## ---- 爆炸桶命中几何 ----
+## 逐字取自 scenes/props/ExplosiveBarrel.tscn：唯一的 CollisionShape3D 挂
+## CylinderShape3D（radius 0.44、height 1.44），局部偏移 y = 0.72，
+## 因此桶体在世界里占据 [base_height, base_height + 1.44] 的高度区间。
+## BARREL_AIM_HEIGHT 对应基线 explosive_barrel.gd 的 get_explosion_aim_point()
+## （global_position + Vector3.UP * 0.72），爆心与遮挡判定都用它。
+## ZONE_BARREL 刻意不进 ZONE_DAMAGE_MULTIPLIERS：油桶不按分区吃倍率，
+## 它只有「命中计数 +1」，倍率表只服务僵尸命中框。
+const ZONE_BARREL: StringName = &"barrel"
+const BARREL_RADIUS := 0.44
+const BARREL_TOP_HEIGHT := 1.44
+const BARREL_AIM_HEIGHT := 0.72
+
+static func barrel_aim_height(base_height: float) -> float:
+	return base_height + BARREL_AIM_HEIGHT
+
+static func barrel_contains_height(base_height: float, probe_height: float) -> bool:
+	return (
+		probe_height >= base_height and
+		probe_height <= base_height + BARREL_TOP_HEIGHT
+	)

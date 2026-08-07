@@ -1598,6 +1598,16 @@ Expected: 提交只包含 `sim_collision.gd`、验证脚本及其 `.uid`。
   - `SimWorld.tick_hit_events: Array`（元素为 `{zombie_id: int, position: Vector2, height: float, direction: Vector2, damage: float, zone: StringName, killed: bool}`）
   - `SimWorld.tick_death_events: PackedInt32Array`、`SimWorld.tick_spawn_events: PackedInt32Array`
   - `SimWorld.tick_player_damage_events: Array`（元素为 `{kind: StringName, zombie_id: int, slot: int, damage: float, origin: Vector2}`，`kind` 取 `&"zombie_windup"` 或 `&"zombie_hit"`）
+- **由 Task 9 追加到同一个 `SimWorld`（本任务不实现，列在此处是为了让 `SimWorld` 的公开面在一处看全）**：
+  - `SimWorld.BARREL_STATE_INTACT / BARREL_STATE_DAMAGED / BARREL_STATE_PENDING / BARREL_STATE_DESTROYED: int = 0/1/2/3`
+  - `SimWorld.BARREL_HIT_NONE / BARREL_HIT_REGISTERED / BARREL_HIT_DAMAGED / BARREL_HIT_EXPLODED: int = 0/1/2/3`、`BARREL_MIN_CHAIN_TICKS: int = 1`
+  - `SimWorld.spawn_barrel(position_xz: Vector2, base_height: float, blocker_min_xz: Vector2, blocker_max_xz: Vector2, hits_to_explode: int, hits_to_damage: int, chain_delay_seconds: float, explosion_radius: float, center_damage: float, edge_damage: float) -> int`
+  - `SimWorld.get_barrel_count() -> int`、`get_barrel_id(index: int) -> int`、`index_of_barrel(barrel_id_value: int) -> int`
+  - `SimWorld.get_barrel_position(index: int) -> Vector2`、`get_barrel_base_height(index: int) -> float`、`get_barrel_state(index: int) -> int`、`get_barrel_hit_count(index: int) -> int`、`get_barrel_fuse_ticks(index: int) -> int`
+  - `SimWorld.apply_barrel_hit(index: int) -> int`、`queue_barrel_removal(barrel_id_value: int) -> void`
+  - `SimWorld.tick_barrel_events: Array`（`kind` 取 `&"barrel_damaged"` 或 `&"barrel_exploded"`）
+  - `step_tick()` 的固定顺序在 Task 9 里插入一步「油桶引信」，位置在散布回复之后、事件结算之前。
+  - 油桶与僵尸**共用同一个 `next_entity_id` 计数器**（Global Constraints 的「id 永不复用」），因此场景油桶必须在 `reset()` 之后按固定顺序注册，否则各端的 id 分配会分叉。
 
 - [ ] **Step 1: 给 `MeleeAttackCycle` 增加基于 tick 的无分配静态 API**
 
@@ -2607,6 +2617,7 @@ Expected: `git status --short` 中不含 `tools/validation/zw_sim_world_smoke.gd
   - `SimHitGeometry.ray_circle_distance(origin: Vector2, direction: Vector2, center: Vector2, radius: float, max_distance: float) -> float`
   - `SimCombat.STATE_DEAD: int = 3`（`SimWorld.STATE_DEAD` 的本地副本，见下方循环依赖说明）
   - `SimCombat.resolve_ray_hits(world, origin: Vector2, origin_height: float, direction: Vector2, max_distance: float, maximum_targets: int) -> Array`
+    （本任务的返回元素为 `{index, distance, point, height, zone}`；**Task 9 追加 `kind` 字段并让油桶参与同一次求解**，见下条）
   - `SimCombat.resolve_melee_target(world, origin: Vector2, origin_height: float, aim_direction: Vector2, reach: float, half_width: float) -> int`
   - `SimCombat.resolve_explosion_targets(world, origin: Vector2, origin_height: float, radius: float, center_damage: float, edge_damage: float) -> Array`
   - **`SimCombat` 的 `world` 形参刻意不加类型标注**：`sim_world.gd` 会 `preload("res://scripts/sim/sim_combat.gd")`，若 `sim_combat.gd` 反过来在签名里标注全局类 `SimWorld` 或读 `SimWorld.STATE_DEAD`，解析器会在 `sim_world.gd` 尚未解析完时被要求解析它，形成 GDScript 循环类引用并在 `--headless --editor` 导入检查中报解析错误。`scripts/sim/` 内其余依赖（`SimCollision` → `FlowFieldGrid`、`SimHasher` → `SimWorld`）都是单向的，只有这一处需要断开。
@@ -2620,6 +2631,12 @@ Expected: `git status --short` 中不含 `tools/validation/zw_sim_world_smoke.gd
   - `SimWorld.queue_spread_reset(slot: int, profile_index: int) -> void`（换装武器时排队重置散布；`profile_index` 是**换上**的那把武器的档案下标。与其他事件同批在 `_resolve_pending_events()` 里按排队顺序执行）
   - `SimWorld.reset_spread(slot: int, profile_index: int) -> void`（先把 `player_spread_profile[slot]` 落成 `profile_index` 再取该档案的 `base_spread_degrees`；`player_spread_profile` 只在开火与本函数里写，若沿用旧下标就会把新武器重置到上一把武器的 base）、`SimWorld.get_spread_degrees(slot: int) -> float`
   - `SimWorld.tick_shot_events: Array`（元素为 `{slot: int, origin: Vector2, origin_height: float, direction: Vector2, end: Vector2, end_height: float, did_hit: bool, killed: bool, damage: float, zone: StringName}`）
+- **由 Task 9 追加到 `SimHitGeometry` / `SimCombat`（本任务不实现，列在此处是为了让这两个文件的公开面在一处看全）**：
+  - `SimHitGeometry.ZONE_BARREL: StringName = &"barrel"`、`BARREL_RADIUS: float = 0.44`、`BARREL_TOP_HEIGHT: float = 1.44`、`BARREL_AIM_HEIGHT: float = 0.72`
+  - `SimHitGeometry.barrel_aim_height(base_height: float) -> float`、`barrel_contains_height(base_height: float, probe_height: float) -> bool`
+  - `SimCombat.KIND_ZOMBIE: StringName = &"zombie"`、`KIND_BARREL: StringName = &"barrel"`、`BARREL_STATE_PENDING: int = 2`、`BARREL_STATE_DESTROYED: int = 3`
+  - `resolve_ray_hits()` 的返回元素变为 `{kind: StringName, index: int, distance: float, point: Vector2, height: float, zone: StringName}`；油桶与僵尸参与同一次求解并按距离排序，**遇到第一个油桶即收尾**（复刻基线物理射线打中层 1 静态体后 `break`），`maximum_targets` 只约束僵尸穿透条数。
+  - `SimCombat.resolve_explosion_barrels(world, origin: Vector2, origin_height: float, radius: float, center_damage: float, edge_damage: float, source_index: int) -> PackedInt32Array`
 
 - [ ] **Step 1: 创建 `scripts/sim/sim_hit_geometry.gd`**
 
@@ -3349,6 +3366,10 @@ Expected: `git status --short` 中不含任何 `zw_*_smoke.gd`；提交只含上
   - `SimHasher.mix_int64(value: int) -> void`
   - `SimHasher.get_hash_low() -> int`、`get_hash_high() -> int`、`get_hash_hex() -> String`
   - `SimHasher.hash_world(world: SimWorld) -> String`（静态，返回 16 位小写十六进制）
+- **哈希覆盖面（含 Task 9 的扩展）**：本任务覆盖僵尸的 id / 位置 / 高度 / 朝向 / 血量 / 状态 / 目标槽位、玩家量化快照与散布、各 RNG 流 state、当前 tick。
+  **Task 9 追加油桶数量与 `barrel_id` / `barrel_position` / `barrel_state` / `barrel_hit_count` / `barrel_fuse_ticks`** ——
+  没有这一段，油桶在各端不同步不会被检测到（要等爆炸真的炸偏了、僵尸死亡分叉才浮现）。
+  阻挡网格本身**不进哈希**（约 1.9 KB/tick，会让 3000 tick 的回归多跑两成）：模拟层内部唯一改动阻挡格的就是油桶的注册与引爆，而油桶状态已经逐 tick 进了哈希。
 
 - [ ] **Step 1: 创建 `scripts/sim/sim_hasher.gd`**
 
@@ -3782,11 +3803,17 @@ grep -q "validate_sim_determinism: PASS" /tmp/zw_determinism.log \
 Expected: 日志里先打印
 
 ```
-validate_sim_determinism: 3000 ticks, final hash 3e266a164d160e89
+validate_sim_determinism: 3000 ticks, final hash 3d32d95803e0ae79
 validate_sim_determinism: PASS
 ```
 
-轮询最终输出 `DETERMINISM OK`。**最终哈希必须逐字符等于 `3e266a164d160e89`**——这是修复射线遮挡（Task 5 Step 3 的 `line_is_clear` 闸门 + Task 5 Step 4 的 `ray_blocked_distance` 截断）之后的实测值。把它写死在这里是刻意的：`TICK_COUNT`、`ZOMBIE_COUNT`、`ROOM_SEED`、`BLOCKER_RECTS` 或任何模拟常量被悄悄改小/改动，都会让哈希对不上而当场暴露，光看 `PASS` 是发现不了的。哈希变了就先查是不是自己动了模拟语义，不要直接把这里的期望值改掉。
+轮询最终输出 `DETERMINISM OK`。**最终哈希必须逐字符等于 `3d32d95803e0ae79`**——这是修复射线遮挡（Task 5 Step 3 的 `line_is_clear` 闸门 + Task 5 Step 4 的 `ray_blocked_distance` 截断）并在 Task 9 把油桶纳入帧哈希之后的实测值。把它写死在这里是刻意的：`TICK_COUNT`、`ZOMBIE_COUNT`、`ROOM_SEED`、`BLOCKER_RECTS` 或任何模拟常量被悄悄改小/改动，都会让哈希对不上而当场暴露，光看 `PASS` 是发现不了的。哈希变了就先查是不是自己动了模拟语义，不要直接把这里的期望值改掉。
+
+> **例外（唯一一处，已发生并已落账）**：旧值 `3e266a164d160e89` 是 **Task 9 之前**的基线。
+> Task 9 把油桶纳入帧哈希后，`hash_world()` 多混了一个 `barrel_count`（在本脚本构造的世界里恒为 0）
+> 与五个空的 `barrel_*` 数组，最终哈希**必然**换一个值。
+> Task 9 Step 13 已实测两遍、两次逐字符相同，上面这两处已就地替换为 `3d32d95803e0ae79`。
+> 除此之外，任何哈希变化都必须先定位到具体的模拟语义改动，不得直接改期望值。
 
 **不要拿退出码当判据**：Godot 解析失败时也返回 0，日志里会只有 `Parse Error` / `Failed to load script` 而没有任何 `PASS`（见 Global Constraints）。四趟 3000 tick × 300 僵尸的模拟在 Apple Silicon / Godot 4.7.1 上实测 **78.8 秒**（`/usr/bin/time -p` 的 real），期间无输出属正常。若需要更快的迭代循环，可临时把 `TICK_COUNT` 降到 300 定位问题，但**提交前必须以 3000 复跑一次并核对上面的哈希**。任何 `diverged at tick N` 都必须定位到具体子系统后再继续，不得放宽断言。
 
@@ -5300,55 +5327,799 @@ Expected: 提交只含上述六个脚本。
 
 ---
 
-### Task 9: 运行时增删阻挡几何必须标脏 cell
+### Task 9: 爆炸桶迁入模拟层，运行时增删阻挡几何必须标脏 cell
+
+spec 把爆炸桶列进模拟层（「僵尸移动/寻路/波次、**爆炸桶**、伤害结算、掉落」）。基线的爆炸桶
+有三处不确定性，**任何一处留在物理世界都会让僵尸的死亡时刻在各端分叉**：
+
+1. `scripts/props/explosive_barrel.gd:104` 的连锁延时是
+   `await get_tree().create_timer(delay_seconds).timeout` —— 墙钟计时，不与 tick 对齐。
+   客户端 A 可能在 tick 120 引爆，B 在 tick 121。
+2. 子弹打中油桶靠物理射线：`ranged_weapon.gd:211-217` 的 `_find_damage_target()` 对油桶返回
+   `null`（油桶不在 `damageable_targets` 组里），于是走 `_apply_damage()` → `ExplosiveBarrel.apply_hit()`
+   再 `break`。而 Task 8 之后 `RangedWeapon` 已经**完全不做物理查询**了，这条路径直接断掉：
+   不把油桶放进 `SimCombat.resolve_ray_hits()`，油桶将**再也打不爆**。
+3. 累计 3 发触发引爆的计数（`firearm_hit_count`）保存在物理世界的节点上。
+
+因此本任务把油桶变成模拟层实体：位置、剩余可承受命中数、占据的阻挡 cell、以 **tick** 计的引信
+倒计时全部住进 `SimWorld`；`ExplosiveBarrel` 节点降级为**表现件 + 玩家伤害源**。
+**玩家受到的爆炸伤害仍留在物理世界**——玩家是状态同步，`ExplosionResolver.resolve()` 已经处理得
+很好；但必须确保物理侧的爆炸不再碰僵尸、也不再连锁引爆其他油桶，否则会双重结算。
+
+同一个提交里一并接上运行时增删阻挡几何（放置服务、拾取箱）的标脏通路。
 
 **Files:**
-- Modify: `scripts/props/explosive_barrel.gd:8-9,109-136`
+- Modify: `scripts/sim/sim_hit_geometry.gd`（追加油桶命中几何）
+- Modify: `scripts/sim/sim_combat.gd`（`resolve_ray_hits()` 纳入油桶，新增 `resolve_explosion_barrels()`）
+- Modify: `scripts/sim/sim_world.gd`（Task 4/5 创建，本任务追加油桶 SoA、引信推进、引爆与连锁）
+- Modify: `scripts/sim/sim_hasher.gd`（Task 6 创建，本任务把油桶状态纳入帧哈希）
+- Modify: `scripts/props/explosive_barrel.gd:1-151`（整文件替换为表现件）
+- Modify: `scripts/combat/explosion_resolver.gd:1-6`
 - Modify: `scripts/gameplay/place_item_service.gd:4-5,45-63`
 - Modify: `scripts/gameplay/pickup_spawn_point.gd:4-14,20-52`
-- Modify: `scripts/combat/explosion_resolver.gd:1-17`
-- Modify: `scripts/gameplay/demo_arena.gd`（`_wire_dependencies()` 的爆炸桶与拾取点区块，追加标脏处理函数）
+- Modify: `scripts/gameplay/demo_arena.gd`（Task 7/8 已改造：`_wire_dependencies()` 的爆炸桶、拾取点与放置服务区块，`_setup_simulation()`，`_consume_sim_events()`，并追加油桶注册与事件消费）
+- Test: `tools/validation/validate_sim_barrel.gd`
 
 **Interfaces:**
-- Consumes: `PlaceItemGrid.collision_object_world_aabb()`、`SimWorld.set_blocker_world_rect()`、`SimWorld.queue_explosion_event()`、`DemoArena.mark_blocker()`。
+- Consumes: `PlaceItemGrid.collision_object_world_aabb()`、`SimWorld.set_blocker_world_rect()`、
+  `SimWorld.line_is_clear()`、`SimWorld.apply_zombie_damage()`、`SimCombat.resolve_explosion_targets()`、
+  `MeleeAttackCycle.ticks_for_seconds()`、`SimClock.TICK_SECONDS`、`ExplosionMath.damage_at_distance()`、
+  `DemoArena.mark_blocker()`、`DemoArena._player_for_slot()`。
 - Produces:
-  - `ExplosiveBarrel.blocker_cleared(world_aabb: AABB)`（信号）
-  - `ExplosiveBarrel.sim_explosion_requested(origin: Vector3, radius: float, center_damage: float, edge_damage: float)`（信号）
+  - `SimHitGeometry.ZONE_BARREL: StringName = &"barrel"`
+  - `SimHitGeometry.BARREL_RADIUS: float = 0.44`、`BARREL_TOP_HEIGHT: float = 1.44`、`BARREL_AIM_HEIGHT: float = 0.72`
+  - `SimHitGeometry.barrel_aim_height(base_height: float) -> float`
+  - `SimHitGeometry.barrel_contains_height(base_height: float, probe_height: float) -> bool`
+  - `SimCombat.KIND_ZOMBIE: StringName = &"zombie"`、`SimCombat.KIND_BARREL: StringName = &"barrel"`
+  - `SimCombat.BARREL_STATE_PENDING: int = 2`、`SimCombat.BARREL_STATE_DESTROYED: int = 3`（`SimWorld` 同名常量的本地副本，理由同 `STATE_DEAD`）
+  - `SimCombat.resolve_ray_hits()` 的返回元素**新增 `kind` 字段**：
+    `{kind: StringName, index: int, distance: float, point: Vector2, height: float, zone: StringName}`；
+    `kind == KIND_BARREL` 时 `index` 是油桶下标，且该条目**必定是列表最后一条**（射线在油桶处终止）。
+  - `SimCombat.resolve_explosion_barrels(world, origin: Vector2, origin_height: float, radius: float, center_damage: float, edge_damage: float, source_index: int) -> PackedInt32Array`
+  - `SimWorld.BARREL_STATE_INTACT: int = 0`、`BARREL_STATE_DAMAGED: int = 1`、`BARREL_STATE_PENDING: int = 2`、`BARREL_STATE_DESTROYED: int = 3`
+  - `SimWorld.BARREL_HIT_NONE: int = 0`、`BARREL_HIT_REGISTERED: int = 1`、`BARREL_HIT_DAMAGED: int = 2`、`BARREL_HIT_EXPLODED: int = 3`
+  - `SimWorld.BARREL_MIN_CHAIN_TICKS: int = 1`
+  - `SimWorld.spawn_barrel(position_xz: Vector2, base_height: float, blocker_min_xz: Vector2, blocker_max_xz: Vector2, hits_to_explode: int, hits_to_damage: int, chain_delay_seconds: float, explosion_radius: float, center_damage: float, edge_damage: float) -> int`
+  - `SimWorld.get_barrel_count() -> int`、`get_barrel_id(index: int) -> int`、`index_of_barrel(barrel_id_value: int) -> int`
+  - `SimWorld.get_barrel_position(index: int) -> Vector2`、`get_barrel_base_height(index: int) -> float`
+  - `SimWorld.get_barrel_state(index: int) -> int`、`get_barrel_hit_count(index: int) -> int`、`get_barrel_fuse_ticks(index: int) -> int`
+  - `SimWorld.apply_barrel_hit(index: int) -> int`
+  - `SimWorld.queue_barrel_removal(barrel_id_value: int) -> void`
+  - `SimWorld.tick_barrel_events: Array`（元素为
+    `{kind: StringName, barrel_id: int, position: Vector2, height: float}`，
+    `kind == &"barrel_exploded"` 时额外带 `radius`、`center_damage`、`edge_damage`；
+    `kind` 取 `&"barrel_damaged"` 或 `&"barrel_exploded"`）
+  - `SimHasher.hash_world()` 新增覆盖 `barrel_id` / `barrel_position` / `barrel_state` /
+    `barrel_hit_count` / `barrel_fuse_ticks` 与油桶数量
+  - `ExplosiveBarrel.bind_sim_barrel(barrel_id_value: int) -> void`、`get_sim_barrel_id() -> int`
+  - `ExplosiveBarrel.play_damaged() -> void`、`play_explosion(origin: Vector3) -> void`
   - `PlaceItemService.item_placed(item: Node3D)`（信号）
-  - `PlaceItemService.item_removed(world_aabb: AABB)`（信号）
+  - `PlaceItemService.item_removed(item: Node3D, world_aabb: AABB)`（信号）
   - `PickupSpawnPoint.blocker_changed(world_aabb: AABB, blocked: bool)`（信号）
   - `PickupSpawnPoint.get_current_pickup() -> PickupChest`
-  - `DemoArena._on_blocker_cleared(world_aabb: AABB) -> void`
-  - `DemoArena._on_blocker_added(item: Node3D) -> void`
+  - `DemoArena._register_barrel(barrel: ExplosiveBarrel) -> void`、`_register_scene_barrels() -> void`
+  - `DemoArena._on_sim_barrel_event(event: Dictionary) -> void`
+  - `DemoArena._on_item_placed(item: Node3D) -> void`、`_on_item_removed(item: Node3D, world_aabb: AABB) -> void`
   - `DemoArena._on_pickup_blocker_changed(world_aabb: AABB, blocked: bool) -> void`
-  - `DemoArena._on_barrel_sim_explosion(origin: Vector3, radius: float, center_damage: float, edge_damage: float) -> void`
   - `DemoArena._wire_explosive_barrel(barrel: Node) -> void`
 
-- [ ] **Step 1: 让爆炸桶广播自己的阻挡范围与模拟层爆炸**
+> **归属划线（照着执行时不要越界）**：油桶的「命中计数 / 受损 / 引信 / 引爆时刻 / 对僵尸的伤害 /
+> 连锁 / 阻挡 cell 的增删」**全部在 `SimWorld` 里**；油桶的「模型形变、烟雾、爆炸特效、对玩家的
+> `ExplosionResolver.resolve()`、导航几何脏标记、`queue_free()`」**全部在 `ExplosiveBarrel` 节点里**，
+> 且只能由模拟层事件驱动。节点不得再持有任何参与判定的状态。
 
-在 `scripts/props/explosive_barrel.gd` 的 `signal navigation_geometry_changed`（第 9 行）之后追加：
+- [ ] **Step 1: 给 `SimHitGeometry` 追加油桶命中几何**
+
+在 `scripts/sim/sim_hit_geometry.gd` 的 `ray_circle_distance()` 之后（文件末尾）追加：
 
 ```gdscript
-## 销毁前广播自己占用的世界 AABB，供流场清除对应 cell。
-## 必须在禁用碰撞形状之前采集，否则 AABB 会变成空。
-signal blocker_cleared(world_aabb: AABB)
-## 爆炸的波及判定与伤害衰减在模拟层完成；本信号只负责把参数递出去。
-signal sim_explosion_requested(
-	origin: Vector3,
+
+## ---- 爆炸桶命中几何 ----
+## 逐字取自 scenes/props/ExplosiveBarrel.tscn：唯一的 CollisionShape3D 挂
+## CylinderShape3D（radius 0.44、height 1.44），局部偏移 y = 0.72，
+## 因此桶体在世界里占据 [base_height, base_height + 1.44] 的高度区间。
+## BARREL_AIM_HEIGHT 对应基线 explosive_barrel.gd 的 get_explosion_aim_point()
+## （global_position + Vector3.UP * 0.72），爆心与遮挡判定都用它。
+## ZONE_BARREL 刻意不进 ZONE_DAMAGE_MULTIPLIERS：油桶不按分区吃倍率，
+## 它只有「命中计数 +1」，倍率表只服务僵尸命中框。
+const ZONE_BARREL: StringName = &"barrel"
+const BARREL_RADIUS := 0.44
+const BARREL_TOP_HEIGHT := 1.44
+const BARREL_AIM_HEIGHT := 0.72
+
+static func barrel_aim_height(base_height: float) -> float:
+	return base_height + BARREL_AIM_HEIGHT
+
+static func barrel_contains_height(base_height: float, probe_height: float) -> bool:
+	return (
+		probe_height >= base_height and
+		probe_height <= base_height + BARREL_TOP_HEIGHT
+	)
+```
+
+- [ ] **Step 2: 让 `SimCombat` 的射线求解看得见油桶**
+
+在 `scripts/sim/sim_combat.gd` 的 `const STATE_DEAD := 3` 之后追加：
+
+```gdscript
+
+## 与 sim_world.gd 的 BARREL_STATE_* 同步，理由同 STATE_DEAD：本文件不得引用全局类。
+const BARREL_STATE_PENDING := 2
+const BARREL_STATE_DESTROYED := 3
+
+## 命中条目的实体类别。射线求解同时吐僵尸与油桶，调用方按 kind 分派。
+const KIND_ZOMBIE: StringName = &"zombie"
+const KIND_BARREL: StringName = &"barrel"
+```
+
+把 `resolve_ray_hits()`（含其上方的文档注释）整体替换为：
+
+```gdscript
+## 返回按距离升序、同距先僵尸后油桶、再按实体下标升序的命中列表。
+## 元素：{kind: StringName, index: int, distance: float, point: Vector2,
+##        height: float, zone: StringName}
+## 僵尸与油桶参与**同一次**射线求解：基线的物理射线一次性看见两者，
+## 打中油桶（层 1 的 StaticBody3D）后 break，不再穿透后面的目标，
+## 因此这里在排序后遇到第一个油桶就收尾，油桶条目必定是最后一条。
+## maximum_targets 只约束僵尸的穿透条数（等价基线的 maximum_zombie_hits），
+## 油桶不占穿透名额——基线打中油桶那一支根本没走 zombie_hit_count 的计数。
+static func resolve_ray_hits(
+	world,                    # SimWorld，不加类型标注以避免与 sim_world.gd 的 preload 形成循环
+	origin: Vector2,
+	origin_height: float,
+	direction: Vector2,
+	max_distance: float,
+	maximum_targets: int
+) -> Array:
+	var hits: Array = []
+	if direction.length_squared() <= 0.000001 or max_distance <= 0.0:
+		return hits
+	var unit_direction := direction.normalized()
+	var count: int = world.get_zombie_count()
+	for index in range(count):
+		if world.get_zombie_state(index) == STATE_DEAD:
+			continue
+		var zombie_height: float = world.get_zombie_height(index)
+		if not SimHitGeometryScript.contains_height(zombie_height, origin_height):
+			continue
+		var distance := SimHitGeometryScript.ray_circle_distance(
+			origin,
+			unit_direction,
+			world.get_zombie_position(index),
+			SimHitGeometryScript.BODY_RADIUS,
+			max_distance
+		)
+		if distance < 0.0:
+			continue
+		var hit_point := origin + unit_direction * distance
+		# 基线远程武器的 hit_mask 是 hit_collision_mask 或上 1，
+		# 物理射线命中第一个 collider 即停，层 1 的世界静态体会把子弹挡下。
+		# 模拟层用与 resolve_explosion_targets() 相同的视线闸门复刻掩体。
+		if not world.line_is_clear(origin, hit_point):
+			continue
+		hits.append({
+			"kind": KIND_ZOMBIE,
+			"index": index,
+			"distance": distance,
+			"point": hit_point,
+			"height": origin_height,
+			"zone": SimHitGeometryScript.zone_for_height(zombie_height, origin_height),
+		})
+	_append_barrel_hits(
+		world, origin, origin_height, unit_direction, max_distance, hits
+	)
+	hits.sort_custom(_compare_hits)
+	var resolved: Array = []
+	var zombie_hits := 0
+	for hit in hits:
+		if hit["kind"] == KIND_BARREL:
+			resolved.append(hit)
+			break
+		if zombie_hits >= maximum_targets:
+			break
+		resolved.append(hit)
+		zombie_hits += 1
+	return resolved
+
+## 油桶候选。刻意**不做** line_is_clear 判定：油桶自身就是流场网格里的阻挡 cell
+## （装配方按 place_item_obstacle 组烘焙，spawn_barrel() 也会再标一次），
+## 视线闸门会被油桶自己占的格挡掉，2 格宽的桶甚至会自己挡住自己。
+## 掩体判定由调用方承担：sim_world._resolve_shot_event() 先用
+## ray_blocked_distance() 把射程截到第一个阻挡 cell，落在 max_distance 之内的
+## 油桶必然没有被墙、集装箱或另一只油桶挡住。
+## 状态闸门是 DESTROYED 而不是 PENDING：基线里已进入 EXPLODING 的桶碰撞体仍然启用，
+## 子弹照样被它挡下（apply_hit() 返回 miss），只有真正炸掉才 disable 碰撞体。
+static func _append_barrel_hits(
+	world,                    # SimWorld，同上：不加类型标注
+	origin: Vector2,
+	origin_height: float,
+	unit_direction: Vector2,
+	max_distance: float,
+	hits: Array
+) -> void:
+	var count: int = world.get_barrel_count()
+	for index in range(count):
+		if world.get_barrel_state(index) >= BARREL_STATE_DESTROYED:
+			continue
+		if not SimHitGeometryScript.barrel_contains_height(
+			world.get_barrel_base_height(index), origin_height
+		):
+			continue
+		var distance := SimHitGeometryScript.ray_circle_distance(
+			origin,
+			unit_direction,
+			world.get_barrel_position(index),
+			SimHitGeometryScript.BARREL_RADIUS,
+			max_distance
+		)
+		if distance < 0.0:
+			continue
+		hits.append({
+			"kind": KIND_BARREL,
+			"index": index,
+			"distance": distance,
+			"point": origin + unit_direction * distance,
+			"height": origin_height,
+			"zone": SimHitGeometryScript.ZONE_BARREL,
+		})
+```
+
+在 `resolve_explosion_targets()` 之后追加油桶的波及判定：
+
+```gdscript
+
+## 爆炸对其他油桶的波及判定：返回应被点燃的油桶下标，按下标升序。
+## 与僵尸口径有两处刻意的不同，都取自基线 ExplosionResolver：
+##   1. 距离用目标桶的**原点**（基线 `origin.distance_to(target.global_position)`，
+##      y = 桶底），不是瞄准点；瞄准点只用在遮挡射线上。
+##   2. 只判「够不够得到」，不产出伤害数值——基线 apply_explosion_damage()
+##      只看 amount > 0，油桶没有血量。
+## 遮挡沿用 line_is_clear()：基线 _is_blocked() 用 obstacle_mask = 1 打一条到
+## 目标瞄准点的射线，命中目标自己不算挡。line_is_clear() 的终点 cell 豁免规则
+## 与之等价。爆源自己的阻挡格由 SimWorld 在调用本函数之前就已清除，
+## 复刻基线把 source 的 RID 排除在遮挡射线之外的效果。
+static func resolve_explosion_barrels(
+	world,                    # SimWorld，同上：不加类型标注
+	origin: Vector2,
+	origin_height: float,
+	radius: float,
+	center_damage: float,
+	edge_damage: float,
+	source_index: int
+) -> PackedInt32Array:
+	var affected := PackedInt32Array()
+	if radius <= 0.0:
+		return affected
+	var count: int = world.get_barrel_count()
+	for index in range(count):
+		if index == source_index:
+			continue
+		if world.get_barrel_state(index) >= BARREL_STATE_PENDING:
+			continue
+		var position: Vector2 = world.get_barrel_position(index)
+		var planar_offset := position - origin
+		var vertical_offset: float = (
+			world.get_barrel_base_height(index) - origin_height
+		)
+		var distance := sqrt(
+			planar_offset.length_squared() + vertical_offset * vertical_offset
+		)
+		var damage := ExplosionMathScript.damage_at_distance(
+			distance, radius, center_damage, edge_damage
+		)
+		if damage <= 0.0:
+			continue
+		if not world.line_is_clear(origin, position):
+			continue
+		affected.append(index)
+	return affected
+```
+
+把文件末尾的 `_compare_hits()` 替换为（同距时僵尸先于油桶，避免两类下标空间混排出不稳定序）：
+
+```gdscript
+static func _compare_hits(left: Dictionary, right: Dictionary) -> bool:
+	var left_distance: float = left["distance"]
+	var right_distance: float = right["distance"]
+	if left_distance != right_distance:
+		return left_distance < right_distance
+	var left_rank := 0 if left["kind"] == KIND_ZOMBIE else 1
+	var right_rank := 0 if right["kind"] == KIND_ZOMBIE else 1
+	if left_rank != right_rank:
+		return left_rank < right_rank
+	return int(left["index"]) < int(right["index"])
+```
+
+- [ ] **Step 3: 在 `SimWorld` 里建立油桶实体**
+
+在 `scripts/sim/sim_world.gd` 的 `const ZOMBIE_HIT_STUN_TICKS := 4` 之后追加：
+
+```gdscript
+
+# ---- 爆炸桶（模拟层实体） ----
+## 状态机逐条对应基线 explosive_barrel.gd 的 State，只把 EXPLODING 拆成
+## 「引信倒计时（PENDING）」+「已销毁（DESTROYED）」两段：基线用
+## await get_tree().create_timer() 计时，那是墙钟，各端会落在不同 tick 上。
+const BARREL_STATE_INTACT := 0
+const BARREL_STATE_DAMAGED := 1
+const BARREL_STATE_PENDING := 2
+const BARREL_STATE_DESTROYED := 3
+
+## apply_barrel_hit() 的返回值。REGISTERED 表示「打中了但没到任何阈值」——
+## 基线 apply_hit() 对完好的桶一律返回 HitResult.resolved()，HUD 会显示 HIT，
+## 所以这一档也必须与「没打中」区分开。
+const BARREL_HIT_NONE := 0
+const BARREL_HIT_REGISTERED := 1
+const BARREL_HIT_DAMAGED := 2
+const BARREL_HIT_EXPLODED := 3
+
+## 连锁引信至少 1 tick。基线的 _begin_explosion() 走 call_deferred + 计时器，
+## 连锁一定落在后面的帧上，绝不会在同一帧内把一整串桶递归炸完。
+const BARREL_MIN_CHAIN_TICKS := 1
+```
+
+在 `# ---- 玩家量化快照（只读输入） ----` 之前插入油桶 SoA：
+
+```gdscript
+# ---- 爆炸桶 SoA ----
+## 油桶**不做压缩删除**：数量是个位数，且引爆是在 tick 中途发生的
+## （射击结算与引信推进都会引爆），中途重排下标会让同一 tick 内已经取到的
+## 下标失效。已销毁的桶留在数组里，state 恒为 DESTROYED，射线与连锁都跳过它。
+var barrel_id := PackedInt32Array()
+var barrel_position := PackedVector2Array()
+var barrel_base_height := PackedFloat32Array()
+var barrel_state := PackedByteArray()
+var barrel_hit_count := PackedInt32Array()
+var barrel_fuse_ticks := PackedInt32Array()
+var barrel_hits_to_explode := PackedInt32Array()
+var barrel_hits_to_damage := PackedInt32Array()
+var barrel_chain_ticks := PackedInt32Array()
+var barrel_radius := PackedFloat32Array()
+var barrel_center_damage := PackedFloat32Array()
+var barrel_edge_damage := PackedFloat32Array()
+var barrel_blocker_min := PackedVector2Array()
+var barrel_blocker_max := PackedVector2Array()
+```
+
+在 `var tick_shot_events: Array = []` 之后追加：
+
+```gdscript
+var tick_barrel_events: Array = []
+```
+
+在 `reset()` 的 `zombie_attack_state = PackedInt32Array()` 之后追加：
+
+```gdscript
+	barrel_id = PackedInt32Array()
+	barrel_position = PackedVector2Array()
+	barrel_base_height = PackedFloat32Array()
+	barrel_state = PackedByteArray()
+	barrel_hit_count = PackedInt32Array()
+	barrel_fuse_ticks = PackedInt32Array()
+	barrel_hits_to_explode = PackedInt32Array()
+	barrel_hits_to_damage = PackedInt32Array()
+	barrel_chain_ticks = PackedInt32Array()
+	barrel_radius = PackedFloat32Array()
+	barrel_center_damage = PackedFloat32Array()
+	barrel_edge_damage = PackedFloat32Array()
+	barrel_blocker_min = PackedVector2Array()
+	barrel_blocker_max = PackedVector2Array()
+```
+
+在 `_clear_tick_events()` 的 `tick_shot_events = []` 之后追加：
+
+```gdscript
+	tick_barrel_events = []
+```
+
+在 `get_zombie_max_health()` 之后（`spawn_zombie()` 之前）追加读写 API：
+
+```gdscript
+
+## ---- 爆炸桶 ----
+## 注册一个爆炸桶实体。id 与僵尸共用同一个单调递增计数器，永不复用。
+## 装配方必须在 reset() **之后**、按固定顺序注册（DemoArena 按
+## World/Props/HazardZone/ExplosiveBarrels 的子节点顺序），否则各端的 id 分配会分叉。
+## 阻挡矩形的生命周期由模拟层独占：注册即标为阻挡，引爆/移除时清除。
+## 这样「哪一 tick 清掉的格」本身就是确定的，流场重算也逐 tick 对齐。
+func spawn_barrel(
+	position_xz: Vector2,
+	base_height: float,
+	blocker_min_xz: Vector2,
+	blocker_max_xz: Vector2,
+	hits_to_explode: int,
+	hits_to_damage: int,
+	chain_delay_seconds: float,
+	explosion_radius: float,
+	center_damage: float,
+	edge_damage: float
+) -> int:
+	var new_id := next_entity_id
+	next_entity_id += 1
+	# 阈值口径逐字取自基线 apply_hit()：引爆阈值至少 1，
+	# 损伤阈值夹在 [1, 引爆阈值] 内。
+	var explode_threshold := maxi(hits_to_explode, 1)
+	barrel_id.append(new_id)
+	barrel_position.append(position_xz)
+	barrel_base_height.append(base_height)
+	barrel_state.append(BARREL_STATE_INTACT)
+	barrel_hit_count.append(0)
+	barrel_fuse_ticks.append(0)
+	barrel_hits_to_explode.append(explode_threshold)
+	barrel_hits_to_damage.append(clampi(hits_to_damage, 1, explode_threshold))
+	# 秒 -> tick 用既有的 MeleeAttackCycle.ticks_for_seconds()（就是 ceil），
+	# 不另造一份换算：0.12 s / 0.05 s = 2.4 -> 3 tick = 0.15 s。
+	barrel_chain_ticks.append(maxi(
+		MeleeAttackCycleScript.ticks_for_seconds(
+			chain_delay_seconds, SimClockScript.TICK_SECONDS
+		),
+		BARREL_MIN_CHAIN_TICKS
+	))
+	barrel_radius.append(maxf(explosion_radius, 0.0))
+	barrel_center_damage.append(maxf(center_damage, 0.0))
+	barrel_edge_damage.append(maxf(edge_damage, 0.0))
+	barrel_blocker_min.append(blocker_min_xz)
+	barrel_blocker_max.append(blocker_max_xz)
+	set_blocker_world_rect(blocker_min_xz, blocker_max_xz, true)
+	return new_id
+
+func get_barrel_count() -> int:
+	return barrel_id.size()
+
+func get_barrel_id(index: int) -> int:
+	return barrel_id[index]
+
+## id 单调递增且油桶数组永不重排，因此可以直接二分。
+func index_of_barrel(barrel_id_value: int) -> int:
+	var index := barrel_id.bsearch(barrel_id_value, true)
+	if index < 0 or index >= barrel_id.size():
+		return -1
+	return index if barrel_id[index] == barrel_id_value else -1
+
+func get_barrel_position(index: int) -> Vector2:
+	return barrel_position[index]
+
+func get_barrel_base_height(index: int) -> float:
+	return barrel_base_height[index]
+
+func get_barrel_state(index: int) -> int:
+	return barrel_state[index]
+
+func get_barrel_hit_count(index: int) -> int:
+	return barrel_hit_count[index]
+
+func get_barrel_fuse_ticks(index: int) -> int:
+	return barrel_fuse_ticks[index]
+```
+
+- [ ] **Step 4: 在 `SimWorld` 里实现命中、引信、引爆与连锁**
+
+在 `apply_zombie_damage()` 之后追加：
+
+```gdscript
+
+## 唯一的油桶命中入口，语义逐条对应基线 ExplosiveBarrel.apply_hit()：
+##   - 已上引信或已销毁的桶算未命中（基线 `state >= State.EXPLODING` 返回 miss）；
+##   - 命中数封顶在引爆阈值；
+##   - 达到引爆阈值立即引爆（基线是 _request_explosion(0.0)，零延时）；
+##   - 达到损伤阈值只切表现状态，且只从 INTACT 切一次。
+func apply_barrel_hit(index: int) -> int:
+	if index < 0 or index >= barrel_id.size():
+		return BARREL_HIT_NONE
+	if barrel_state[index] >= BARREL_STATE_PENDING:
+		return BARREL_HIT_NONE
+	barrel_hit_count[index] = mini(
+		barrel_hit_count[index] + 1, barrel_hits_to_explode[index]
+	)
+	if barrel_hit_count[index] >= barrel_hits_to_explode[index]:
+		_detonate_barrel(index)
+		return BARREL_HIT_EXPLODED
+	if (
+		barrel_hit_count[index] >= barrel_hits_to_damage[index] and
+		barrel_state[index] == BARREL_STATE_INTACT
+	):
+		barrel_state[index] = BARREL_STATE_DAMAGED
+		tick_barrel_events.append({
+			"kind": &"barrel_damaged",
+			"barrel_id": barrel_id[index],
+			"position": barrel_position[index],
+			"height": barrel_base_height[index],
+		})
+		return BARREL_HIT_DAMAGED
+	return BARREL_HIT_REGISTERED
+
+## 油桶节点在**未引爆**的情况下离场（例如被别的系统回收）时由装配方排队。
+## 不排队的话模拟层会留下一块永远阻挡的幽灵 cell。
+func queue_barrel_removal(barrel_id_value: int) -> void:
+	pending_events.append({
+		"kind": &"barrel_removed",
+		"barrel_id": barrel_id_value,
+	})
+
+## 引信推进。分两趟是必须的：引爆会给别的桶上引信，
+## 若边减边引爆，本 tick 刚被点燃的桶会在同一趟里被误减一格。
+func _update_barrel_fuses() -> void:
+	var ready_indices := PackedInt32Array()
+	for index in range(barrel_id.size()):
+		if barrel_state[index] != BARREL_STATE_PENDING:
+			continue
+		var remaining := maxi(barrel_fuse_ticks[index] - 1, 0)
+		barrel_fuse_ticks[index] = remaining
+		if remaining <= 0:
+			ready_indices.append(index)
+	for index in ready_indices:
+		_detonate_barrel(index)
+
+## 引爆：清阻挡 -> 广播表现事件 -> 结算僵尸波及 -> 给邻桶上引信。
+## 先清阻挡再结算，复刻基线 ExplosionResolver 把 source 的 RID 排除在遮挡射线
+## 之外的效果——爆炸不会被自己挡住，也不该再挡住别人的视线。
+func _detonate_barrel(index: int) -> void:
+	if barrel_state[index] == BARREL_STATE_DESTROYED:
+		return
+	barrel_state[index] = BARREL_STATE_DESTROYED
+	barrel_fuse_ticks[index] = 0
+	barrel_hit_count[index] = barrel_hits_to_explode[index]
+	var origin := barrel_position[index]
+	var origin_height := SimHitGeometryScript.barrel_aim_height(
+		barrel_base_height[index]
+	)
+	var radius := barrel_radius[index]
+	var center_damage := barrel_center_damage[index]
+	var edge_damage := barrel_edge_damage[index]
+	set_blocker_world_rect(
+		barrel_blocker_min[index], barrel_blocker_max[index], false
+	)
+	tick_barrel_events.append({
+		"kind": &"barrel_exploded",
+		"barrel_id": barrel_id[index],
+		"position": origin,
+		"height": origin_height,
+		"radius": radius,
+		"center_damage": center_damage,
+		"edge_damage": edge_damage,
+	})
+	_apply_explosion_to_zombies(
+		origin, origin_height, radius, center_damage, edge_damage
+	)
+	# 连锁只上引信，不立刻炸：延时换算成 tick，各端逐 tick 对齐。
+	var chained := SimCombatScript.resolve_explosion_barrels(
+		self, origin, origin_height, radius, center_damage, edge_damage, index
+	)
+	for chained_index in chained:
+		barrel_state[chained_index] = BARREL_STATE_PENDING
+		barrel_fuse_ticks[chained_index] = barrel_chain_ticks[chained_index]
+
+## 爆炸对僵尸的结算。油桶引爆与 queue_explosion_event() 共用这一份，
+## 保证两条入口的波及口径逐字一致。
+func _apply_explosion_to_zombies(
+	origin: Vector2,
+	origin_height: float,
 	radius: float,
 	center_damage: float,
 	edge_damage: float
-)
+) -> void:
+	var targets := SimCombatScript.resolve_explosion_targets(
+		self, origin, origin_height, radius, center_damage, edge_damage
+	)
+	for target in targets:
+		apply_zombie_damage(
+			int(target["index"]),
+			roundi(float(target["damage"]) * float(HEALTH_SCALE)),
+			target["point"],
+			float(target["height"]),
+			target["direction"],
+			SimHitGeometryScript.ZONE_BODY
+		)
+
+func _resolve_barrel_removal_event(event: Dictionary) -> void:
+	var index := index_of_barrel(int(event["barrel_id"]))
+	if index < 0 or barrel_state[index] == BARREL_STATE_DESTROYED:
+		return
+	barrel_state[index] = BARREL_STATE_DESTROYED
+	barrel_fuse_ticks[index] = 0
+	set_blocker_world_rect(
+		barrel_blocker_min[index], barrel_blocker_max[index], false
+	)
 ```
 
-把 `_execute_explosion()`（第 109–135 行）替换为：
+把 `_resolve_explosion_event()`（文件末尾）替换为：
 
 ```gdscript
-func _execute_explosion() -> void:
-	if state != State.EXPLODING:
+func _resolve_explosion_event(event: Dictionary) -> void:
+	_apply_explosion_to_zombies(
+		event["origin"],
+		float(event["origin_height"]),
+		float(event["radius"]),
+		float(event["center_damage"]),
+		float(event["edge_damage"])
+	)
+```
+
+在 `_resolve_pending_events()` 的分派链里，`elif kind == &"spread_reset":` 之前插入：
+
+```gdscript
+		elif kind == &"barrel_removed":
+			_resolve_barrel_removal_event(event)
+```
+
+把 `step_tick()`（含其上方的文档注释）替换为：
+
+```gdscript
+## 推进一个模拟 tick。不接收任何真实帧时长形参：时间步长恒为 SimClock.TICK_SECONDS。
+## 顺序固定：生成 -> 散布回复 -> 油桶引信 -> 玩家事件结算 -> 流场 -> 僵尸推进 ->
+## 碰撞 -> 僵尸攻击 -> 压缩删除。任何调整都会改变哈希序列，必须同步全端。
+##
+## 引信推进排在事件结算**之前**是刻意的：本 tick 里被射击引爆的桶会给邻桶上引信，
+## 若引信先减后点，实际连锁延时会比 chain_delay_seconds 短一整 tick。
+## 引爆会清掉油桶占的阻挡格，因此这两步都必须排在 _update_flow_field() 之前，
+## 让同一 tick 的流场就看到新的通行图。
+func step_tick() -> void:
+	tick_index += 1
+	_clear_tick_events()
+	_apply_pending_spawn_waves()
+	_recover_spread()
+	_update_barrel_fuses()
+	_resolve_pending_events()
+	_update_flow_field()
+	_update_zombies()
+	_resolve_collisions()
+	_resolve_zombie_attacks()
+	_compact_dead()
+```
+
+把 `_resolve_shot_event()` 里从 `var current_damage := float(profile["damage"])` 起到 for 循环结束（`current_damage *= coefficient` 那一行）的整段替换为：
+
+```gdscript
+	var current_damage := float(profile["damage"])
+	for hit in hits:
+		var index := int(hit["index"])
+		var hit_zone: StringName = hit["zone"]
+		# 油桶终止射线。基线 ranged_weapon.gd 的 _find_damage_target() 对油桶返回
+		# null（油桶不在 damageable_targets 组里），于是走 _apply_damage() 把
+		# **武器原始 damage**（不是穿透衰减后的 current_damage）递给 apply_hit()
+		# 再 break——这里逐条复刻，包括不消耗穿透名额。
+		if hit["kind"] == SimCombatScript.KIND_BARREL:
+			var barrel_outcome := apply_barrel_hit(index)
+			if barrel_outcome != BARREL_HIT_NONE:
+				did_hit = true
+				zone = hit_zone
+				total_damage += float(profile["damage"])
+				killed = killed or barrel_outcome == BARREL_HIT_EXPLODED
+			end_position = hit["point"]
+			break
+		var multiplier := SimHitGeometryScript.damage_multiplier(hit_zone)
+		var damage_points := roundi(current_damage * multiplier * float(HEALTH_SCALE))
+		var before_health := zombie_health[index]
+		if apply_zombie_damage(
+			index, damage_points, hit["point"], hit["height"], direction, hit_zone
+		):
+			did_hit = true
+			zone = hit_zone
+			total_damage += float(before_health - zombie_health[index]) / float(HEALTH_SCALE)
+			killed = killed or zombie_state[index] == STATE_DEAD
+		# 曳光终点始终落在最后一个被处理的命中点；穿透关闭时即第一个命中点。
+		end_position = hit["point"]
+		if coefficient <= 0.0:
+			break
+		current_damage *= coefficient
+```
+
+- [ ] **Step 5: 把油桶状态纳入帧哈希**
+
+⚠️ 没有这一步，油桶在各端不同步**不会被检测到**：僵尸的分叉要等到爆炸真的炸偏了才浮现，
+而那时已经晚了一大截。
+
+把 `scripts/sim/sim_hasher.gd` 的 `hash_world()`（含其上方的文档注释）替换为：
+
+```gdscript
+## 纳入哈希的字段：僵尸的实体 id、位置、高度、朝向、血量、状态、目标槽位；
+## 油桶的实体 id、位置、状态、命中计数、引信剩余 tick；玩家量化快照与散布；
+## 各 RNG 流的 state、当前 tick。Packed 数组的 to_byte_array() 直接给出
+## 小端 IEEE 位模式，无需逐元素拆解。
+##
+## 不哈希阻挡网格（约 1.9 KB/tick，会让 3000 tick 的回归多跑两成）：
+## 模拟层内部唯一会改动阻挡格的就是油桶的注册与引爆，而油桶的
+## state / hit_count / fuse_ticks 已经逐 tick 进了哈希，网格分叉必然先在这里暴露。
+## 表现层驱动的放置与拾取箱增删属于 S3 的输入同步范畴，不由本层的哈希覆盖。
+static func hash_world(world: SimWorld) -> String:
+	var hasher := new()
+	hasher.mix_uint32(world.get_tick())
+	hasher.mix_uint32(world.get_zombie_count())
+	hasher.mix_uint32(world.get_next_entity_id())
+	hasher.mix_bytes(world.zombie_id.to_byte_array())
+	hasher.mix_bytes(world.zombie_position.to_byte_array())
+	hasher.mix_bytes(world.zombie_height.to_byte_array())
+	hasher.mix_bytes(world.zombie_facing.to_byte_array())
+	hasher.mix_bytes(world.zombie_health.to_byte_array())
+	hasher.mix_bytes(world.zombie_state)
+	hasher.mix_bytes(world.zombie_target_slot)
+	hasher.mix_uint32(world.get_barrel_count())
+	hasher.mix_bytes(world.barrel_id.to_byte_array())
+	hasher.mix_bytes(world.barrel_position.to_byte_array())
+	hasher.mix_bytes(world.barrel_state)
+	hasher.mix_bytes(world.barrel_hit_count.to_byte_array())
+	hasher.mix_bytes(world.barrel_fuse_ticks.to_byte_array())
+	hasher.mix_bytes(world.player_position_quantized.to_byte_array())
+	hasher.mix_bytes(world.player_alive)
+	hasher.mix_bytes(world.player_present)
+	hasher.mix_bytes(world.player_spread_degrees.to_byte_array())
+	for state_word in world.get_rng().get_state_words():
+		hasher.mix_int64(state_word)
+	return hasher.get_hash_hex()
+```
+
+- [ ] **Step 6: 把 `ExplosiveBarrel` 降级为表现件 + 玩家伤害源**
+
+把 `scripts/props/explosive_barrel.gd` **整文件替换**为：
+
+```gdscript
+extends StaticBody3D
+class_name ExplosiveBarrel
+
+## 纯表现件 + 玩家伤害源。
+##
+## 血量、命中计数、引信、连锁、对僵尸的伤害、以及自己占的阻挡 cell，
+## 全部住在 SimWorld 的油桶实体里（sim_world.gd 的 barrel_* 数组）。
+## 基线用 `await get_tree().create_timer(delay).timeout` 做连锁延时，那是墙钟计时，
+## 各端会落在不同 tick 上，被炸死的僵尸随之分叉——这正是本节点被掏空的原因。
+##
+## 本节点只做四件事：
+##   1. 把自己的导出参数交给装配方注册进模拟层（DemoArena._register_barrel()）；
+##   2. 收到模拟层的「受损」事件时切换外观；
+##   3. 收到模拟层的「引爆」事件时播特效，并对**玩家**结算爆炸伤害；
+##   4. 离场时广播导航几何变化。
+## 它不得再持有任何参与判定的状态，也不得自行决定何时爆炸。
+const ExplosionResolver = preload("res://scripts/combat/explosion_resolver.gd")
+const BARREL_EXPLOSION_SCENE := preload("res://scenes/fx/BarrelExplosion.tscn")
+const AIM_POINT_HEIGHT := 0.72
+
+signal navigation_geometry_changed
+
+@export_range(1, 10, 1) var firearm_hits_to_explode := 3
+@export_range(1, 9, 1) var firearm_hits_to_damage := 2
+@export_range(0.0, 2.0, 0.01) var chain_delay_seconds := 0.12
+@export_range(0.1, 20.0, 0.1) var explosion_radius := 4.5
+@export_range(0.0, 500.0, 1.0) var explosion_center_damage := 80.0
+@export_range(0.0, 500.0, 1.0) var explosion_edge_damage := 20.0
+## 基线是 7（层 1 世界 | 层 2 玩家 | 层 3 目标），现在收窄到只剩玩家层 2：
+## 僵尸已退出物理世界（表现节点在层 4 且不在 damageable_targets 组），
+## 其他油桶的连锁改由模拟层负责——保留层 1 会让物理侧再引爆一次
+## 已经在模拟层引爆过的桶，两条路径各炸一遍。
+@export_flags_3d_physics var explosion_target_mask := 2
+@export_flags_3d_physics var explosion_obstacle_mask := 1
+
+@onready var visual_root: Node3D = $VisualRoot
+@onready var damage_smoke: Node3D = $DamageSmoke
+@onready var collision_shape: CollisionShape3D = $CollisionShape3D
+
+## 模拟层实体 id，由 DemoArena 在注册后回填。0 表示尚未注册。
+var sim_barrel_id := 0
+var exploded := false
+
+func bind_sim_barrel(barrel_id_value: int) -> void:
+	sim_barrel_id = barrel_id_value
+
+func get_sim_barrel_id() -> int:
+	return sim_barrel_id
+
+## 爆心。模拟层的 SimHitGeometry.BARREL_AIM_HEIGHT 与本常量必须一致。
+func get_explosion_aim_point() -> Vector3:
+	return global_position + Vector3.UP * AIM_POINT_HEIGHT
+
+## 模拟层判定命中数达到损伤阈值。纯外观，不改变任何参与判定的状态。
+func play_damaged() -> void:
+	visual_root.scale = Vector3(1.06, 0.88, 1.06)
+	visual_root.rotation_degrees.z = 7.0
+	if damage_smoke != null and damage_smoke.has_method("activate"):
+		damage_smoke.call("activate")
+
+## 模拟层判定本桶引爆。爆心由模拟层给出，保证与僵尸伤害用的是同一个点。
+## 只对玩家结算：can_trigger_explosives = false 关掉物理侧的连锁，
+## explosion_target_mask 也已收窄到玩家层——两道闸门都要在。
+func play_explosion(origin: Vector3) -> void:
+	if exploded:
 		return
-	var origin := get_explosion_aim_point()
-	var blocker_bounds := PlaceItemGrid.collision_object_world_aabb(self)
+	exploded = true
 	if collision_shape != null:
 		collision_shape.set_deferred("disabled", true)
 	if damage_smoke != null:
@@ -5357,13 +6128,6 @@ func _execute_explosion() -> void:
 		else:
 			damage_smoke.visible = false
 	_spawn_explosion_fx(origin)
-	blocker_cleared.emit(blocker_bounds)
-	sim_explosion_requested.emit(
-		origin,
-		explosion_radius,
-		explosion_center_damage,
-		explosion_edge_damage
-	)
 	var world := get_world_3d()
 	if world != null:
 		ExplosionResolver.resolve(
@@ -5373,17 +6137,32 @@ func _execute_explosion() -> void:
 			explosion_center_damage,
 			explosion_edge_damage,
 			self,
-			true,
+			false,
 			explosion_target_mask,
 			explosion_obstacle_mask
 		)
-	state = State.DESTROYED
-	call_deferred("_finish_destroyed")
+	remove_from_group(&"navigation_source")
+	navigation_geometry_changed.emit()
+	queue_free()
+
+func _spawn_explosion_fx(origin: Vector3) -> void:
+	var parent := get_parent()
+	if parent == null:
+		return
+	var effect := BARREL_EXPLOSION_SCENE.instantiate() as BarrelExplosion
+	parent.add_child(effect)
+	effect.explode_at(origin)
 ```
 
-`ExplosionResolver.resolve()` 保留：它仍要处理玩家与连锁引爆的其他爆炸桶，这些都还在物理世界里。僵尸的波及判定改由 `sim_explosion_requested` 走模拟层。
+相对基线的删除项：`State` 枚举、`firearm_hit_count`、`apply_hit()`、`apply_explosion_damage()`、
+`get_state()`、`get_firearm_hit_count()`、`_enter_damaged_state()`、`_request_explosion()`、
+`explosion_requested` 信号及其 `_ready()` 连线、`_on_explosion_requested()`、`_begin_explosion()`
+（那句 `await get_tree().create_timer()` 随它一起消失）、`_execute_explosion()`、`_finish_destroyed()`、
+以及 `HitResult` 的 preload。全仓库没有其他调用点：`apply_hit` 只被 Task 8 已删除的
+`ranged_weapon._apply_damage()` 调过，`apply_explosion_damage` 只被 `ExplosionResolver` 按
+`has_method()` 探测——方法没了，那条支路自然走不到。
 
-- [ ] **Step 2: 在 `ExplosionResolver` 写明职责边界**
+- [ ] **Step 7: 在 `ExplosionResolver` 写明职责边界**
 
 把 `scripts/combat/explosion_resolver.gd` 第 1–6 行替换为：
 
@@ -5391,26 +6170,30 @@ func _execute_explosion() -> void:
 extends RefCounted
 class_name ExplosionResolver
 
-## 物理世界里的爆炸波及判定：玩家、连锁引爆的其他爆炸桶、以及任何仍是
-## CollisionObject3D 的可伤害目标。
+## 物理世界里的爆炸波及判定，S0 之后**只剩玩家**这一类目标。
 ##
-## 僵尸不在此列：S0 之后僵尸已退出 Godot 物理世界，其波及判定与伤害衰减
-## 由 SimCombat.resolve_explosion_targets() 在 SimWorld 上完成
-## （入口是 ExplosiveBarrel.sim_explosion_requested）。
+## 僵尸不在此列：僵尸已退出 Godot 物理世界（表现节点在层 4 ZombieBlocker，
+## 且不在 damageable_targets 组），其波及判定与伤害衰减由
+## SimCombat.resolve_explosion_targets() 在 SimWorld 上完成。
+## 其他爆炸桶也不在此列：连锁引爆由 SimWorld 的 tick 引信驱动
+## （SimCombat.resolve_explosion_barrels()），调用方必须传
+## can_trigger_explosives = false，否则同一串桶会被物理与模拟各炸一遍。
 ## 两条路径共用 ExplosionMath.damage_at_distance() 的衰减公式。
 const ExplosionMath = preload("res://scripts/combat/explosion_math.gd")
 const MAX_INTERSECTIONS := 128
 ```
 
-- [ ] **Step 3: 让 `PlaceItemService` 广播放置与移除**
+- [ ] **Step 8: 让 `PlaceItemService` 广播放置与移除**
 
 在 `scripts/gameplay/place_item_service.gd` 的 `signal placement_rejected(reason: StringName)`（第 5 行）之后追加：
 
 ```gdscript
-## 运行时放置的油桶是新的阻挡几何，必须标脏对应 cell。
+## 运行时放置的物件是新的阻挡几何，必须标脏对应 cell；
+## 若它是爆炸桶，还要注册成模拟层实体（见 DemoArena._on_item_placed()）。
 signal item_placed(item: Node3D)
-## 移除时广播消失前采集的世界 AABB。
-signal item_removed(world_aabb: AABB)
+## 移除时把节点与消失前采集的世界 AABB 一起广播：
+## 爆炸桶要靠节点本身拿到模拟层 id，光有 AABB 不够。
+signal item_removed(item: Node3D, world_aabb: AABB)
 ```
 
 把 `request_place_item()` 结尾的两行（第 47–48 行）：
@@ -5424,6 +6207,7 @@ signal item_removed(world_aabb: AABB)
 
 ```gdscript
 	placement_geometry_changed.emit()
+	# 必须在 item.global_position 落位之后再发：注册方要按它读世界坐标。
 	item_placed.emit(item)
 	return true
 ```
@@ -5443,10 +6227,10 @@ func _on_item_tree_exiting(item: Node3D) -> void:
 		grid.release_owner(item)
 	if is_inside_tree():
 		placement_geometry_changed.emit()
-	item_removed.emit(bounds)
+	item_removed.emit(item, bounds)
 ```
 
-- [ ] **Step 4: 让 `PickupSpawnPoint` 广播拾取箱的出现与消失**
+- [ ] **Step 9: 让 `PickupSpawnPoint` 广播拾取箱的出现与消失**
 
 在 `scripts/gameplay/pickup_spawn_point.gd` 的 `signal navigation_geometry_changed`（第 4 行）之后追加：
 
@@ -5483,9 +6267,28 @@ func get_current_pickup() -> PickupChest:
 	return current_pickup
 ```
 
-- [ ] **Step 5: 在竞技场接上三条标脏通路**
+- [ ] **Step 10: 在竞技场注册油桶、消费油桶事件并接上标脏通路**
 
-把 `scripts/gameplay/demo_arena.gd` 的 `_wire_dependencies()` 中爆炸桶区块（基线第 177–190 行）替换为：
+在 `scripts/gameplay/demo_arena.gd` 的 `const PlaceItemGridScript = preload("res://scripts/gameplay/place_item_grid.gd")`（Task 7 Step 8 加入）之后追加：
+
+```gdscript
+const SimHitGeometryScript = preload("res://scripts/sim/sim_hit_geometry.gd")
+```
+
+在 `var weapon_profile_indices: Dictionary = {}`（Task 8 Step 6 加入）之后追加：
+
+```gdscript
+## 模拟层油桶 id -> 表现节点。只做按 id 的键值查找，不遍历它驱动任何判定。
+var barrel_views: Dictionary = {}
+```
+
+在 `_setup_simulation()` 的 `sim_world.reset(...)` 之后**紧接着**插入：
+
+```gdscript
+	_register_scene_barrels()
+```
+
+把 `_wire_dependencies()` 中爆炸桶区块（基线第 177–190 行）替换为：
 
 ```gdscript
 	var barrels_root := get_node_or_null(
@@ -5528,10 +6331,18 @@ func get_current_pickup() -> PickupChest:
 			place_item_service.placement_geometry_changed.connect(
 				_on_runtime_navigation_geometry_changed
 			)
-		if not place_item_service.item_placed.is_connected(_on_blocker_added):
-			place_item_service.item_placed.connect(_on_blocker_added)
-		if not place_item_service.item_removed.is_connected(_on_blocker_cleared):
-			place_item_service.item_removed.connect(_on_blocker_cleared)
+		if not place_item_service.item_placed.is_connected(_on_item_placed):
+			place_item_service.item_placed.connect(_on_item_placed)
+		if not place_item_service.item_removed.is_connected(_on_item_removed):
+			place_item_service.item_removed.connect(_on_item_removed)
+```
+
+在 `_consume_sim_events()` 的 `for event in sim_world.tick_shot_events:` 循环之后、
+`for event in sim_world.tick_hit_events:` 之前插入：
+
+```gdscript
+	for event in sim_world.tick_barrel_events:
+		_on_sim_barrel_event(event)
 ```
 
 在文件中追加处理函数：
@@ -5547,17 +6358,103 @@ func _wire_explosive_barrel(barrel: Node) -> void:
 		explosive.navigation_geometry_changed.connect(
 			_on_runtime_navigation_geometry_changed
 		)
-	if not explosive.blocker_cleared.is_connected(_on_blocker_cleared):
-		explosive.blocker_cleared.connect(_on_blocker_cleared)
-	if not explosive.sim_explosion_requested.is_connected(_on_barrel_sim_explosion):
-		explosive.sim_explosion_requested.connect(_on_barrel_sim_explosion)
 
-func _on_blocker_added(item: Node3D) -> void:
+## 场景自带的爆炸桶按 ExplosiveBarrels 的子节点顺序注册，顺序即 id 分配顺序，
+## 各端读同一个 .tscn，因此顺序天然一致。
+## 必须在 sim_world.reset() 之后调用：reset() 会把实体 id 计数器归 1 并清空油桶数组。
+func _register_scene_barrels() -> void:
+	barrel_views = {}
+	var barrels_root := get_node_or_null(
+		"World/Props/HazardZone/ExplosiveBarrels"
+	)
+	if barrels_root == null:
+		return
+	for child in barrels_root.get_children():
+		_register_barrel(child as ExplosiveBarrel)
+
+## 把一个爆炸桶节点注册成模拟层实体。幂等：已注册过的桶直接返回。
+## 阻挡矩形取自碰撞体世界 AABB；拿不到（形状被禁用等）时退回按桶半径的方形，
+## 绝不能传空矩形——SimWorld 会把它当成退化矩形至少标一格。
+## 注册**只能**挂在 PlaceItemService.item_placed 上，不能挂在 child_entered_tree 上：
+## request_place_item() 是先 add_child() 再写 global_position 的，
+## child_entered_tree 触发时节点还停在原点。
+func _register_barrel(barrel: ExplosiveBarrel) -> void:
+	if barrel == null or barrel.get_sim_barrel_id() != 0:
+		return
+	var origin := barrel.global_position
+	var minimum := Vector2(
+		origin.x - SimHitGeometryScript.BARREL_RADIUS,
+		origin.z - SimHitGeometryScript.BARREL_RADIUS
+	)
+	var maximum := Vector2(
+		origin.x + SimHitGeometryScript.BARREL_RADIUS,
+		origin.z + SimHitGeometryScript.BARREL_RADIUS
+	)
+	var bounds := PlaceItemGridScript.collision_object_world_aabb(barrel)
+	if bounds.size != Vector3.ZERO:
+		minimum = Vector2(bounds.position.x, bounds.position.z)
+		maximum = Vector2(bounds.end.x, bounds.end.z)
+	var barrel_id_value := sim_world.spawn_barrel(
+		Vector2(origin.x, origin.z),
+		origin.y,
+		minimum,
+		maximum,
+		barrel.firearm_hits_to_explode,
+		barrel.firearm_hits_to_damage,
+		barrel.chain_delay_seconds,
+		barrel.explosion_radius,
+		barrel.explosion_center_damage,
+		barrel.explosion_edge_damage
+	)
+	barrel.bind_sim_barrel(barrel_id_value)
+	barrel_views[barrel_id_value] = barrel
+
+func _barrel_view(barrel_id_value: int) -> ExplosiveBarrel:
+	var view = barrel_views.get(barrel_id_value, null)
+	if view == null or not is_instance_valid(view):
+		barrel_views.erase(barrel_id_value)
+		return null
+	return view as ExplosiveBarrel
+
+## 表现层只是把模拟层已经做完的判定演出来：受损换外观，引爆播特效并打玩家。
+func _on_sim_barrel_event(event: Dictionary) -> void:
+	var barrel_id_value := int(event["barrel_id"])
+	var barrel := _barrel_view(barrel_id_value)
+	if barrel == null:
+		return
+	var kind: StringName = event["kind"]
+	if kind == &"barrel_damaged":
+		barrel.play_damaged()
+		return
+	if kind == &"barrel_exploded":
+		var planar: Vector2 = event["position"]
+		barrel_views.erase(barrel_id_value)
+		barrel.play_explosion(
+			Vector3(planar.x, float(event["height"]), planar.y)
+		)
+
+## 油桶的阻挡格由 SimWorld 在 spawn_barrel() / 引爆时独占维护，
+## 所以这里**不**再调 mark_blocker()：阻挡格是布尔量，重复标记本身无害，
+## 但把生命周期收在模拟层一处，「哪一 tick 清的格」才是确定的。
+func _on_item_placed(item: Node3D) -> void:
+	var barrel := item as ExplosiveBarrel
+	if barrel != null:
+		_register_barrel(barrel)
+		return
 	var obstacle := item as CollisionObject3D
 	if obstacle != null:
 		mark_blocker(obstacle, true)
 
-func _on_blocker_cleared(world_aabb: AABB) -> void:
+func _on_item_removed(item: Node3D, world_aabb: AABB) -> void:
+	var barrel := item as ExplosiveBarrel
+	if barrel != null:
+		var barrel_id_value := barrel.get_sim_barrel_id()
+		if barrel_id_value != 0:
+			barrel_views.erase(barrel_id_value)
+			# 已引爆的桶在模拟层早就是 DESTROYED，这里是幂等兜底：
+			# 只有「没炸就离场」的桶才真的需要它来清掉阻挡格。
+			sim_world.queue_barrel_removal(barrel_id_value)
+		return
 	_apply_blocker_bounds(world_aabb, false)
 
 func _on_pickup_blocker_changed(world_aabb: AABB, blocked: bool) -> void:
@@ -5571,23 +6468,310 @@ func _apply_blocker_bounds(world_aabb: AABB, blocked: bool) -> void:
 		Vector2(world_aabb.end.x, world_aabb.end.z),
 		blocked
 	)
-
-func _on_barrel_sim_explosion(
-	origin: Vector3,
-	radius: float,
-	center_damage: float,
-	edge_damage: float
-) -> void:
-	sim_world.queue_explosion_event(
-		Vector2(origin.x, origin.z),
-		origin.y,
-		radius,
-		center_damage,
-		edge_damage
-	)
 ```
 
-- [ ] **Step 6: 冒烟验证三条标脏通路都会触发流场重算**
+`_bake_static_blockers()`（Task 7 Step 10）按 `place_item_obstacle` 组烘焙时也会扫到场景里的
+爆炸桶，随后 `spawn_barrel()` 会把同一块矩形再标一次——阻挡格是布尔量，重复标记幂等，
+不必为此改 `_bake_static_blockers()`。
+
+- [ ] **Step 11: 新增 `tools/validation/validate_sim_barrel.gd` 并运行**
+
+Run:
+
+```bash
+cd /Users/liangpingbo/Desktop/4399/game/zombiewar
+cat > tools/validation/validate_sim_barrel.gd <<'EOF'
+extends SceneTree
+
+## 爆炸桶模拟层的回归。守住：命中阈值与状态迁移、射线在油桶处终止、
+## 爆炸真的伤到僵尸、连锁延时逐 tick 精确、引爆清掉阻挡格、
+## 油桶状态真的进了帧哈希、以及同一场景重放逐 tick 哈希一致。
+const SimWorldScript = preload("res://scripts/sim/sim_world.gd")
+const SimHasherScript = preload("res://scripts/sim/sim_hasher.gd")
+
+const GRID_ORIGIN := Vector2(-24.5, -19.5)
+const GRID_CELL_SIZE := 1.0
+const GRID_WIDTH := 49
+const GRID_HEIGHT := 39
+const ROOM_SEED := 20260807
+const PROFILE := 0
+const SHOT_ORIGIN := Vector2(0.0, 0.0)
+const MUZZLE_HEIGHT := 1.1
+const AIM := Vector2(1.0, 0.0)
+const BARREL_A := Vector2(5.0, 0.0)
+const BARREL_B := Vector2(8.0, 0.0)
+const CHAIN_DELAY_SECONDS := 0.12
+const EXPECTED_CHAIN_TICKS := 3    # ceili(0.12 / 0.05)
+
+func _init() -> void:
+	call_deferred("_run")
+
+func _run() -> void:
+	var failures: Array[String] = []
+	_check_hit_thresholds(failures)
+	_check_ray_stops_at_barrel(failures)
+	_check_explosion_damages_zombies(failures)
+	_check_chain_delay_is_tick_exact(failures)
+	_check_blocker_cleared_on_detonation(failures)
+	_check_barrel_state_is_hashed(failures)
+	_check_replay_is_identical(failures)
+	_finish(failures)
+
+func _new_world() -> SimWorld:
+	var world: SimWorld = SimWorldScript.new()
+	world.configure(GRID_ORIGIN, GRID_CELL_SIZE, GRID_WIDTH, GRID_HEIGHT)
+	world.reset(ROOM_SEED)
+	# 无散布、无穿透的步枪档案：射向恒等于瞄准方向，命中序列可断言。
+	world.configure_weapon_profile(PROFILE, 25.0, 30.0, 0.0, 0.0, 0.0, 0.0, 0, 0.0)
+	return world
+
+func _spawn_barrel(world: SimWorld, position: Vector2) -> int:
+	return world.spawn_barrel(
+		position,
+		0.0,
+		position - Vector2(0.44, 0.44),
+		position + Vector2(0.44, 0.44),
+		3,
+		2,
+		CHAIN_DELAY_SECONDS,
+		4.5,
+		80.0,
+		20.0
+	)
+
+func _fire_once(world: SimWorld) -> void:
+	world.queue_fire_event(0, PROFILE, SHOT_ORIGIN, MUZZLE_HEIGHT, AIM)
+	world.step_tick()
+
+func _check_hit_thresholds(failures: Array[String]) -> void:
+	var world := _new_world()
+	_spawn_barrel(world, BARREL_A)
+	_fire_once(world)
+	_expect(
+		world.get_barrel_hit_count(0) == 1,
+		"the first shot must register on the barrel",
+		failures
+	)
+	_expect(
+		world.get_barrel_state(0) == SimWorldScript.BARREL_STATE_INTACT,
+		"one hit must not damage the barrel",
+		failures
+	)
+	_fire_once(world)
+	_expect(
+		world.get_barrel_state(0) == SimWorldScript.BARREL_STATE_DAMAGED,
+		"the second hit must enter the damaged state",
+		failures
+	)
+	_expect(
+		_count_events(world.tick_barrel_events, &"barrel_damaged") == 1,
+		"entering the damaged state must emit exactly one presentation event",
+		failures
+	)
+	_fire_once(world)
+	_expect(
+		world.get_barrel_state(0) == SimWorldScript.BARREL_STATE_DESTROYED,
+		"the third hit must detonate the barrel",
+		failures
+	)
+	_expect(
+		_count_events(world.tick_barrel_events, &"barrel_exploded") == 1,
+		"detonation must emit exactly one presentation event",
+		failures
+	)
+	_fire_once(world)
+	_expect(
+		_count_events(world.tick_barrel_events, &"barrel_exploded") == 0,
+		"a destroyed barrel must not detonate twice",
+		failures
+	)
+
+func _check_ray_stops_at_barrel(failures: Array[String]) -> void:
+	var world := _new_world()
+	_spawn_barrel(world, BARREL_A)
+	# 油桶正后方 2 m 的僵尸：基线的物理射线打中层 1 静态体后 break，
+	# 模拟层必须给出同样的结论。
+	world.spawn_zombie(Vector2(7.0, 0.0), 0.0, 50.0)
+	var full_health := world.get_zombie_health(0)
+	_fire_once(world)
+	_expect(
+		world.get_barrel_hit_count(0) == 1,
+		"the shot must land on the barrel that stands in front",
+		failures
+	)
+	_expect(
+		world.get_zombie_health(0) == full_health,
+		"a zombie behind a barrel must not take bullet damage",
+		failures
+	)
+	var shot_events := world.tick_shot_events
+	_expect(shot_events.size() == 1, "one shot must produce one shot event", failures)
+	if shot_events.size() == 1:
+		_expect(
+			bool(shot_events[0]["did_hit"]),
+			"hitting a barrel must report did_hit (baseline returns HitResult.resolved)",
+			failures
+		)
+		_expect(
+			StringName(shot_events[0]["zone"]) == &"barrel",
+			"a barrel hit must report the barrel hit zone",
+			failures
+		)
+
+func _check_explosion_damages_zombies(failures: Array[String]) -> void:
+	var world := _new_world()
+	_spawn_barrel(world, BARREL_A)
+	world.spawn_zombie(BARREL_A + Vector2(0.0, 2.0), 0.0, 50.0)
+	var full_health := world.get_zombie_health(0)
+	_fire_once(world)
+	_fire_once(world)
+	_fire_once(world)
+	_expect(
+		world.get_zombie_count() == 0 or world.get_zombie_health(0) < full_health,
+		"a zombie inside the blast radius must take explosion damage",
+		failures
+	)
+
+func _check_chain_delay_is_tick_exact(failures: Array[String]) -> void:
+	var world := _new_world()
+	_spawn_barrel(world, BARREL_A)
+	_spawn_barrel(world, BARREL_B)
+	_fire_once(world)
+	_fire_once(world)
+	_fire_once(world)
+	var detonation_tick := world.get_tick()
+	_expect(
+		world.get_barrel_state(0) == SimWorldScript.BARREL_STATE_DESTROYED,
+		"the shot barrel must detonate",
+		failures
+	)
+	_expect(
+		world.get_barrel_state(1) == SimWorldScript.BARREL_STATE_PENDING,
+		"a barrel in range must only get a fuse, never detonate in the same tick",
+		failures
+	)
+	_expect(
+		world.get_barrel_fuse_ticks(1) == EXPECTED_CHAIN_TICKS,
+		"the fuse must be ceili(chain_delay_seconds / TICK_SECONDS) ticks",
+		failures
+	)
+	var chain_tick := -1
+	for _step in range(EXPECTED_CHAIN_TICKS + 4):
+		world.step_tick()
+		if (
+			chain_tick < 0 and
+			world.get_barrel_state(1) == SimWorldScript.BARREL_STATE_DESTROYED
+		):
+			chain_tick = world.get_tick()
+	_expect(
+		chain_tick - detonation_tick == EXPECTED_CHAIN_TICKS,
+		"the chained barrel must detonate exactly %d ticks later (got %d)" % [
+			EXPECTED_CHAIN_TICKS, chain_tick - detonation_tick
+		],
+		failures
+	)
+
+func _check_blocker_cleared_on_detonation(failures: Array[String]) -> void:
+	var world := _new_world()
+	_spawn_barrel(world, BARREL_A)
+	var grid := world.get_grid()
+	var cell := grid.world_to_cell(BARREL_A)
+	_expect(grid.is_blocked(cell), "a registered barrel must block its cell", failures)
+	_fire_once(world)
+	_fire_once(world)
+	_fire_once(world)
+	_expect(
+		not grid.is_blocked(cell),
+		"detonation must clear the cells the barrel occupied",
+		failures
+	)
+
+## 负向对照。刻意用 apply_barrel_hit() 而不是 _fire_once()：
+## 开火会消耗 Stream.WEAPON_SPREAD，RNG 的 state 本身就进了哈希，
+## 那样即使油桶完全没进哈希这条断言也会绿——等于什么都没测。
+## 直接打一发（只改 barrel_hit_count、不改状态、不碰 RNG）才真的在测油桶字段。
+func _check_barrel_state_is_hashed(failures: Array[String]) -> void:
+	var untouched := _new_world()
+	_spawn_barrel(untouched, BARREL_A)
+	untouched.step_tick()
+	var hit_once := _new_world()
+	_spawn_barrel(hit_once, BARREL_A)
+	hit_once.apply_barrel_hit(0)
+	hit_once.step_tick()
+	_expect(
+		hit_once.get_barrel_state(0) == SimWorldScript.BARREL_STATE_INTACT,
+		"one hit must leave the barrel intact, so only barrel_hit_count differs",
+		failures
+	)
+	_expect(
+		SimHasherScript.hash_world(untouched) != SimHasherScript.hash_world(hit_once),
+		"a barrel hit must change the frame hash, otherwise barrel desync is invisible",
+		failures
+	)
+
+func _check_replay_is_identical(failures: Array[String]) -> void:
+	var first := _run_chain_scenario()
+	var second := _run_chain_scenario()
+	_expect(
+		first == second,
+		"replaying the same barrel scenario must produce the same hash sequence",
+		failures
+	)
+
+func _run_chain_scenario() -> PackedStringArray:
+	var world := _new_world()
+	_spawn_barrel(world, BARREL_A)
+	_spawn_barrel(world, BARREL_B)
+	world.spawn_zombie(Vector2(6.0, 1.0), 0.0, 50.0)
+	world.spawn_zombie(Vector2(9.0, -1.0), 0.0, 50.0)
+	world.set_player_snapshot(0, Vector2(-6.0, 0.0), true, true)
+	var hashes := PackedStringArray()
+	for tick in range(24):
+		if tick < 3:
+			world.queue_fire_event(0, PROFILE, SHOT_ORIGIN, MUZZLE_HEIGHT, AIM)
+		world.step_tick()
+		hashes.append(SimHasherScript.hash_world(world))
+	return hashes
+
+func _count_events(events: Array, kind: StringName) -> int:
+	var total := 0
+	for event in events:
+		if StringName(event["kind"]) == kind:
+			total += 1
+	return total
+
+func _finish(failures: Array[String]) -> void:
+	if failures.is_empty():
+		print("validate_sim_barrel: PASS")
+		quit(0)
+		return
+	for failure in failures:
+		push_error(failure)
+	quit(1)
+
+func _expect(condition: bool, message: String, failures: Array[String]) -> void:
+	if not condition:
+		failures.append(message)
+EOF
+/Applications/Godot.app/Contents/MacOS/Godot \
+  --headless --path . --script res://tools/validation/validate_sim_barrel.gd 2>&1 \
+  | tee /tmp/zw_validate_sim_barrel.log
+grep -q "validate_sim_barrel: PASS" /tmp/zw_validate_sim_barrel.log \
+  || echo "FAILED: validate_sim_barrel"
+```
+
+Expected: 输出 `validate_sim_barrel: PASS`，且没有 `FAILED:` 行（判据是 `PASS` 行不是退出码，
+见 Global Constraints）。这个脚本**保留在仓库里**（不是冒烟脚本），它是油桶模拟层的长期回归。
+
+失败排查顺序：
+- `a zombie behind a barrel must not take bullet damage` → `_append_barrel_hits()` 没被调用，
+  或 `resolve_ray_hits()` 结尾没有在第一个油桶处收尾。
+- `the fuse must be ceili(...)` → `spawn_barrel()` 的秒转 tick 用了 `roundi`/整除而不是 `ticks_for_seconds()`。
+- `must detonate exactly 3 ticks later` → `_update_barrel_fuses()` 排在 `_resolve_pending_events()`
+  之后了（会短一 tick），或没有分两趟（新点燃的桶被同趟误减）。
+- `a barrel hit must change the frame hash` → Step 5 的 `hash_world()` 没落地。
+
+- [ ] **Step 12: 冒烟验证三条标脏通路都会触发流场重算**
 
 Run:
 
@@ -5628,7 +6812,7 @@ rm -f tools/validation/zw_blocker_dirty_smoke.gd tools/validation/zw_blocker_dir
 
 Expected: 输出 `baseline=1 idle=1 after_add=2 after_remove=3`（`grep` 把「脚本真的跑了」和「解析失败但退出码仍为 0」区分开，见 Global Constraints）—— 玩家不动且阻挡未变时不重算，增删阻挡各触发一次重算。冒烟脚本运行后必须删除；`.uid` 只有在编辑器导入过一次后才存在，因此用 `rm -f` 而不是 `rm`。
 
-- [ ] **Step 7: 静态检查与确定性回归**
+- [ ] **Step 13: 静态检查、物理闸门与确定性回归**
 
 Run:
 
@@ -5636,40 +6820,92 @@ Run:
 cd /Users/liangpingbo/Desktop/4399/game/zombiewar
 /Applications/Godot.app/Contents/MacOS/Godot \
   --headless --editor --path . --quit
-for script in validate_flow_field validate_pickup_spawn_point; do
+# 模拟层不得出现被禁 API（Task 4 Step 8 的同一条闸门）
+rg -n "get_tree\(\)|create_timer|intersect_ray|intersect_shape|randf\(|randi\(" scripts/sim \
+  || echo "sim layer keeps the determinism gate"
+# 爆炸桶节点不得再持有任何判定状态
+rg -n "await|create_timer|firearm_hit_count|apply_explosion_damage" scripts/props/explosive_barrel.gd \
+  || echo "explosive barrel is presentation only"
+for script in validate_sim_barrel validate_flow_field validate_pickup_spawn_point; do
   /Applications/Godot.app/Contents/MacOS/Godot \
     --headless --path . --script "res://tools/validation/$script.gd" 2>&1 \
     | tee "/tmp/zw_$script.log"
   grep -q "$script: PASS" "/tmp/zw_$script.log" || echo "FAILED: $script"
 done
-git status --short
+# 确定性回归耗时约 80 秒，后台跑（见 Global Constraints）
+nohup /Applications/Godot.app/Contents/MacOS/Godot \
+  --headless --path . --script res://tools/validation/validate_sim_determinism.gd \
+  > /tmp/zw_determinism_task9.log 2>&1 &
+echo "started pid $!"
 ```
 
-Expected: 导入检查退出码 0；两个验证脚本各打印 `: PASS` 且没有任何 `FAILED:` 行（判据是 `PASS` 行而不是退出码，见 Global Constraints）；`git status --short` 中不含 `zw_blocker_dirty_smoke.gd`。
+轮询（**判据是日志里的 `PASS` 行，不是进程有没有退出**）：
 
-- [ ] **Step 8: 人工确认阻挡随几何变化（需要用户执行并截图）**
+```bash
+tail -5 /tmp/zw_determinism_task9.log
+grep -q "validate_sim_determinism: PASS" /tmp/zw_determinism_task9.log \
+  && echo "DETERMINISM OK" \
+  || echo "not finished yet, or FAILED - grep the log for 'diverged at tick' / 'Parse Error' / 'Failed to load script'"
+```
+
+Expected: 导入检查退出码 0；两条 `rg` 分别输出 `sim layer keeps the determinism gate` 与
+`explosive barrel is presentation only`；三个验证脚本各打印 `: PASS` 且没有 `FAILED:` 行；
+轮询最终输出 `DETERMINISM OK`。
+
+**关于最终哈希**：`validate_sim_determinism.gd` 构造的世界里没有油桶，但 `hash_world()` 现在会
+多混一个 `barrel_count = 0` 的 uint32，因此最终哈希**必然**从 Task 6 记录的
+`3e266a164d160e89` 变成一个新值（**实测 `3d32d95803e0ae79`**，两次独立运行逐字符相同）。
+这不是缺陷。照下面做，不要跳过：
+
+1. 从日志里读出实测值：
+   ```bash
+   grep "final hash" /tmp/zw_determinism_task9.log
+   ```
+2. 再独立跑一遍，确认两次的最终哈希**逐字符相同**（不同就是真的不确定，必须先查清）。
+3. 把 Task 6 Step 4 的 Expected 里的 `3e266a164d160e89`（两处：代码块里的一处与正文里的一处）
+   替换为实测值，并保留那段「哈希变了就先查是不是自己动了模拟语义」的说明。
+4. 把实测值同时写进本 Step 的这一行，作为 Task 9 之后的新基线：
+
+```
+validate_sim_determinism: 3000 ticks, final hash 3d32d95803e0ae79
+```
+
+**只有「新增 `barrel_count` 与油桶数组进入哈希」这一个原因可以改哈希**。若在改哈希之前
+`diverged at tick N` 就已经出现，那是真的分叉，必须定位到子系统后再继续，不得放宽断言。
+
+- [ ] **Step 14: 人工确认爆炸桶与阻挡随几何变化（需要用户执行并截图）**
 
 请用户执行：
 
-1. 进入单人 Demo，按 `T` 生成僵尸并让它们朝集装箱与油桶方向聚集。
-2. 打爆一个爆炸桶，确认原地不再阻挡僵尸，僵尸会走过原来的桶位。
-3. 拿到油桶装备后在僵尸来路上放置一个，确认僵尸绕行而不是穿过去。
-4. 领走一个拾取箱，确认原位置不再阻挡僵尸。
-5. 截图三处对比，交回分析。
+1. `/Applications/Godot.app/Contents/MacOS/Godot --path .` 进入单人 Demo，按 `T` 生成僵尸，
+   让它们朝集装箱与油桶方向聚集。
+2. 朝 `ChainA`（左侧那对油桶里靠外的一只）连开三枪：确认第 2 枪时桶体变形并冒烟、
+   第 3 枪爆炸，且**紧挨着的 `ChainB` 在约 0.15 秒后被连锁引爆**。
+3. 确认爆炸把附近的僵尸炸死（血泊出现），并且玩家站在爆炸范围内会掉血。
+4. 确认爆炸后原地不再阻挡僵尸，僵尸会走过原来的桶位。
+5. 拿到油桶装备后在僵尸来路上放置一个，确认僵尸绕行；再打爆它，确认同样连锁/清障。
+6. 领走一个拾取箱，确认原位置不再阻挡僵尸。
+7. 截图对比，交回分析。
 
-Expected: 三种运行时几何变更后，僵尸的通行/绕行行为都在下一秒内跟随变化，没有「绕着已经不存在的障碍走」的残留。
+Expected: 连锁引爆看起来与基线一致（一串桶挨个炸），僵尸与玩家都会被炸到，
+爆炸/放置/领取之后僵尸的通行与绕行都在下一秒内跟随变化，
+没有「绕着已经不存在的障碍走」的残留，也没有「同一只桶炸两次」的双重特效。
 
-- [ ] **Step 9: 提交**
+- [ ] **Step 15: 提交**
 
 ```bash
 cd /Users/liangpingbo/Desktop/4399/game/zombiewar
-git add scripts/props/explosive_barrel.gd scripts/gameplay/place_item_service.gd \
-  scripts/gameplay/pickup_spawn_point.gd scripts/combat/explosion_resolver.gd \
-  scripts/gameplay/demo_arena.gd
-git commit -m "feat: mark flow field cells dirty on runtime blocker changes"
+git add scripts/sim/sim_hit_geometry.gd scripts/sim/sim_combat.gd scripts/sim/sim_world.gd \
+  scripts/sim/sim_hasher.gd scripts/props/explosive_barrel.gd \
+  scripts/combat/explosion_resolver.gd scripts/gameplay/place_item_service.gd \
+  scripts/gameplay/pickup_spawn_point.gd scripts/gameplay/demo_arena.gd \
+  tools/validation/validate_sim_barrel.gd
+git add docs/superpowers/plans/2026-08-07-deterministic-simulation-foundation.md
+git commit -m "feat: move explosive barrels into the deterministic simulation"
 ```
 
-Expected: 提交只含上述五个脚本。
+Expected: 提交含上述九个脚本、新增的 `validate_sim_barrel.gd`（及其 `.uid`，若编辑器已导入）
+与计划文档里被更新的最终哈希；`git status --short` 中不含 `zw_blocker_dirty_smoke.gd`。
 
 ---
 
@@ -5983,10 +7219,19 @@ lockstep replay.
 Any system that adds, removes, moves, enables, or disables collision geometry
 that blocks movement must mark the affected flow field cells dirty after the
 geometry change, by routing a world AABB through
-`SimWorld.set_blocker_world_rect()`. Explosive barrel destruction,
-`PlaceItemService` placement and removal, and pickup chest appearance and
-disappearance all go through this path. Missing a dirty mark leaves zombies
-walking around obstacles that no longer exist.
+`SimWorld.set_blocker_world_rect()`. `PlaceItemService` placement and removal
+and pickup chest appearance and disappearance go through this path. Missing a
+dirty mark leaves zombies walking around obstacles that no longer exist.
+
+Explosive barrels are the exception: they are simulation entities
+(`SimWorld.spawn_barrel()`), and `SimWorld` owns their blocker rectangle end to
+end -- blocked on registration, cleared on the exact tick they detonate. Their
+hit count, damaged state, fuse (counted in **ticks**, never in seconds), chain
+detonation, and zombie damage all live in the simulation; `ExplosiveBarrel` is a
+presentation node plus the player damage source, driven by
+`SimWorld.tick_barrel_events`. Never give a barrel node its own timer, its own
+hit counter, or its own physics ray: wall-clock fuses land on different ticks on
+different clients and desync every zombie the blast kills.
 
 `NavigationWorldManager`, `NavigationChunk3D`, and `NavigationBakeState` are
 **retired but retained**. They are still instantiated by `DemoArena` and still
@@ -5998,7 +7243,8 @@ When changing zombie movement behaviour, verify pursuit, wandering, unreachable
 targets, blocked attack paths, and runtime blocker changes with
 `tools/validation/validate_flow_field.gd`,
 `tools/validation/validate_sim_collision.gd`, and
-`tools/validation/validate_sim_determinism.gd`.
+`tools/validation/validate_sim_determinism.gd`. When changing explosive barrels,
+also run `tools/validation/validate_sim_barrel.gd`.
 ```
 
 - [ ] **Step 3: 给三个导航脚本加上退役标记**
@@ -6059,7 +7305,8 @@ Run:
 ```bash
 cd /Users/liangpingbo/Desktop/4399/game/zombiewar
 for script in validate_deterministic_rng validate_flow_field validate_sim_collision \
-  validate_sim_determinism validate_player_screen_bounds validate_shared_camera_math \
+  validate_sim_barrel validate_sim_determinism validate_player_screen_bounds \
+  validate_shared_camera_math \
   validate_shared_camera_scene validate_equipment_cycle validate_local_disconnect_contract \
   validate_pickup_spawn_point validate_zombie_target_selector validate_local_input_contracts \
   validate_local_join_state validate_local_multiplayer_menu_scenes validate_local_player_spawning \
@@ -6072,7 +7319,7 @@ for script in validate_deterministic_rng validate_flow_field validate_sim_collis
 done
 ```
 
-Expected: 19 个脚本各打印一行 `<name>: PASS`，没有任何 `FAILED:` 行（循环的判据是每个脚本的 `PASS` 行而不是退出码，见 Global Constraints）。若 `ls tools/validation/validate_*.gd` 的实际清单与上面不一致（例如主线又新增了验证脚本），以实际清单为准跑全量，不得只跑列出的这些。
+Expected: 20 个脚本各打印一行 `<name>: PASS`，没有任何 `FAILED:` 行（循环的判据是每个脚本的 `PASS` 行而不是退出码，见 Global Constraints）。若 `ls tools/validation/validate_*.gd` 的实际清单与上面不一致（例如主线又新增了验证脚本），以实际清单为准跑全量，不得只跑列出的这些。
 
 - [ ] **Step 6: 人工验收（需要用户执行并提供截图，不使用 CUA）**
 

@@ -65,6 +65,27 @@ const ZOMBIE_WANDER_PAUSE_MAX_TICKS := 24  # 1.20 s
 # 基线的 ZombieTarget 只有 _play_hit_reaction() 的纯视觉反馈，没有僵直状态。
 const ZOMBIE_HIT_STUN_TICKS := 4           # 0.20 s
 
+# ---- 爆炸桶（模拟层实体） ----
+## 状态机逐条对应基线 explosive_barrel.gd 的 State，只把 EXPLODING 拆成
+## 「引信倒计时（PENDING）」+「已销毁（DESTROYED）」两段：基线用
+## await 定时器计时，那是墙钟，各端会落在不同 tick 上。
+const BARREL_STATE_INTACT := 0
+const BARREL_STATE_DAMAGED := 1
+const BARREL_STATE_PENDING := 2
+const BARREL_STATE_DESTROYED := 3
+
+## apply_barrel_hit() 的返回值。REGISTERED 表示「打中了但没到任何阈值」——
+## 基线 apply_hit() 对完好的桶一律返回 HitResult.resolved()，HUD 会显示 HIT，
+## 所以这一档也必须与「没打中」区分开。
+const BARREL_HIT_NONE := 0
+const BARREL_HIT_REGISTERED := 1
+const BARREL_HIT_DAMAGED := 2
+const BARREL_HIT_EXPLODED := 3
+
+## 连锁引信至少 1 tick。基线的 _begin_explosion() 走 call_deferred + 计时器，
+## 连锁一定落在后面的帧上，绝不会在同一帧内把一整串桶递归炸完。
+const BARREL_MIN_CHAIN_TICKS := 1
+
 # ---- spec 指定的 SoA 字段 ----
 var zombie_id := PackedInt32Array()
 var zombie_position := PackedVector2Array()
@@ -88,6 +109,25 @@ var zombie_wander_pause_ticks := PackedInt32Array()
 var zombie_hit_stun_ticks := PackedInt32Array()
 var zombie_move_speed := PackedFloat32Array()
 var zombie_attack_state := PackedInt32Array()
+
+# ---- 爆炸桶 SoA ----
+## 油桶**不做压缩删除**：数量是个位数，且引爆是在 tick 中途发生的
+## （射击结算与引信推进都会引爆），中途重排下标会让同一 tick 内已经取到的
+## 下标失效。已销毁的桶留在数组里，state 恒为 DESTROYED，射线与连锁都跳过它。
+var barrel_id := PackedInt32Array()
+var barrel_position := PackedVector2Array()
+var barrel_base_height := PackedFloat32Array()
+var barrel_state := PackedByteArray()
+var barrel_hit_count := PackedInt32Array()
+var barrel_fuse_ticks := PackedInt32Array()
+var barrel_hits_to_explode := PackedInt32Array()
+var barrel_hits_to_damage := PackedInt32Array()
+var barrel_chain_ticks := PackedInt32Array()
+var barrel_radius := PackedFloat32Array()
+var barrel_center_damage := PackedFloat32Array()
+var barrel_edge_damage := PackedFloat32Array()
+var barrel_blocker_min := PackedVector2Array()
+var barrel_blocker_max := PackedVector2Array()
 
 # ---- 玩家量化快照（只读输入） ----
 var player_position_quantized := PackedInt32Array()
@@ -113,6 +153,7 @@ var tick_death_events := PackedInt32Array()
 var tick_spawn_events := PackedInt32Array()
 var tick_player_damage_events: Array = []
 var tick_shot_events: Array = []
+var tick_barrel_events: Array = []
 
 # ---- 武器档案与逐槽位散布状态 ----
 var weapon_profiles: Array = []
@@ -169,6 +210,20 @@ func reset(room_seed: int) -> void:
 	zombie_hit_stun_ticks = PackedInt32Array()
 	zombie_move_speed = PackedFloat32Array()
 	zombie_attack_state = PackedInt32Array()
+	barrel_id = PackedInt32Array()
+	barrel_position = PackedVector2Array()
+	barrel_base_height = PackedFloat32Array()
+	barrel_state = PackedByteArray()
+	barrel_hit_count = PackedInt32Array()
+	barrel_fuse_ticks = PackedInt32Array()
+	barrel_hits_to_explode = PackedInt32Array()
+	barrel_hits_to_damage = PackedInt32Array()
+	barrel_chain_ticks = PackedInt32Array()
+	barrel_radius = PackedFloat32Array()
+	barrel_center_damage = PackedFloat32Array()
+	barrel_edge_damage = PackedFloat32Array()
+	barrel_blocker_min = PackedVector2Array()
+	barrel_blocker_max = PackedVector2Array()
 	player_position_quantized.fill(0)
 	player_alive.fill(0)
 	player_present.fill(0)
@@ -245,6 +300,81 @@ func get_zombie_health(index: int) -> int:
 
 func get_zombie_max_health(index: int) -> int:
 	return zombie_max_health[index]
+
+## ---- 爆炸桶 ----
+## 注册一个爆炸桶实体。id 与僵尸共用同一个单调递增计数器，永不复用。
+## 装配方必须在 reset() **之后**、按固定顺序注册（DemoArena 按
+## World/Props/HazardZone/ExplosiveBarrels 的子节点顺序），否则各端的 id 分配会分叉。
+## 阻挡矩形的生命周期由模拟层独占：注册即标为阻挡，引爆/移除时清除。
+## 这样「哪一 tick 清掉的格」本身就是确定的，流场重算也逐 tick 对齐。
+func spawn_barrel(
+	position_xz: Vector2,
+	base_height: float,
+	blocker_min_xz: Vector2,
+	blocker_max_xz: Vector2,
+	hits_to_explode: int,
+	hits_to_damage: int,
+	chain_delay_seconds: float,
+	explosion_radius: float,
+	center_damage: float,
+	edge_damage: float
+) -> int:
+	var new_id := next_entity_id
+	next_entity_id += 1
+	# 阈值口径逐字取自基线 apply_hit()：引爆阈值至少 1，
+	# 损伤阈值夹在 [1, 引爆阈值] 内。
+	var explode_threshold := maxi(hits_to_explode, 1)
+	barrel_id.append(new_id)
+	barrel_position.append(position_xz)
+	barrel_base_height.append(base_height)
+	barrel_state.append(BARREL_STATE_INTACT)
+	barrel_hit_count.append(0)
+	barrel_fuse_ticks.append(0)
+	barrel_hits_to_explode.append(explode_threshold)
+	barrel_hits_to_damage.append(clampi(hits_to_damage, 1, explode_threshold))
+	# 秒 -> tick 用既有的 MeleeAttackCycle.ticks_for_seconds()（就是 ceil），
+	# 不另造一份换算：0.12 s / 0.05 s = 2.4 -> 3 tick = 0.15 s。
+	barrel_chain_ticks.append(maxi(
+		MeleeAttackCycleScript.ticks_for_seconds(
+			chain_delay_seconds, SimClockScript.TICK_SECONDS
+		),
+		BARREL_MIN_CHAIN_TICKS
+	))
+	barrel_radius.append(maxf(explosion_radius, 0.0))
+	barrel_center_damage.append(maxf(center_damage, 0.0))
+	barrel_edge_damage.append(maxf(edge_damage, 0.0))
+	barrel_blocker_min.append(blocker_min_xz)
+	barrel_blocker_max.append(blocker_max_xz)
+	set_blocker_world_rect(blocker_min_xz, blocker_max_xz, true)
+	return new_id
+
+func get_barrel_count() -> int:
+	return barrel_id.size()
+
+func get_barrel_id(index: int) -> int:
+	return barrel_id[index]
+
+## id 单调递增且油桶数组永不重排，因此可以直接二分。
+func index_of_barrel(barrel_id_value: int) -> int:
+	var index := barrel_id.bsearch(barrel_id_value, true)
+	if index < 0 or index >= barrel_id.size():
+		return -1
+	return index if barrel_id[index] == barrel_id_value else -1
+
+func get_barrel_position(index: int) -> Vector2:
+	return barrel_position[index]
+
+func get_barrel_base_height(index: int) -> float:
+	return barrel_base_height[index]
+
+func get_barrel_state(index: int) -> int:
+	return barrel_state[index]
+
+func get_barrel_hit_count(index: int) -> int:
+	return barrel_hit_count[index]
+
+func get_barrel_fuse_ticks(index: int) -> int:
+	return barrel_fuse_ticks[index]
 
 ## 实体 id 由单调递增计数器分配，永不复用。
 func spawn_zombie(
@@ -438,14 +568,143 @@ func apply_zombie_damage(
 		tick_death_events.append(zombie_id[index])
 	return true
 
+## 唯一的油桶命中入口，语义逐条对应基线 ExplosiveBarrel.apply_hit()：
+##   - 已上引信或已销毁的桶算未命中（基线 `state >= State.EXPLODING` 返回 miss）；
+##   - 命中数封顶在引爆阈值；
+##   - 达到引爆阈值立即引爆（基线是 _request_explosion(0.0)，零延时）；
+##   - 达到损伤阈值只切表现状态，且只从 INTACT 切一次。
+func apply_barrel_hit(index: int) -> int:
+	if index < 0 or index >= barrel_id.size():
+		return BARREL_HIT_NONE
+	if barrel_state[index] >= BARREL_STATE_PENDING:
+		return BARREL_HIT_NONE
+	barrel_hit_count[index] = mini(
+		barrel_hit_count[index] + 1, barrel_hits_to_explode[index]
+	)
+	if barrel_hit_count[index] >= barrel_hits_to_explode[index]:
+		_detonate_barrel(index)
+		return BARREL_HIT_EXPLODED
+	if (
+		barrel_hit_count[index] >= barrel_hits_to_damage[index] and
+		barrel_state[index] == BARREL_STATE_INTACT
+	):
+		barrel_state[index] = BARREL_STATE_DAMAGED
+		tick_barrel_events.append({
+			"kind": &"barrel_damaged",
+			"barrel_id": barrel_id[index],
+			"position": barrel_position[index],
+			"height": barrel_base_height[index],
+		})
+		return BARREL_HIT_DAMAGED
+	return BARREL_HIT_REGISTERED
+
+## 油桶节点在**未引爆**的情况下离场（例如被别的系统回收）时由装配方排队。
+## 不排队的话模拟层会留下一块永远阻挡的幽灵 cell。
+func queue_barrel_removal(barrel_id_value: int) -> void:
+	pending_events.append({
+		"kind": &"barrel_removed",
+		"barrel_id": barrel_id_value,
+	})
+
+## 引信推进。分两趟是必须的：引爆会给别的桶上引信，
+## 若边减边引爆，本 tick 刚被点燃的桶会在同一趟里被误减一格。
+func _update_barrel_fuses() -> void:
+	var ready_indices := PackedInt32Array()
+	for index in range(barrel_id.size()):
+		if barrel_state[index] != BARREL_STATE_PENDING:
+			continue
+		var remaining := maxi(barrel_fuse_ticks[index] - 1, 0)
+		barrel_fuse_ticks[index] = remaining
+		if remaining <= 0:
+			ready_indices.append(index)
+	for index in ready_indices:
+		_detonate_barrel(index)
+
+## 引爆：清阻挡 -> 广播表现事件 -> 结算僵尸波及 -> 给邻桶上引信。
+## 先清阻挡再结算，复刻基线 ExplosionResolver 把 source 的 RID 排除在遮挡射线
+## 之外的效果——爆炸不会被自己挡住，也不该再挡住别人的视线。
+func _detonate_barrel(index: int) -> void:
+	if barrel_state[index] == BARREL_STATE_DESTROYED:
+		return
+	barrel_state[index] = BARREL_STATE_DESTROYED
+	barrel_fuse_ticks[index] = 0
+	barrel_hit_count[index] = barrel_hits_to_explode[index]
+	var origin := barrel_position[index]
+	var origin_height := SimHitGeometryScript.barrel_aim_height(
+		barrel_base_height[index]
+	)
+	var radius := barrel_radius[index]
+	var center_damage := barrel_center_damage[index]
+	var edge_damage := barrel_edge_damage[index]
+	set_blocker_world_rect(
+		barrel_blocker_min[index], barrel_blocker_max[index], false
+	)
+	tick_barrel_events.append({
+		"kind": &"barrel_exploded",
+		"barrel_id": barrel_id[index],
+		"position": origin,
+		"height": origin_height,
+		"radius": radius,
+		"center_damage": center_damage,
+		"edge_damage": edge_damage,
+	})
+	_apply_explosion_to_zombies(
+		origin, origin_height, radius, center_damage, edge_damage
+	)
+	# 连锁只上引信，不立刻炸：延时换算成 tick，各端逐 tick 对齐。
+	var chained := SimCombatScript.resolve_explosion_barrels(
+		self, origin, origin_height, radius, center_damage, edge_damage, index
+	)
+	for chained_index in chained:
+		barrel_state[chained_index] = BARREL_STATE_PENDING
+		barrel_fuse_ticks[chained_index] = barrel_chain_ticks[chained_index]
+
+## 爆炸对僵尸的结算。油桶引爆与 queue_explosion_event() 共用这一份，
+## 保证两条入口的波及口径逐字一致。
+func _apply_explosion_to_zombies(
+	origin: Vector2,
+	origin_height: float,
+	radius: float,
+	center_damage: float,
+	edge_damage: float
+) -> void:
+	var targets := SimCombatScript.resolve_explosion_targets(
+		self, origin, origin_height, radius, center_damage, edge_damage
+	)
+	for target in targets:
+		apply_zombie_damage(
+			int(target["index"]),
+			roundi(float(target["damage"]) * float(HEALTH_SCALE)),
+			target["point"],
+			float(target["height"]),
+			target["direction"],
+			SimHitGeometryScript.ZONE_BODY
+		)
+
+func _resolve_barrel_removal_event(event: Dictionary) -> void:
+	var index := index_of_barrel(int(event["barrel_id"]))
+	if index < 0 or barrel_state[index] == BARREL_STATE_DESTROYED:
+		return
+	barrel_state[index] = BARREL_STATE_DESTROYED
+	barrel_fuse_ticks[index] = 0
+	set_blocker_world_rect(
+		barrel_blocker_min[index], barrel_blocker_max[index], false
+	)
+
 ## 推进一个模拟 tick。不接收任何真实帧时长形参：时间步长恒为 SimClock.TICK_SECONDS。
-## 顺序固定：生成 -> 散布回复 -> 玩家事件结算 -> 流场 -> 僵尸推进 ->
+## 顺序固定：生成 -> 散布回复 -> 油桶引信 -> 玩家事件结算 -> 流场 -> 僵尸推进 ->
 ## 碰撞 -> 僵尸攻击 -> 压缩删除。任何调整都会改变哈希序列，必须同步全端。
+##
+## 引信推进排在事件结算**之前**是刻意的：本 tick 里被射击引爆的桶会给邻桶上引信，
+## 若引信先减后点，实际连锁延时会比 chain_delay_seconds 短一整 tick。
+## 引爆会清掉油桶占的阻挡格，因此这两步都必须排在 _update_flow_field() 之前，
+## 让同一 tick 的流场就看到新的通行图。
 func step_tick() -> void:
 	tick_index += 1
 	_clear_tick_events()
 	_apply_pending_spawn_waves()
 	_recover_spread()
+	_update_barrel_fuses()
 	_resolve_pending_events()
 	_update_flow_field()
 	_update_zombies()
@@ -459,6 +718,7 @@ func _clear_tick_events() -> void:
 	tick_spawn_events = PackedInt32Array()
 	tick_player_damage_events = []
 	tick_shot_events = []
+	tick_barrel_events = []
 
 func _apply_pending_spawn_waves() -> void:
 	pending_spawn_capacity = 0
@@ -994,6 +1254,8 @@ func _resolve_pending_events() -> void:
 			_resolve_melee_event(event)
 		elif kind == &"explosion":
 			_resolve_explosion_event(event)
+		elif kind == &"barrel_removed":
+			_resolve_barrel_removal_event(event)
 		elif kind == &"spread_reset":
 			reset_spread(int(event["slot"]), int(event["profile_index"]))
 
@@ -1052,6 +1314,19 @@ func _resolve_shot_event(event: Dictionary) -> void:
 	for hit in hits:
 		var index := int(hit["index"])
 		var hit_zone: StringName = hit["zone"]
+		# 油桶终止射线。基线 ranged_weapon.gd 的 _find_damage_target() 对油桶返回
+		# null（油桶不在 damageable_targets 组里），于是走 _apply_damage() 把
+		# **武器原始 damage**（不是穿透衰减后的 current_damage）递给 apply_hit()
+		# 再 break——这里逐条复刻，包括不消耗穿透名额。
+		if hit["kind"] == SimCombatScript.KIND_BARREL:
+			var barrel_outcome := apply_barrel_hit(index)
+			if barrel_outcome != BARREL_HIT_NONE:
+				did_hit = true
+				zone = hit_zone
+				total_damage += float(profile["damage"])
+				killed = killed or barrel_outcome == BARREL_HIT_EXPLODED
+			end_position = hit["point"]
+			break
 		var multiplier := SimHitGeometryScript.damage_multiplier(hit_zone)
 		var damage_points := roundi(current_damage * multiplier * float(HEALTH_SCALE))
 		var before_health := zombie_health[index]
@@ -1134,20 +1409,10 @@ func _resolve_melee_event(event: Dictionary) -> void:
 	})
 
 func _resolve_explosion_event(event: Dictionary) -> void:
-	var targets := SimCombatScript.resolve_explosion_targets(
-		self,
+	_apply_explosion_to_zombies(
 		event["origin"],
 		float(event["origin_height"]),
 		float(event["radius"]),
 		float(event["center_damage"]),
 		float(event["edge_damage"])
 	)
-	for target in targets:
-		apply_zombie_damage(
-			int(target["index"]),
-			roundi(float(target["damage"]) * float(HEALTH_SCALE)),
-			target["point"],
-			float(target["height"]),
-			target["direction"],
-			SimHitGeometryScript.ZONE_BODY
-		)

@@ -50,9 +50,15 @@ func get_hash_high() -> int:
 func get_hash_hex() -> String:
 	return "%08x%08x" % [hash_high, hash_low]
 
-## 纳入哈希的字段：实体 id、位置、高度、朝向、血量、状态、目标槽位、
+## 纳入哈希的字段：僵尸的实体 id、位置、高度、朝向、血量、状态、目标槽位；
+## 油桶的实体 id、位置、状态、命中计数、引信剩余 tick；玩家量化快照与散布；
 ## 各 RNG 流的 state、当前 tick。Packed 数组的 to_byte_array() 直接给出
 ## 小端 IEEE 位模式，无需逐元素拆解。
+##
+## 不哈希阻挡网格（约 1.9 KB/tick，会让 3000 tick 的回归多跑两成）：
+## 模拟层内部唯一会改动阻挡格的就是油桶的注册与引爆，而油桶的
+## state / hit_count / fuse_ticks 已经逐 tick 进了哈希，网格分叉必然先在这里暴露。
+## 表现层驱动的放置与拾取箱增删属于 S3 的输入同步范畴，不由本层的哈希覆盖。
 static func hash_world(world: SimWorld) -> String:
 	var hasher := new()
 	hasher.mix_uint32(world.get_tick())
@@ -65,6 +71,12 @@ static func hash_world(world: SimWorld) -> String:
 	hasher.mix_bytes(world.zombie_health.to_byte_array())
 	hasher.mix_bytes(world.zombie_state)
 	hasher.mix_bytes(world.zombie_target_slot)
+	hasher.mix_uint32(world.get_barrel_count())
+	hasher.mix_bytes(world.barrel_id.to_byte_array())
+	hasher.mix_bytes(world.barrel_position.to_byte_array())
+	hasher.mix_bytes(world.barrel_state)
+	hasher.mix_bytes(world.barrel_hit_count.to_byte_array())
+	hasher.mix_bytes(world.barrel_fuse_ticks.to_byte_array())
 	hasher.mix_bytes(world.player_position_quantized.to_byte_array())
 	hasher.mix_bytes(world.player_alive)
 	hasher.mix_bytes(world.player_present)

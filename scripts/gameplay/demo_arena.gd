@@ -13,6 +13,7 @@ const ARENA_CAMERA_BOUNDS := Rect2(Vector2(-10.0, -7.0), Vector2(20.0, 14.0))
 const SimClockScript = preload("res://scripts/sim/sim_clock.gd")
 const SimWorldScript = preload("res://scripts/sim/sim_world.gd")
 const PlaceItemGridScript = preload("res://scripts/gameplay/place_item_grid.gd")
+const SimHitGeometryScript = preload("res://scripts/sim/sim_hit_geometry.gd")
 const BLOOD_IMPACT_SCENE := preload("res://scenes/fx/BloodImpact.tscn")
 const ARENA_SIM_GRID_ORIGIN := Vector2(-24.5, -19.5)
 const ARENA_SIM_CELL_SIZE := 1.0
@@ -47,6 +48,8 @@ var sim_clock = SimClockScript.new()
 var sim_world = SimWorldScript.new()
 var zombie_renderer: ZombieRenderer
 var weapon_profile_indices: Dictionary = {}
+## 模拟层油桶 id -> 表现节点。只做按 id 的键值查找，不遍历它驱动任何判定。
+var barrel_views: Dictionary = {}
 var wave_number := 0
 var team_defeated := false
 var restart_pending := false
@@ -117,6 +120,7 @@ func _setup_simulation() -> void:
 	)
 	_bake_static_blockers()
 	sim_world.reset(DEFAULT_SIM_SEED if random_seed == 0 else random_seed)
+	_register_scene_barrels()
 	if zombie_difficulty != null:
 		sim_world.set_default_move_speed(zombie_difficulty.perception_move_speed)
 	# 基线的 spawn_wave() 用 wave_perception_range（默认 60.0）覆盖 ZombieTarget 的
@@ -228,6 +232,127 @@ func mark_blocker(obstacle: CollisionObject3D, blocked: bool) -> void:
 		blocked
 	)
 
+func _wire_explosive_barrel(barrel: Node) -> void:
+	var explosive := barrel as ExplosiveBarrel
+	if explosive == null:
+		return
+	if not explosive.navigation_geometry_changed.is_connected(
+		_on_runtime_navigation_geometry_changed
+	):
+		explosive.navigation_geometry_changed.connect(
+			_on_runtime_navigation_geometry_changed
+		)
+
+## 场景自带的爆炸桶按 ExplosiveBarrels 的子节点顺序注册，顺序即 id 分配顺序，
+## 各端读同一个 .tscn，因此顺序天然一致。
+## 必须在 sim_world.reset() 之后调用：reset() 会把实体 id 计数器归 1 并清空油桶数组。
+func _register_scene_barrels() -> void:
+	barrel_views = {}
+	var barrels_root := get_node_or_null(
+		"World/Props/HazardZone/ExplosiveBarrels"
+	)
+	if barrels_root == null:
+		return
+	for child in barrels_root.get_children():
+		_register_barrel(child as ExplosiveBarrel)
+
+## 把一个爆炸桶节点注册成模拟层实体。幂等：已注册过的桶直接返回。
+## 阻挡矩形取自碰撞体世界 AABB；拿不到（形状被禁用等）时退回按桶半径的方形，
+## 绝不能传空矩形——SimWorld 会把它当成退化矩形至少标一格。
+## 注册**只能**挂在 PlaceItemService.item_placed 上，不能挂在 child_entered_tree 上：
+## request_place_item() 是先 add_child() 再写 global_position 的，
+## child_entered_tree 触发时节点还停在原点。
+func _register_barrel(barrel: ExplosiveBarrel) -> void:
+	if barrel == null or barrel.get_sim_barrel_id() != 0:
+		return
+	var origin := barrel.global_position
+	var minimum := Vector2(
+		origin.x - SimHitGeometryScript.BARREL_RADIUS,
+		origin.z - SimHitGeometryScript.BARREL_RADIUS
+	)
+	var maximum := Vector2(
+		origin.x + SimHitGeometryScript.BARREL_RADIUS,
+		origin.z + SimHitGeometryScript.BARREL_RADIUS
+	)
+	var bounds := PlaceItemGridScript.collision_object_world_aabb(barrel)
+	if bounds.size != Vector3.ZERO:
+		minimum = Vector2(bounds.position.x, bounds.position.z)
+		maximum = Vector2(bounds.end.x, bounds.end.z)
+	var barrel_id_value := sim_world.spawn_barrel(
+		Vector2(origin.x, origin.z),
+		origin.y,
+		minimum,
+		maximum,
+		barrel.firearm_hits_to_explode,
+		barrel.firearm_hits_to_damage,
+		barrel.chain_delay_seconds,
+		barrel.explosion_radius,
+		barrel.explosion_center_damage,
+		barrel.explosion_edge_damage
+	)
+	barrel.bind_sim_barrel(barrel_id_value)
+	barrel_views[barrel_id_value] = barrel
+
+func _barrel_view(barrel_id_value: int) -> ExplosiveBarrel:
+	var view = barrel_views.get(barrel_id_value, null)
+	if view == null or not is_instance_valid(view):
+		barrel_views.erase(barrel_id_value)
+		return null
+	return view as ExplosiveBarrel
+
+## 表现层只是把模拟层已经做完的判定演出来：受损换外观，引爆播特效并打玩家。
+func _on_sim_barrel_event(event: Dictionary) -> void:
+	var barrel_id_value := int(event["barrel_id"])
+	var barrel := _barrel_view(barrel_id_value)
+	if barrel == null:
+		return
+	var kind: StringName = event["kind"]
+	if kind == &"barrel_damaged":
+		barrel.play_damaged()
+		return
+	if kind == &"barrel_exploded":
+		var planar: Vector2 = event["position"]
+		barrel_views.erase(barrel_id_value)
+		barrel.play_explosion(
+			Vector3(planar.x, float(event["height"]), planar.y)
+		)
+
+## 油桶的阻挡格由 SimWorld 在 spawn_barrel() / 引爆时独占维护，
+## 所以这里**不**再调 mark_blocker()：阻挡格是布尔量，重复标记本身无害，
+## 但把生命周期收在模拟层一处，「哪一 tick 清的格」才是确定的。
+func _on_item_placed(item: Node3D) -> void:
+	var barrel := item as ExplosiveBarrel
+	if barrel != null:
+		_register_barrel(barrel)
+		return
+	var obstacle := item as CollisionObject3D
+	if obstacle != null:
+		mark_blocker(obstacle, true)
+
+func _on_item_removed(item: Node3D, world_aabb: AABB) -> void:
+	var barrel := item as ExplosiveBarrel
+	if barrel != null:
+		var barrel_id_value := barrel.get_sim_barrel_id()
+		if barrel_id_value != 0:
+			barrel_views.erase(barrel_id_value)
+			# 已引爆的桶在模拟层早就是 DESTROYED，这里是幂等兜底：
+			# 只有「没炸就离场」的桶才真的需要它来清掉阻挡格。
+			sim_world.queue_barrel_removal(barrel_id_value)
+		return
+	_apply_blocker_bounds(world_aabb, false)
+
+func _on_pickup_blocker_changed(world_aabb: AABB, blocked: bool) -> void:
+	_apply_blocker_bounds(world_aabb, blocked)
+
+func _apply_blocker_bounds(world_aabb: AABB, blocked: bool) -> void:
+	if world_aabb.size == Vector3.ZERO:
+		return
+	sim_world.set_blocker_world_rect(
+		Vector2(world_aabb.position.x, world_aabb.position.z),
+		Vector2(world_aabb.end.x, world_aabb.end.z),
+		blocked
+	)
+
 func _player_for_slot(slot: int) -> PlayerController:
 	if slot < 0 or slot >= players.size():
 		return null
@@ -251,6 +376,8 @@ func _push_player_snapshot() -> void:
 func _consume_sim_events() -> void:
 	for event in sim_world.tick_shot_events:
 		_on_sim_shot_event(event)
+	for event in sim_world.tick_barrel_events:
+		_on_sim_barrel_event(event)
 	for event in sim_world.tick_hit_events:
 		_on_sim_hit_event(event)
 	for event in sim_world.tick_player_damage_events:
@@ -402,27 +529,23 @@ func _wire_dependencies() -> void:
 	)
 	if barrels_root != null:
 		for barrel in barrels_root.get_children():
-			if (
-				barrel is ExplosiveBarrel and
-				not barrel.navigation_geometry_changed.is_connected(
-					_on_runtime_navigation_geometry_changed
-				)
-			):
-				barrel.navigation_geometry_changed.connect(
-					_on_runtime_navigation_geometry_changed
-				)
+			_wire_explosive_barrel(barrel)
+		if not barrels_root.child_entered_tree.is_connected(_wire_explosive_barrel):
+			barrels_root.child_entered_tree.connect(_wire_explosive_barrel)
 	var pickup_spawners := get_node_or_null("World/Props/PickupSpawners")
 	if pickup_spawners != null:
 		for child in pickup_spawners.get_children():
-			if (
-				child is PickupSpawnPoint and
-				not child.navigation_geometry_changed.is_connected(
-					_on_runtime_navigation_geometry_changed
-				)
+			var spawner := child as PickupSpawnPoint
+			if spawner == null:
+				continue
+			if not spawner.navigation_geometry_changed.is_connected(
+				_on_runtime_navigation_geometry_changed
 			):
-				child.navigation_geometry_changed.connect(
+				spawner.navigation_geometry_changed.connect(
 					_on_runtime_navigation_geometry_changed
 				)
+			if not spawner.blocker_changed.is_connected(_on_pickup_blocker_changed):
+				spawner.blocker_changed.connect(_on_pickup_blocker_changed)
 	var spawn_button := get_node_or_null("HUD/SpawnWaveButton") as Button
 	if spawn_button != null and not spawn_button.pressed.is_connected(request_spawn_wave):
 		spawn_button.pressed.connect(request_spawn_wave)
@@ -433,18 +556,18 @@ func _wire_dependencies() -> void:
 	var mobile_controls := get_node_or_null("MobileControls") as MobileControls
 	if mobile_controls != null:
 		single_player_input.set_touch_source(mobile_controls.get_input_source())
-	var place_item_service = get_node_or_null(
-		"PlaceItemService"
-	)
-	if (
-		place_item_service != null and
-		not place_item_service.placement_geometry_changed.is_connected(
+	var place_item_service = get_node_or_null("PlaceItemService")
+	if place_item_service != null:
+		if not place_item_service.placement_geometry_changed.is_connected(
 			_on_runtime_navigation_geometry_changed
-		)
-	):
-		place_item_service.placement_geometry_changed.connect(
-			_on_runtime_navigation_geometry_changed
-		)
+		):
+			place_item_service.placement_geometry_changed.connect(
+				_on_runtime_navigation_geometry_changed
+			)
+		if not place_item_service.item_placed.is_connected(_on_item_placed):
+			place_item_service.item_placed.connect(_on_item_placed)
+		if not place_item_service.item_removed.is_connected(_on_item_removed):
+			place_item_service.item_removed.connect(_on_item_removed)
 	var renderer := get_node_or_null(
 		"World/Targets/ZombieRenderer"
 	) as ZombieRenderer
