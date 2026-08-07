@@ -10,6 +10,14 @@ var cell_size := DEFAULT_CELL_SIZE
 var width := 0
 var height := 0
 var blocked := PackedByteArray()
+## `blocked` 的子集：只含**静态几何**（墙、集装箱、路障、放置件、拾取箱），
+## 不含模拟层自己用解析几何求解的实体（爆炸桶）。
+## 分成两张图是必须的：`SimWorld.ray_blocked_distance()` 把子弹截到「第一个阻挡 cell 的
+## **中心**」，那个点比 cell 里那件几何的真实表面更近。油桶自己的格若参与截断，
+## 射程会停在桶的碰撞圆之前，桶就永远打不中——直径 0.88 m 的桶只要中心不在 cell 中心
+## （场景里的 ChainA/ChainB 在 z = -3.5，正好压在 cell 边界上）就必然踩到。
+## 油桶该在哪里挡住子弹，由 SimCombat 用桶自己的解析圆决定，不由格子代劳。
+var static_blocked := PackedByteArray()
 var dirty := true
 
 func configure(
@@ -25,6 +33,9 @@ func configure(
 	blocked = PackedByteArray()
 	blocked.resize(width * height)
 	blocked.fill(0)
+	static_blocked = PackedByteArray()
+	static_blocked.resize(width * height)
+	static_blocked.fill(0)
 	dirty = true
 
 func get_cell_size() -> float:
@@ -41,6 +52,9 @@ func get_cell_count() -> int:
 
 func get_blocked_bytes() -> PackedByteArray:
 	return blocked
+
+func get_static_blocked_bytes() -> PackedByteArray:
+	return static_blocked
 
 func world_to_cell(world_xz: Vector2) -> Vector2i:
 	return Vector2i(
@@ -70,16 +84,34 @@ func is_blocked(cell: Vector2i) -> bool:
 	var index := cell_index(cell)
 	return true if index < 0 else blocked[index] == 1
 
+## 只看静态几何。网格外同样视为阻挡：子弹不该飞出场地。
+func is_static_blocked(cell: Vector2i) -> bool:
+	var index := cell_index(cell)
+	return true if index < 0 else static_blocked[index] == 1
+
 func set_blocked(cell: Vector2i, value: bool) -> bool:
+	return _write_cell(cell, value, true)
+
+## 只写通行图、不写静态阻挡图。供爆炸桶这类「模拟层用解析几何自行终止子弹」的实体使用：
+## 它们仍然挡住僵尸的移动与视线，但不参与 `ray_blocked_distance()` 的射程截断。
+func set_entity_blocked(cell: Vector2i, value: bool) -> bool:
+	return _write_cell(cell, value, false)
+
+func _write_cell(cell: Vector2i, value: bool, affects_static: bool) -> bool:
 	var index := cell_index(cell)
 	if index < 0:
 		return false
 	var next_value := 1 if value else 0
-	if blocked[index] == next_value:
-		return false
-	blocked[index] = next_value
-	dirty = true
-	return true
+	var changed := false
+	if blocked[index] != next_value:
+		blocked[index] = next_value
+		changed = true
+	if affects_static and static_blocked[index] != next_value:
+		static_blocked[index] = next_value
+		changed = true
+	if changed:
+		dirty = true
+	return changed
 
 ## 运行时增删阻挡几何统一走这里：任何改变都会置脏，下一 tick 触发流场重算。
 ## 最大角按半开区间处理：`world_to_cell()` 用 floori，落在 cell 边界上的最大角本身属于下一个
@@ -87,6 +119,17 @@ func set_blocked(cell: Vector2i, value: bool) -> bool:
 ## 都会多阻挡一整行；DemoArena 的原点 -24.5 让 cell 边界正好落在半整数世界坐标上，也正是轴对齐
 ## 墙体范围的落点，不内缩的话几乎每面墙都会多堵一行。退化矩形则夹回最小 cell，至少标记一格。
 func set_blocked_world_rect(min_xz: Vector2, max_xz: Vector2, value: bool) -> bool:
+	return _write_world_rect(min_xz, max_xz, value, true)
+
+## 只写通行图的矩形版本，语义同 `set_entity_blocked()`。
+func set_entity_blocked_world_rect(
+	min_xz: Vector2, max_xz: Vector2, value: bool
+) -> bool:
+	return _write_world_rect(min_xz, max_xz, value, false)
+
+func _write_world_rect(
+	min_xz: Vector2, max_xz: Vector2, value: bool, affects_static: bool
+) -> bool:
 	var low_cell := world_to_cell(
 		Vector2(minf(min_xz.x, max_xz.x), minf(min_xz.y, max_xz.y))
 	)
@@ -101,7 +144,9 @@ func set_blocked_world_rect(min_xz: Vector2, max_xz: Vector2, value: bool) -> bo
 	var changed := false
 	for cell_z in range(low_cell.y, high_cell.y + 1):
 		for cell_x in range(low_cell.x, high_cell.x + 1):
-			changed = set_blocked(Vector2i(cell_x, cell_z), value) or changed
+			changed = _write_cell(
+				Vector2i(cell_x, cell_z), value, affects_static
+			) or changed
 	return changed
 
 func mark_dirty() -> void:

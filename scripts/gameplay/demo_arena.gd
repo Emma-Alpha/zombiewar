@@ -212,10 +212,16 @@ func _on_sim_shot_event(event: Dictionary) -> void:
 	hit_confirm_tween = create_tween()
 	hit_confirm_tween.tween_property(label, "modulate:a", 0.0, 0.18)
 
+## 爆炸桶也挂在 place_item_obstacle 组里，但它的阻挡格由 SimWorld 在
+## spawn_barrel() / 引爆时**独占**维护，这里必须跳过：静态阻挡图会参与
+## ray_blocked_distance() 的射程截断，把桶的格烘进去等于让桶挡在自己前面，
+## 桶就永远打不爆（见 FlowFieldGrid.static_blocked 的说明）。
 func _bake_static_blockers() -> void:
 	if not is_inside_tree():
 		return
 	for node in get_tree().get_nodes_in_group(BLOCKER_GROUP):
+		if node is ExplosiveBarrel:
+			continue
 		var obstacle := node as CollisionObject3D
 		if obstacle != null:
 			mark_blocker(obstacle, true)

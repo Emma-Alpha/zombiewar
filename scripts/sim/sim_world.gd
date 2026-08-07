@@ -345,7 +345,7 @@ func spawn_barrel(
 	barrel_edge_damage.append(maxf(edge_damage, 0.0))
 	barrel_blocker_min.append(blocker_min_xz)
 	barrel_blocker_max.append(blocker_max_xz)
-	set_blocker_world_rect(blocker_min_xz, blocker_max_xz, true)
+	set_barrel_blocker_world_rect(blocker_min_xz, blocker_max_xz, true)
 	return new_id
 
 func get_barrel_count() -> int:
@@ -462,9 +462,22 @@ func is_player_alive(slot: int) -> bool:
 func is_player_present(slot: int) -> bool:
 	return slot >= 0 and slot < MAX_PLAYER_SLOTS and player_present[slot] == 1
 
-## 任何运行时增删阻挡几何的系统都必须调用它，否则流场会停留在过期的通行图上。
+## 任何运行时增删**静态**阻挡几何（墙、集装箱、路障、放置件、拾取箱）的系统都必须调用它，
+## 否则流场会停留在过期的通行图上。静态几何同时进通行图与静态阻挡图，
+## 因此它既挡僵尸也截子弹。
 func set_blocker_world_rect(min_xz: Vector2, max_xz: Vector2, blocked: bool) -> void:
 	grid.set_blocked_world_rect(min_xz, max_xz, blocked)
+
+## 爆炸桶专用：只进通行图，不进静态阻挡图。
+## 桶仍然挡住僵尸的移动与视线（`line_is_clear()` 走通行图），但**不参与**
+## `ray_blocked_distance()` 的射程截断——截断点是 cell 中心，比桶的碰撞圆表面更近，
+## 桶自己的格若参与截断，射线会停在桶前面，桶就永远打不爆。
+## 子弹在哪里被桶挡下由 `SimCombat.resolve_ray_hits()` 用桶的解析圆决定：
+## 它排序后遇到第一个 KIND_BARREL 就收尾，等价于基线物理射线停在圆柱面上。
+func set_barrel_blocker_world_rect(
+	min_xz: Vector2, max_xz: Vector2, blocked: bool
+) -> void:
+	grid.set_entity_blocked_world_rect(min_xz, max_xz, blocked)
 
 ## 整数 Bresenham 逐 cell 判定视线；终点 cell 自身不算阻挡。
 func line_is_clear(from_xz: Vector2, to_xz: Vector2) -> bool:
@@ -491,9 +504,15 @@ func line_is_clear(from_xz: Vector2, to_xz: Vector2) -> bool:
 	return true
 
 ## 沿射线走与 line_is_clear() 完全相同的 Bresenham 格序列，
-## 返回到第一个阻挡 cell 中心的距离；一路无阻挡时返回 max_distance。
+## 返回到第一个**静态**阻挡 cell 中心的距离；一路无阻挡时返回 max_distance。
 ## 豁免规则也保持一致（起点 cell 与终点 cell 都不算阻挡），
 ## 这样「命中被墙挡掉」与「曳光停在墙上」不会给出互相矛盾的结论。
+##
+## 只查静态阻挡图（`is_static_blocked()`）而不是通行图：截断点取的是 cell **中心**，
+## 它比 cell 里那件几何的真实表面更近。墙与集装箱铺满整格，这个保守量无害；
+## 但爆炸桶只有 0.88 m 宽且中心不一定落在 cell 中心（场景里的 ChainA/ChainB 压在
+## z = -3.5 的 cell 边界上），桶自己的格若参与截断，射程会被截到桶的碰撞圆之前，
+## 桶就永远打不爆。桶由 `SimCombat.resolve_ray_hits()` 用解析圆自行终止射线。
 func ray_blocked_distance(origin: Vector2, direction: Vector2, max_distance: float) -> float:
 	if max_distance <= 0.0 or direction.length_squared() <= 0.000001:
 		return maxf(max_distance, 0.0)
@@ -509,7 +528,7 @@ func ray_blocked_distance(origin: Vector2, direction: Vector2, max_distance: flo
 	for _step_index in range(delta_x + delta_y + 1):
 		if current == to_cell:
 			return max_distance
-		if current != from_cell and grid.is_blocked(current):
+		if current != from_cell and grid.is_static_blocked(current):
 			return minf(origin.distance_to(grid.cell_to_world(current)), max_distance)
 		var doubled_error := error * 2
 		if doubled_error > -delta_y:
@@ -636,7 +655,7 @@ func _detonate_barrel(index: int) -> void:
 	var radius := barrel_radius[index]
 	var center_damage := barrel_center_damage[index]
 	var edge_damage := barrel_edge_damage[index]
-	set_blocker_world_rect(
+	set_barrel_blocker_world_rect(
 		barrel_blocker_min[index], barrel_blocker_max[index], false
 	)
 	tick_barrel_events.append({
@@ -687,7 +706,7 @@ func _resolve_barrel_removal_event(event: Dictionary) -> void:
 		return
 	barrel_state[index] = BARREL_STATE_DESTROYED
 	barrel_fuse_ticks[index] = 0
-	set_blocker_world_rect(
+	set_barrel_blocker_world_rect(
 		barrel_blocker_min[index], barrel_blocker_max[index], false
 	)
 
@@ -1296,6 +1315,8 @@ func _resolve_shot_event(event: Dictionary) -> void:
 	# 未命中僵尸时曳光终点也停在墙上而不是穿墙飞满射程。
 	# 注：Step 8 的物理闸门按被禁 API 的字面名 grep 整个 scripts/sim 且不区分代码与注释，
 	# 所以这里写「物理射线」而不是那几个类名/方法名。
+	# 截断只看静态几何：油桶不占静态阻挡图，它在射线上的终止位置由
+	# SimCombat.resolve_ray_hits() 用桶的解析圆给出（详见 ray_blocked_distance()）。
 	var weapon_range := float(profile["attack_range"])
 	var attack_range := minf(
 		weapon_range, ray_blocked_distance(origin, direction, weapon_range)

@@ -1,7 +1,7 @@
 extends SceneTree
 
-## 爆炸桶模拟层的回归。守住：命中阈值与状态迁移、射线在油桶处终止、
-## 爆炸真的伤到僵尸、连锁延时逐 tick 精确、引爆清掉阻挡格、
+## 爆炸桶模拟层的回归。守住：命中阈值与状态迁移、**任何摆位任何方向都打得中**、
+## 射线在油桶处终止、爆炸真的伤到僵尸、连锁延时逐 tick 精确、引爆清掉阻挡格、
 ## 油桶状态真的进了帧哈希、以及同一场景重放逐 tick 哈希一致。
 const SimWorldScript = preload("res://scripts/sim/sim_world.gd")
 const SimHasherScript = preload("res://scripts/sim/sim_hasher.gd")
@@ -20,12 +20,37 @@ const BARREL_B := Vector2(8.0, 0.0)
 const CHAIN_DELAY_SECONDS := 0.12
 const EXPECTED_CHAIN_TICKS := 3    # ceili(0.12 / 0.05)
 
+## 摆位覆盖。BARREL_A / BARREL_B 都是整数世界坐标，配上 GRID_ORIGIN(-24.5, -19.5)
+## 与 1.0 的 cell，它们**正好落在 cell 中心**——这是唯一一类不会踩到下面这个缺陷的摆位，
+## 只测它们等于什么都没测：
+## 直径 0.88 m 的桶只要中心不在 cell 中心（跨 cell 边界），而 ray_blocked_distance()
+## 又把射程截到「第一个阻挡 cell 的**中心**」，截断点就落在桶的碰撞圆表面之前，
+## ray_circle_distance() 返回 -1，桶永远打不爆。DemoArena.tscn 里随包发布的
+## ChainA(-14, -3.5) 与 ChainB(-11, -3.5) 正是这一类。
+## 因此这里逐字覆盖场景里的三只桶，外加两个人造的半整数摆位。
+const OFFSET_BARRELS := [
+	Vector2(5.0, 0.0),      # cell 中心：对照组
+	Vector2(5.0, 3.5),      # 只有 z 压 cell 边界：ChainA / ChainB 的摆位类别
+	Vector2(5.5, 3.5),      # 两轴都压 cell 边界：最坏情况
+	Vector2(-14.0, -3.5),   # DemoArena.tscn 的 ChainA 实际坐标
+	Vector2(-11.0, -3.5),   # DemoArena.tscn 的 ChainB 实际坐标
+	Vector2(-15.0, 4.0),    # DemoArena.tscn 的 Solo 实际坐标（恰在 cell 中心）
+]
+const CARDINALS := [
+	["+X", Vector2(1.0, 0.0)],
+	["-X", Vector2(-1.0, 0.0)],
+	["+Z", Vector2(0.0, 1.0)],
+	["-Z", Vector2(0.0, -1.0)],
+]
+const APPROACH_DISTANCE := 5.5
+
 func _init() -> void:
 	call_deferred("_run")
 
 func _run() -> void:
 	var failures: Array[String] = []
 	_check_hit_thresholds(failures)
+	_check_offset_barrels_are_hittable(failures)
 	_check_ray_stops_at_barrel(failures)
 	_check_explosion_damages_zombies(failures)
 	_check_chain_delay_is_tick_exact(failures)
@@ -102,6 +127,51 @@ func _check_hit_thresholds(failures: Array[String]) -> void:
 		"a destroyed barrel must not detonate twice",
 		failures
 	)
+
+## 摆位无关性：无论桶落在 cell 中心还是压在 cell 边界上，
+## 从任何方向打过去都必须记一次命中。先逐条断言四个正方向（失败信息可读），
+## 再扫满 360 度把整圈锁死。
+## 这一条是 Task 9 的核心承诺「油桶将再也打不爆」的反面守卫：
+## 它一旦变红，说明射线截断又开始把桶自己的几何当成硬阻挡了。
+func _check_offset_barrels_are_hittable(failures: Array[String]) -> void:
+	for position in OFFSET_BARRELS:
+		for entry in CARDINALS:
+			_expect(
+				_barrel_takes_one_hit(position, entry[1]),
+				"a barrel at %s must take a hit from %s" % [position, entry[0]],
+				failures
+			)
+		var unhittable := 0
+		var first_failure := -1
+		for degree in range(360):
+			var radians := deg_to_rad(float(degree))
+			if _barrel_takes_one_hit(position, Vector2(cos(radians), sin(radians))):
+				continue
+			unhittable += 1
+			if first_failure < 0:
+				first_failure = degree
+		_expect(
+			unhittable == 0,
+			"a barrel at %s must be hittable from every approach angle (%d/360 failed, first at %d deg)" % [
+				position, unhittable, first_failure
+			],
+			failures
+		)
+
+## 每个方向都用一个全新的世界：命中计数会累加，共用世界的话第三发就把桶炸了，
+## 后面的方向再打就全是 BARREL_HIT_NONE，断言会假绿。
+func _barrel_takes_one_hit(position: Vector2, direction: Vector2) -> bool:
+	var world := _new_world()
+	_spawn_barrel(world, position)
+	world.queue_fire_event(
+		0,
+		PROFILE,
+		position - direction * APPROACH_DISTANCE,
+		MUZZLE_HEIGHT,
+		direction
+	)
+	world.step_tick()
+	return world.get_barrel_hit_count(0) == 1
 
 func _check_ray_stops_at_barrel(failures: Array[String]) -> void:
 	var world := _new_world()
@@ -194,6 +264,14 @@ func _check_blocker_cleared_on_detonation(failures: Array[String]) -> void:
 	var grid := world.get_grid()
 	var cell := grid.world_to_cell(BARREL_A)
 	_expect(grid.is_blocked(cell), "a registered barrel must block its cell", failures)
+	# 机制级断言：桶只进通行图，绝不能进静态阻挡图。
+	# 静态阻挡图参与 ray_blocked_distance() 的射程截断，而截断点是 cell **中心**，
+	# 比桶的碰撞圆表面更近；桶一旦进了那张图就会挡在自己前面，压边界的桶打不爆。
+	_expect(
+		not grid.is_static_blocked(cell),
+		"a barrel must stay out of the static blocker map, otherwise the shot is truncated in front of the barrel itself",
+		failures
+	)
 	_fire_once(world)
 	_fire_once(world)
 	_fire_once(world)

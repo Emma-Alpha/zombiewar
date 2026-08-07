@@ -89,12 +89,16 @@ static func resolve_ray_hits(
 		zombie_hits += 1
 	return resolved
 
-## 油桶候选。刻意**不做** line_is_clear 判定：油桶自身就是流场网格里的阻挡 cell
-## （装配方按 place_item_obstacle 组烘焙，spawn_barrel() 也会再标一次），
-## 视线闸门会被油桶自己占的格挡掉，2 格宽的桶甚至会自己挡住自己。
+## 油桶候选。刻意**不做** line_is_clear 判定：油桶自身就是流场通行图里的阻挡 cell
+## （spawn_barrel() 标记，引爆/移除时清除），视线闸门会被油桶自己占的格挡掉，
+## 跨 cell 边界的桶甚至会自己挡住自己。
 ## 掩体判定由调用方承担：sim_world._resolve_shot_event() 先用
-## ray_blocked_distance() 把射程截到第一个阻挡 cell，落在 max_distance 之内的
-## 油桶必然没有被墙、集装箱或另一只油桶挡住。
+## ray_blocked_distance() 把射程截到第一个**静态**阻挡 cell（墙、集装箱、路障、
+## 放置件、拾取箱），落在 max_distance 之内的油桶必然没有被静态几何挡住。
+## 油桶自己的格**不在**那张静态图里：截断点是 cell 中心，比桶的碰撞圆表面更近，
+## 桶的格若参与截断，射线会停在桶前面，桶永远打不爆。
+## 「桶挡住桶」由本函数与 resolve_ray_hits() 的排序收尾共同完成：
+## 两只桶都会被收进候选，排序后只保留最近的那一只，等价基线物理射线停在第一个圆柱面上。
 ## 状态闸门是 DESTROYED 而不是 PENDING：基线里已进入 EXPLODING 的桶碰撞体仍然启用，
 ## 子弹照样被它挡下（apply_hit() 返回 miss），只有真正炸掉才 disable 碰撞体。
 static func _append_barrel_hits(

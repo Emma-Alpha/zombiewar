@@ -6907,6 +6907,49 @@ git commit -m "feat: move explosive barrels into the deterministic simulation"
 Expected: 提交含上述九个脚本、新增的 `validate_sim_barrel.gd`（及其 `.uid`，若编辑器已导入）
 与计划文档里被更新的最终哈希；`git status --short` 中不含 `zw_blocker_dirty_smoke.gd`。
 
+- [ ] **Step 16（Task 9 落地后的缺陷修复，已完成）：阻挡网格必须拆成「通行图」与「静态阻挡图」两张**
+
+上面 Step 1–15 照做之后有一个致命遗漏，审阅实跑才发现：**随包发布的 `ChainA` / `ChainB` 打不爆**。
+
+成因是三处正确的设计叠在一起产生的错误：
+
+1. `spawn_barrel()` 把油桶自己的 AABB 标成阻挡格（Step 4）。
+2. `ray_blocked_distance()` 返回的是「第一个阻挡 cell 的**中心**」（Task 5 Step 4）。
+3. `_resolve_shot_event()` 把这个截断后的射程同时喂给僵尸与油桶的圆求解（Step 4）。
+
+cell 中心比 cell 里那件几何的真实表面更近。墙与集装箱铺满整格，这个保守量无害；
+但油桶直径只有 0.88 m，中心不一定落在 cell 中心。`DemoArena.tscn` 的
+`ChainA(-14, 0, -3.5)` 与 `ChainB(-11, 0, -3.5)` 的 z 正好压在 cell 边界上，
+桶自己的格中心比桶的碰撞圆表面近约 6 cm，于是 `ray_circle_distance()` 返回 -1，
+桶**从正南/正北根本打不中**（实测 360 个进入角里 110 个打不中；两轴都压边界的摆位是 280/360）。
+`validate_sim_barrel.gd` 原有的 `BARREL_A(5, 0)` / `BARREL_B(8, 0)` 恰好都在 cell 中心，
+是唯一一类不会踩到该缺陷的摆位，因此全绿地放行了这个缺陷。
+
+修法是把阻挡网格拆成两张，**不是**放宽射线判定：
+
+- `FlowFieldGrid` 新增 `static_blocked`，是 `blocked` 的子集，只含**静态几何**
+  （墙、集装箱、路障、放置件、拾取箱）。新增 `is_static_blocked()`、
+  `set_entity_blocked()`、`set_entity_blocked_world_rect()`，写入统一走 `_write_cell()`。
+- `SimWorld.set_blocker_world_rect()` 语义不变（两张图都写）；新增
+  `set_barrel_blocker_world_rect()` 只写通行图，`spawn_barrel()` / `_detonate_barrel()` /
+  `_resolve_barrel_removal_event()` 改用它。
+- `SimWorld.ray_blocked_distance()` 改查 `is_static_blocked()`。`line_is_clear()`、
+  `SimCollision.resolve_blocker()`、流场 BFS 一律**不变**，仍查通行图——
+  油桶照旧挡住僵尸的移动与视线。
+- `DemoArena._bake_static_blockers()` 跳过 `ExplosiveBarrel`：油桶也挂在
+  `place_item_obstacle` 组里，烘进静态图等于让桶挡在自己前面，前面几条就白改了。
+- 「桶挡住桶」不再依赖格子，而是由 `resolve_ray_hits()` 排序后在第一个 `KIND_BARREL`
+  处收尾完成，等价基线物理射线停在第一个圆柱面上。
+- `validate_sim_barrel.gd` 新增 `_check_offset_barrels_are_hittable()`：
+  逐字覆盖场景里的三只桶坐标外加两个半整数摆位，每个摆位先断言四个正方向、
+  再扫满 360 度，每个角度都用**全新的世界**（命中计数会累加，共用世界会假绿）；
+  `_check_blocker_cleared_on_detonation()` 追加一条机制级断言
+  `not grid.is_static_blocked(cell)`。
+
+**最终哈希不变，仍是 `3d32d95803e0ae79`**：`validate_sim_determinism.gd` 构造的世界里没有油桶，
+`static_blocked` 与 `blocked` 逐格相同，`ray_blocked_distance()` 的结果一模一样。
+两次独立运行逐字符一致。
+
 ---
 
 ### Task 10: 玩家活动区改为世界坐标固定矩形
