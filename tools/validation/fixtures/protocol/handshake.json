@@ -1,0 +1,8 @@
+{
+  "name": "handshake",
+  "type": "join",
+  "protocol_version": 1,
+  "token": null,
+  "session_token": null,
+  "nickname": "阿波"
+}
