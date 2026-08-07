@@ -1,6 +1,11 @@
 extends RefCounted
 class_name ZombieTargetSelector
 
+## 表现层与工具脚本使用的节点版目标选择。
+## 模拟层不使用本文件：SimWorld._select_target_slot() 在量化后的玩家快照上
+## 复刻同一语义（最近优先 + switch_margin 迟滞 + 感知半径过滤）。
+## 两处语义必须同步修改。
+
 static func select_target(
 	origin: Vector3,
 	current: PlayerController,
