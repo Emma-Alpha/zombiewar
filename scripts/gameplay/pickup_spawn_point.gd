@@ -8,12 +8,14 @@ const PICKUP_SCENE := preload("res://scenes/gameplay/PickupChest.tscn")
 @export var pickup_definition: PickupDefinition
 @export var respawn_enabled := false
 @export_range(0.0, 300.0, 0.1) var respawn_delay_seconds := 3.0
+@export var remove_after_collection := false
 
 @onready var respawn_timer: Timer = $RespawnTimer
 
 var current_pickup: PickupChest
 var current_pickup_id := 0
 var respawn_requested := false
+var collected_successfully := false
 
 func _ready() -> void:
 	respawn_timer.timeout.connect(_spawn_pickup)
@@ -31,6 +33,7 @@ func _spawn_pickup() -> void:
 	current_pickup.transform = _next_spawn_transform()
 	current_pickup_id = current_pickup.get_instance_id()
 	respawn_requested = false
+	collected_successfully = false
 	current_pickup.collected.connect(_on_pickup_collected)
 	current_pickup.tree_exited.connect(
 		_on_pickup_tree_exited.bind(current_pickup_id),
@@ -40,6 +43,7 @@ func _spawn_pickup() -> void:
 
 func _on_pickup_collected(pickup: PickupChest) -> void:
 	if pickup == current_pickup:
+		collected_successfully = true
 		respawn_requested = respawn_enabled
 
 func _on_pickup_tree_exited(pickup_id: int) -> void:
@@ -48,6 +52,9 @@ func _on_pickup_tree_exited(pickup_id: int) -> void:
 	current_pickup = null
 	current_pickup_id = 0
 	navigation_geometry_changed.emit()
+	if remove_after_collection and collected_successfully:
+		queue_free()
+		return
 	if not respawn_requested:
 		return
 	respawn_requested = false

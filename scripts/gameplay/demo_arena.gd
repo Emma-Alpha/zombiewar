@@ -200,6 +200,18 @@ func _wire_dependencies() -> void:
 				child.navigation_geometry_changed.connect(
 					_on_runtime_navigation_geometry_changed
 				)
+	var random_pickup_drops := get_node_or_null(
+		"World/Props/RandomPickupDrops"
+	) as RandomPickupDropManager
+	if (
+		random_pickup_drops != null and
+		not random_pickup_drops.navigation_geometry_changed.is_connected(
+			_on_runtime_navigation_geometry_changed
+		)
+	):
+		random_pickup_drops.navigation_geometry_changed.connect(
+			_on_runtime_navigation_geometry_changed
+		)
 	var spawn_button := get_node_or_null("HUD/SpawnWaveButton") as Button
 	if spawn_button != null and not spawn_button.pressed.is_connected(request_spawn_wave):
 		spawn_button.pressed.connect(request_spawn_wave)
@@ -265,6 +277,14 @@ func _wire_target(target: Node) -> void:
 	if not target is ZombieTarget:
 		return
 	var zombie := target as ZombieTarget
+	var random_pickup_drops := get_node_or_null(
+		"World/Props/RandomPickupDrops"
+	) as RandomPickupDropManager
+	if (
+		random_pickup_drops != null and
+		not zombie.died.is_connected(random_pickup_drops.try_spawn_drop)
+	):
+		zombie.died.connect(random_pickup_drops.try_spawn_drop)
 	var player_registry := get_node_or_null("PlayerRegistry") as PlayerRegistry
 	var navigation_manager := get_node_or_null(
 		"World/Navigation"
@@ -336,6 +356,8 @@ func _wire_target_blood(target: Node) -> void:
 	if not target is ZombieTarget:
 		return
 	var zombie := target as ZombieTarget
+	if not zombie.blood_impact_requested.is_connected(_on_blood_impact_requested):
+		zombie.blood_impact_requested.connect(_on_blood_impact_requested)
 	if not zombie.ground_blood_requested.is_connected(_on_ground_blood_requested):
 		zombie.ground_blood_requested.connect(_on_ground_blood_requested)
 	if not zombie.ground_blood_trail_requested.is_connected(
@@ -351,9 +373,9 @@ func _on_ground_blood_requested(
 ) -> void:
 	var manager := get_node("GroundBloodManager") as GroundBloodManager
 	if death_pool:
-		manager.spawn_death_pool(origin, intensity)
+		manager.queue_death_pool(origin, intensity)
 	else:
-		manager.spawn_hit_splat(origin, direction, intensity)
+		manager.queue_hit_splat(origin, direction, intensity)
 
 func _on_ground_blood_trail_requested(
 	position: Vector3,
@@ -362,7 +384,15 @@ func _on_ground_blood_trail_requested(
 	progress: float
 ) -> void:
 	var manager := get_node("GroundBloodManager") as GroundBloodManager
-	manager.spawn_trail_splat(position, direction, intensity, progress)
+	manager.queue_trail_splat(position, direction, intensity, progress)
+
+func _on_blood_impact_requested(
+	position: Vector3,
+	direction: Vector3,
+	intensity: float
+) -> void:
+	var manager := get_node("GroundBloodManager") as GroundBloodManager
+	manager.spawn_blood_impact(position, direction, intensity)
 
 func _on_navigation_chunk_bake_failed(
 	chunk_id: StringName,

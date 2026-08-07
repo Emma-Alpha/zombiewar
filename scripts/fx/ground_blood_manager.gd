@@ -1,7 +1,14 @@
 extends Node3D
 class_name GroundBloodManager
 
+enum BloodRequestType {
+	HIT,
+	TRAIL,
+	DEATH_POOL,
+}
+
 const SPLAT_SCENE := preload("res://scenes/fx/GroundBloodSplat.tscn")
+const BLOOD_IMPACT_SCENE := preload("res://scenes/fx/BloodImpact.tscn")
 const HIT_TEXTURES: Array[Texture2D] = [
 	preload("res://assets/fx/blood/kenney_splat26.png"),
 	preload("res://assets/fx/blood/kenney_splat29.png"),
@@ -16,11 +23,115 @@ const TRAIL_TEXTURES: Array[Texture2D] = [
 @export_flags_3d_physics var surface_collision_mask := 1
 @export var spatial_cell_size := 0.45
 @export_range(1, 2, 1) var max_layers_per_cell := 2
+@export_range(1, 16, 1) var max_requests_per_frame := 2
+@export_range(1, 64, 1) var impact_pool_size := 24
 
 var splats: Array[GroundBloodSplat] = []
 var reuse_cursor := 0
 var cell_splats: Dictionary = {}
 var splat_cells: Dictionary = {}
+var pending_requests: Array[Dictionary] = []
+var impact_pool: Array[BloodImpact] = []
+var impact_reuse_cursor := 0
+
+func _ready() -> void:
+	_ensure_impact_pool()
+	set_process(not pending_requests.is_empty())
+
+func spawn_blood_impact(
+	hit_position: Vector3,
+	shot_direction: Vector3,
+	intensity: float = 1.0
+) -> BloodImpact:
+	_ensure_impact_pool()
+	if impact_pool.is_empty():
+		return null
+	var impact := impact_pool[impact_reuse_cursor]
+	impact_reuse_cursor = (impact_reuse_cursor + 1) % impact_pool.size()
+	impact.setup(hit_position, shot_direction, intensity)
+	return impact
+
+func get_impact_pool_count() -> int:
+	return impact_pool.size()
+
+func _ensure_impact_pool() -> void:
+	var resolved_pool_size := maxi(impact_pool_size, 1)
+	while impact_pool.size() < resolved_pool_size:
+		var impact := BLOOD_IMPACT_SCENE.instantiate() as BloodImpact
+		add_child(impact)
+		impact.set_pooled(true)
+		impact_pool.append(impact)
+
+func _process(_delta: float) -> void:
+	var request_count := mini(
+		pending_requests.size(),
+		maxi(max_requests_per_frame, 1)
+	)
+	for _request_index in range(request_count):
+		_process_blood_request(pending_requests.pop_front())
+	if pending_requests.is_empty():
+		set_process(false)
+
+func queue_hit_splat(
+	hit_position: Vector3,
+	shot_direction: Vector3,
+	intensity: float = 1.0
+) -> void:
+	_queue_blood_request({
+		"type": BloodRequestType.HIT,
+		"position": hit_position,
+		"direction": shot_direction,
+		"intensity": intensity,
+	})
+
+func queue_trail_splat(
+	world_position: Vector3,
+	move_direction: Vector3,
+	intensity: float,
+	progress: float
+) -> void:
+	_queue_blood_request({
+		"type": BloodRequestType.TRAIL,
+		"position": world_position,
+		"direction": move_direction,
+		"intensity": intensity,
+		"progress": progress,
+	})
+
+func queue_death_pool(
+	world_position: Vector3,
+	intensity: float = 1.0
+) -> void:
+	_queue_blood_request({
+		"type": BloodRequestType.DEATH_POOL,
+		"position": world_position,
+		"intensity": intensity,
+	})
+
+func get_pending_request_count() -> int:
+	return pending_requests.size()
+
+func _queue_blood_request(request: Dictionary) -> void:
+	pending_requests.append(request)
+	set_process(true)
+
+func _process_blood_request(request: Dictionary) -> void:
+	match int(request["type"]):
+		BloodRequestType.HIT:
+			spawn_hit_splat(
+				request["position"],
+				request["direction"],
+				request["intensity"]
+			)
+		BloodRequestType.TRAIL:
+			spawn_trail_splat(
+				request["position"],
+				request["direction"],
+				request["intensity"],
+				request["progress"]
+			)
+		BloodRequestType.DEATH_POOL:
+			spawn_death_pool(request["position"], request["intensity"])
 
 func place_splat(
 	surface_position: Vector3,

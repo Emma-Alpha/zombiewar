@@ -24,6 +24,12 @@ signal ground_blood_trail_requested(
 	intensity: float,
 	progress: float
 )
+signal blood_impact_requested(
+	position: Vector3,
+	direction: Vector3,
+	intensity: float
+)
+signal died(world_position: Vector3)
 
 @export var max_health: float = 50.0
 @export var knockback_impulse: float = 6.0
@@ -468,6 +474,9 @@ func _spawn_blood_impact(
 	shot_direction: Vector3,
 	intensity: float
 ) -> void:
+	if not blood_impact_requested.get_connections().is_empty():
+		blood_impact_requested.emit(hit_position, shot_direction, intensity)
+		return
 	var effect_parent := get_parent()
 	if effect_parent == null:
 		return
@@ -489,6 +498,8 @@ func _on_health_changed(_current: float, _maximum: float) -> void:
 
 func _on_depleted() -> void:
 	depleted = true
+	var death_position := global_position if is_inside_tree() else position
+	died.emit(death_position)
 	attack_target = null
 	has_navigation_target = false
 	attack_cycle.cancel_pending()

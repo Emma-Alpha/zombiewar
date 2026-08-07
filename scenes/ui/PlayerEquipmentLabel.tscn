@@ -6,11 +6,12 @@
 [node name="PlayerEquipmentLabel" type="Label3D"]
 position = Vector3(0, 2.72, 0)
 font = ExtResource("2_font")
-font_size = 22
-outline_size = 7
+font_size = 64
+outline_size = 6
+pixel_size = 0.006
 modulate = Color(1, 0.93, 0.72, 1)
 text = "P1 · 手枪:∞"
 billboard = 1
 no_depth_test = true
-fixed_size = true
+fixed_size = false
 script = ExtResource("1_label")

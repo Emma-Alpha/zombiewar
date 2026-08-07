@@ -1,4 +1,4 @@
-[gd_scene load_steps=54 format=3]
+[gd_scene load_steps=55 format=3]
 
 [ext_resource type="Script" path="res://scripts/gameplay/demo_arena.gd" id="1_arena"]
 [ext_resource type="Script" path="res://scripts/gameplay/local_player_spawner.gd" id="2_player_spawner"]
@@ -27,6 +27,7 @@
 [ext_resource type="Resource" path="res://resources/pickups/rifle_pickup.tres" id="25_rifle_pickup"]
 [ext_resource type="Resource" path="res://resources/pickups/rifle_ammo_pickup.tres" id="26_rifle_ammo_pickup"]
 [ext_resource type="Resource" path="res://resources/pickups/oil_barrel_pickup.tres" id="27_oil_barrel_pickup"]
+[ext_resource type="PackedScene" path="res://scenes/gameplay/RandomPickupDropManager.tscn" id="28_random_pickup_drops"]
 
 [sub_resource type="Environment" id="Environment_arena"]
 background_mode = 1
@@ -494,6 +495,9 @@ position = Vector3(12, 0, 0)
 rotation_degrees = Vector3(0, -5, 0)
 
 [node name="PickupSpawners" type="Node3D" parent="World/Props"]
+
+[node name="RandomPickupDrops" parent="World/Props" instance=ExtResource("28_random_pickup_drops")]
+pickup_definitions = [ExtResource("25_rifle_pickup"), ExtResource("26_rifle_ammo_pickup"), ExtResource("27_oil_barrel_pickup")]
 
 [node name="Rifle" parent="World/Props/PickupSpawners" instance=ExtResource("24_pickup_spawn_point")]
 position = Vector3(-4.5, 0, 6.0)

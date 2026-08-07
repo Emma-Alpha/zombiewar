@@ -1,9 +1,11 @@
-[gd_resource type="Resource" script_class="RangedWeaponDefinition" load_steps=2 format=3]
+[gd_resource type="Resource" script_class="RangedWeaponDefinition" format=3 uid="uid://bnb1jtawikelh"]
 
-[ext_resource type="Script" path="res://scripts/combat/weapons/ranged_weapon_definition.gd" id="1_definition"]
+[ext_resource type="Script" uid="uid://brtfga3pmigpt" path="res://scripts/combat/weapons/ranged_weapon_definition.gd" id="1_definition"]
 
 [resource]
 script = ExtResource("1_definition")
+uses_ammo = true
+max_ammo = 360
 weapon_id = &"rifle"
 display_name = "步枪"
 visual_node_name = &"Rifle"
@@ -12,18 +14,5 @@ attacks_per_second = 4.0
 damage = 25.0
 idle_animation = &"Idle_Gun"
 run_animation = &"Run_Gun"
-attack_animation = &""
-attack_lock_duration = 0.0
 visual_recoil_kick = 0.08
 camera_impulse_strength = 0.06
-attack_range = 28.0
-hit_collision_mask = 5
-tracer_pool_size = 8
-uses_ammo = true
-max_ammo = 360
-penetration_damage_coefficient = 0.0
-max_penetration_count = 0
-base_spread_degrees = 0.5
-max_spread_degrees = 5.0
-spread_increase_per_shot_degrees = 0.65
-spread_recovery_degrees_per_second = 1.5

@@ -29,6 +29,6 @@ func try_consume(trigger_held: bool = true) -> bool:
 		return false
 	if remaining > 0.0:
 		return false
-	remaining += interval
+	remaining = interval
 	buffered_trigger_remaining = 0.0
 	return true
