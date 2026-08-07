@@ -4,6 +4,7 @@ class_name PlaceableEquipment
 @export var display_name := "油桶"
 @export_range(0, 999999, 1) var initial_count := 999
 @export var item_scene: PackedScene
+@export var placement_direction_scale := 1.0
 
 var remaining_count := -1
 var place_item_service
@@ -33,7 +34,7 @@ func set_use_input(_pressed: bool, just_pressed: bool, aim: Vector3) -> void:
 		origin = requester.global_position
 	elif is_inside_tree():
 		origin = global_position
-	if place_item_service.request_place_item(requester, origin, aim, item_scene):
+	if place_item_service.request_place_item(requester, origin, aim * placement_direction_scale, item_scene):
 		remaining_count -= 1
 		count_changed.emit(remaining_count)
 

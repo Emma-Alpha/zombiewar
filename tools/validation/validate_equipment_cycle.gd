@@ -4,12 +4,15 @@ const EquipmentController = preload("res://scripts/player/equipment_controller.g
 const PlaceableEquipment = preload("res://scripts/player/placeable_equipment.gd")
 const FakeEquipmentItem = preload("res://tools/validation/support/fake_equipment_item.gd")
 const FakePlaceItemService = preload("res://tools/validation/support/fake_place_item_service.gd")
+const OilBarrelEquipmentScene = preload("res://scenes/player/equipment/OilBarrelEquipment.tscn")
 
 func _init() -> void:
 	var failures: Array[String] = []
 	_test_cycle_skips_empty_items(failures)
 	_test_depletion_switches_to_next_item(failures)
 	_test_placeable_inventory_changes_only_on_success(failures)
+	_test_placeable_direction_configuration(failures)
+	_test_oil_barrel_rear_direction_configuration(failures)
 	_test_demo_arena_uses_place_item_service(failures)
 	if failures.is_empty():
 		print("validate_equipment_cycle: PASS")
@@ -63,6 +66,43 @@ func _test_placeable_inventory_changes_only_on_success(failures: Array[String]) 
 	_expect(placeable.get_remaining_count() == 1, "successful placement must consume exactly one item", failures)
 	_expect(service.request_count == 2, "placeable must issue one request per use edge", failures)
 	placeable.free()
+	service.free()
+
+func _test_placeable_direction_configuration(failures: Array[String]) -> void:
+	var service := FakePlaceItemService.new()
+	var placeable := PlaceableEquipment.new()
+	placeable.initial_count = 2
+	placeable.item_scene = _build_node_scene()
+	placeable.set_place_item_service(service)
+	_expect(
+		"placement_direction_scale" in placeable,
+		"PlaceableEquipment must expose placement_direction_scale",
+		failures
+	)
+	placeable.set_use_input(false, true, Vector3(0.6, 0.0, -0.8))
+	_expect(
+		service.last_direction.is_equal_approx(Vector3(0.6, 0.0, -0.8)),
+		"placeable equipment must preserve aim direction by default",
+		failures
+	)
+	placeable.free()
+	service.free()
+
+func _test_oil_barrel_rear_direction_configuration(failures: Array[String]) -> void:
+	var service := FakePlaceItemService.new()
+	var oil_barrel := OilBarrelEquipmentScene.instantiate() as PlaceableEquipment
+	_expect(oil_barrel != null, "OilBarrelEquipment scene must instantiate as PlaceableEquipment", failures)
+	if oil_barrel == null:
+		service.free()
+		return
+	oil_barrel.set_place_item_service(service)
+	oil_barrel.set_use_input(false, true, Vector3(0.6, 0.0, -0.8))
+	_expect(
+		service.last_direction.is_equal_approx(Vector3(-0.6, 0.0, 0.8)),
+		"OilBarrelEquipment scene must reverse aim direction",
+		failures
+	)
+	oil_barrel.free()
 	service.free()
 
 func _test_demo_arena_uses_place_item_service(failures: Array[String]) -> void:

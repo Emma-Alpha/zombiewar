@@ -8,3 +8,4 @@ script = ExtResource("1_placeable")
 display_name = "油桶"
 initial_count = 999
 item_scene = ExtResource("2_barrel")
+placement_direction_scale = -1.0
