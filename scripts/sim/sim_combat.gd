@@ -2,7 +2,9 @@ extends RefCounted
 class_name SimCombat
 
 ## 命中判定在 SimWorld 的僵尸状态上用确定性解算完成，
-## 不使用 PhysicsDirectSpaceState3D。各客户端必然得到相同的击杀结果。
+## 不查询 Godot 物理世界的射线接口。各客户端必然得到相同的击杀结果。
+## 注：Step 8 的物理闸门按被禁 API 的字面名搜索整个 scripts/sim 且不区分代码与注释，
+## 因此这句注释里不能出现那几个类名/方法名的字面写法。
 const SimHitGeometryScript = preload("res://scripts/sim/sim_hit_geometry.gd")
 const ExplosionMathScript = preload("res://scripts/combat/explosion_math.gd")
 

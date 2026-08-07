@@ -908,14 +908,26 @@ func queue_explosion_event(
 		"edge_damage": edge_damage,
 	})
 
-func queue_spread_reset(slot: int) -> void:
-	pending_events.append({"kind": &"spread_reset", "slot": slot})
+## profile_index 必须是「换上」的那把武器的档案下标，不是被换下的那把。
+func queue_spread_reset(slot: int, profile_index: int) -> void:
+	pending_events.append({
+		"kind": &"spread_reset",
+		"slot": slot,
+		"profile_index": profile_index,
+	})
 
-func reset_spread(slot: int) -> void:
+## 把槽位的散布重置为 profile_index 这把武器自己的基础散布。
+## 必须先落档案再取 base：player_spread_profile[slot] 记录的是「上一次开火用的档案」，
+## 换装后若沿用旧下标，就会把新武器重置到旧武器的 base。
+## 基线里每把 RangedWeapon 各自持有一个 WeaponSpreadState（构造即 current = base，
+## 收起时 reset() 回 base），所以换上任何一把枪，它的当前散布都恰为自己的 base。
+func reset_spread(slot: int, profile_index: int) -> void:
 	if slot < 0 or slot >= MAX_PLAYER_SLOTS:
 		return
-	var profile := _weapon_profile(player_spread_profile[slot])
-	player_spread_degrees[slot] = float(profile.get("base_spread_degrees", 0.0))
+	player_spread_profile[slot] = profile_index
+	player_spread_degrees[slot] = float(
+		_weapon_profile(profile_index).get("base_spread_degrees", 0.0)
+	)
 
 func get_spread_degrees(slot: int) -> float:
 	if slot < 0 or slot >= MAX_PLAYER_SLOTS:
@@ -953,7 +965,7 @@ func _resolve_pending_events() -> void:
 		elif kind == &"explosion":
 			_resolve_explosion_event(event)
 		elif kind == &"spread_reset":
-			reset_spread(int(event["slot"]))
+			reset_spread(int(event["slot"]), int(event["profile_index"]))
 
 func _resolve_shot_event(event: Dictionary) -> void:
 	var slot := int(event["slot"])
@@ -963,7 +975,11 @@ func _resolve_shot_event(event: Dictionary) -> void:
 	var profile := _weapon_profile(profile_index)
 	if profile.is_empty():
 		return
-	player_spread_profile[slot] = profile_index
+	# 该槽位第一次用这个档案开火（或换装事件没排上队就直接开火）时，
+	# 散布必须先落到这把武器自己的 base：基线的 WeaponSpreadState 构造即
+	# current = base，第一发绝不可能是 0 度。
+	if player_spread_profile[slot] != profile_index:
+		reset_spread(slot, profile_index)
 	var origin: Vector2 = event["origin"]
 	var origin_height: float = event["origin_height"]
 	var aim: Vector2 = event["aim_direction"]

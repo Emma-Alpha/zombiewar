@@ -2586,8 +2586,8 @@ Expected: `git status --short` 中不含 `tools/validation/zw_sim_world_smoke.gd
   - `SimWorld.queue_fire_event(slot: int, profile_index: int, origin_xz: Vector2, origin_height: float, aim_direction: Vector2) -> void`
   - `SimWorld.queue_melee_event(slot: int, damage: float, reach: float, half_width: float, origin_xz: Vector2, origin_height: float, aim_direction: Vector2) -> void`
   - `SimWorld.queue_explosion_event(origin_xz: Vector2, origin_height: float, radius: float, center_damage: float, edge_damage: float) -> void`
-  - `SimWorld.queue_spread_reset(slot: int) -> void`（换下武器时排队清散布；与其他事件同批在 `_resolve_pending_events()` 里按排队顺序执行）
-  - `SimWorld.reset_spread(slot: int) -> void`、`SimWorld.get_spread_degrees(slot: int) -> float`
+  - `SimWorld.queue_spread_reset(slot: int, profile_index: int) -> void`（换装武器时排队重置散布；`profile_index` 是**换上**的那把武器的档案下标。与其他事件同批在 `_resolve_pending_events()` 里按排队顺序执行）
+  - `SimWorld.reset_spread(slot: int, profile_index: int) -> void`（先把 `player_spread_profile[slot]` 落成 `profile_index` 再取该档案的 `base_spread_degrees`；`player_spread_profile` 只在开火与本函数里写，若沿用旧下标就会把新武器重置到上一把武器的 base）、`SimWorld.get_spread_degrees(slot: int) -> float`
   - `SimWorld.tick_shot_events: Array`（元素为 `{slot: int, origin: Vector2, origin_height: float, direction: Vector2, end: Vector2, end_height: float, did_hit: bool, killed: bool, damage: float, zone: StringName}`）
 
 - [ ] **Step 1: 创建 `scripts/sim/sim_hit_geometry.gd`**
@@ -2700,7 +2700,9 @@ extends RefCounted
 class_name SimCombat
 
 ## 命中判定在 SimWorld 的僵尸状态上用确定性解算完成，
-## 不使用 PhysicsDirectSpaceState3D。各客户端必然得到相同的击杀结果。
+## 不查询 Godot 物理世界的射线接口。各客户端必然得到相同的击杀结果。
+## 注：Step 8 的物理闸门按被禁 API 的字面名搜索整个 scripts/sim 且不区分代码与注释，
+## 因此这句注释里不能出现那几个类名/方法名的字面写法。
 const SimHitGeometryScript = preload("res://scripts/sim/sim_hit_geometry.gd")
 const ExplosionMathScript = preload("res://scripts/combat/explosion_math.gd")
 
@@ -2977,14 +2979,26 @@ func queue_explosion_event(
 		"edge_damage": edge_damage,
 	})
 
-func queue_spread_reset(slot: int) -> void:
-	pending_events.append({"kind": &"spread_reset", "slot": slot})
+## profile_index 必须是「换上」的那把武器的档案下标，不是被换下的那把。
+func queue_spread_reset(slot: int, profile_index: int) -> void:
+	pending_events.append({
+		"kind": &"spread_reset",
+		"slot": slot,
+		"profile_index": profile_index,
+	})
 
-func reset_spread(slot: int) -> void:
+## 把槽位的散布重置为 profile_index 这把武器自己的基础散布。
+## 必须先落档案再取 base：player_spread_profile[slot] 记录的是「上一次开火用的档案」，
+## 换装后若沿用旧下标，就会把新武器重置到旧武器的 base。
+## 基线里每把 RangedWeapon 各自持有一个 WeaponSpreadState（构造即 current = base，
+## 收起时 reset() 回 base），所以换上任何一把枪，它的当前散布都恰为自己的 base。
+func reset_spread(slot: int, profile_index: int) -> void:
 	if slot < 0 or slot >= MAX_PLAYER_SLOTS:
 		return
-	var profile := _weapon_profile(player_spread_profile[slot])
-	player_spread_degrees[slot] = float(profile.get("base_spread_degrees", 0.0))
+	player_spread_profile[slot] = profile_index
+	player_spread_degrees[slot] = float(
+		_weapon_profile(profile_index).get("base_spread_degrees", 0.0)
+	)
 
 func get_spread_degrees(slot: int) -> float:
 	if slot < 0 or slot >= MAX_PLAYER_SLOTS:
@@ -3022,7 +3036,7 @@ func _resolve_pending_events() -> void:
 		elif kind == &"explosion":
 			_resolve_explosion_event(event)
 		elif kind == &"spread_reset":
-			reset_spread(int(event["slot"]))
+			reset_spread(int(event["slot"]), int(event["profile_index"]))
 
 func _resolve_shot_event(event: Dictionary) -> void:
 	var slot := int(event["slot"])
@@ -3032,7 +3046,11 @@ func _resolve_shot_event(event: Dictionary) -> void:
 	var profile := _weapon_profile(profile_index)
 	if profile.is_empty():
 		return
-	player_spread_profile[slot] = profile_index
+	# 该槽位第一次用这个档案开火（或换装事件没排上队就直接开火）时，
+	# 散布必须先落到这把武器自己的 base：基线的 WeaponSpreadState 构造即
+	# current = base，第一发绝不可能是 0 度。
+	if player_spread_profile[slot] != profile_index:
+		reset_spread(slot, profile_index)
 	var origin: Vector2 = event["origin"]
 	var origin_height: float = event["origin_height"]
 	var aim: Vector2 = event["aim_direction"]
@@ -3250,7 +3268,7 @@ rg -n "PhysicsDirectSpaceState3D|intersect_ray|intersect_shape" scripts/sim \
 rg -n "world: SimWorld|SimWorld\." scripts/sim/sim_combat.gd || echo "no cyclic type hint"
 ```
 
-Expected: 导入检查退出码 0；三条搜索分别输出 `fire events carry aim only`、`sim combat performs no physics queries` 与 `no cyclic type hint`。第三条是循环依赖闸门：`sim_combat.gd` 一旦出现 `world: SimWorld` 形参标注或 `SimWorld` 加英文句点的常量访问，上一条的编辑器导入检查就会报 GDScript 循环类引用解析错误。该闸门不区分代码与注释，因此 Step 3 的注释里也刻意没有出现这两种字面写法——改注释时不要把它们写回去。
+Expected: 导入检查退出码 0；三条搜索分别输出 `fire events carry aim only`、`sim combat performs no physics queries` 与 `no cyclic type hint`。第三条是循环依赖闸门：`sim_combat.gd` 一旦出现 `world: SimWorld` 形参标注或 `SimWorld` 加英文句点的常量访问，上一条的编辑器导入检查就会报 GDScript 循环类引用解析错误。该闸门不区分代码与注释，因此 Step 3 的注释里也刻意没有出现这两种字面写法——改注释时不要把它们写回去。第二条的物理闸门同理：它按被禁 API 的字面名 grep 整个 `scripts/sim`，同样不区分代码与注释，所以 Step 3 的注释写的是「不查询 Godot 物理世界的射线接口」而不是那几个类名/方法名——一旦把类名写进注释，这条闸门就会永久假红。
 
 - [ ] **Step 9: 提交**
 
@@ -4715,7 +4733,7 @@ Expected: 提交同时包含上述修改与 Step 5 的两组删除；不含 `.go
   - 请求字典形状：
     - `{kind: &"shot", weapon_id: StringName, origin: Vector3, aim_direction: Vector3}`
     - `{kind: &"melee", weapon_id: StringName, damage: float, reach: float, half_width: float, origin: Vector3, aim_direction: Vector3}`
-    - `{kind: &"spread_reset"}`
+    - `{kind: &"spread_reset", weapon_id: StringName}`（`weapon_id` 是**换上**的那把武器；模拟层每个槽位只有一份散布状态，换装后它必须落到新武器自己的 base）
   - `RangedWeapon.show_tracer(from_position: Vector3, to_position: Vector3) -> void`
   - `EquipmentController.set_sim_request_sink(value: Callable) -> void`
   - `PlayerController.set_sim_request_sink(value: Callable) -> void`
@@ -4793,8 +4811,17 @@ func _physics_process(delta: float) -> void:
 ```gdscript
 func set_equipped(value: bool) -> void:
 	super.set_equipped(value)
-	if not value:
-		emit_sim_request({"kind": &"spread_reset"})
+	# 在「换上」时发，不在「换下」时发：基线里每把枪各自持有一个 WeaponSpreadState，
+	# 收起时 reset() 回自己的 base，因此换上的那把枪当前散布恒为它自己的 base。
+	# 模拟层每个槽位只有一份散布状态，只有携带新武器的 weapon_id 才能重置到正确的 base。
+	# EquipmentController.equip_slot() 先 old.set_equipped(false) 再 new.set_equipped(true)，
+	# 顺序天然正确。
+	if value:
+		var ranged_definition := definition as RangedWeaponDefinition
+		emit_sim_request({
+			"kind": &"spread_reset",
+			"weapon_id": ranged_definition.weapon_id,
+		})
 ```
 
 - [ ] **Step 3: 把 `RangedWeapon._fire()` 改为发出开火事件**
@@ -5003,7 +5030,10 @@ func _on_sim_request(request: Dictionary, slot: int) -> void:
 		)
 		return
 	if kind == &"spread_reset":
-		sim_world.queue_spread_reset(slot)
+		# 传「换上」的那把武器的档案下标；传旧下标会把新武器重置到上一把枪的 base。
+		sim_world.queue_spread_reset(
+			slot, get_weapon_profile_index(request["weapon_id"])
+		)
 
 func _on_sim_shot_event(event: Dictionary) -> void:
 	var origin: Vector2 = event["origin"]
