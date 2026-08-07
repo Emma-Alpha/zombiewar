@@ -2,32 +2,45 @@ extends CanvasLayer
 class_name MobileControls
 
 const MobileTouchscreen = preload("res://scripts/ui/mobile_touchscreen.gd")
+const TouchInputSourceScript = preload("res://scripts/input/touch_input_source.gd")
 const JOYSTICK_VIEWPORT_HEIGHT_RATIO := 0.45
 const BASE_JOYSTICK_CONTROL_SIZE := 252.0
 const BASE_JOYSTICK_SIZE := 204.0
 const BASE_JOYSTICK_TIP_SIZE := 88.0
-const BASE_FIRE_BUTTON_SIZE := 160.0
-const BASE_FIRE_LABEL_FONT_SIZE := 26.0
+const BASE_USE_BUTTON_SIZE := 160.0
+const BASE_USE_LABEL_FONT_SIZE := 26.0
 const BASE_SCREEN_MARGIN := 40.0
-const BASE_PLACE_ITEM_BUTTON_SIZE := 120.0
-const BASE_PLACE_ITEM_BUTTON_GAP := 16.0
+const BASE_CYCLE_BUTTON_SIZE := 112.0
+const BASE_ACTION_BUTTON_GAP := 16.0
 const BASE_ACTION_OUTLINE_INSET := 4.0
 const BASE_ACTION_OUTLINE_WIDTH := 4.0
+const TOUCH_MOVE_ACTIONS: Array[StringName] = [
+	&"touch_move_left",
+	&"touch_move_right",
+	&"touch_move_forward",
+	&"touch_move_back",
+]
 
 @export var force_visible := false
 @export_node_path("CanvasItem") var desktop_help_path: NodePath
 
 @onready var virtual_joystick: VirtualJoystick = $Layout/VirtualJoystick
-@onready var fire_button: MobileActionButton = $Layout/FireButton
-@onready var place_item_button: MobileActionButton = $Layout/PlaceItemButton
-@onready var fire_label: Label = $Layout/FireButton/Label
-@onready var place_item_label: Label = $Layout/PlaceItemButton/Label
+@onready var previous_button: MobileActionButton = $Layout/PreviousButton
+@onready var next_button: MobileActionButton = $Layout/NextButton
+@onready var use_button: MobileActionButton = $Layout/UseButton
+@onready var use_label: Label = $Layout/UseButton/Label
 
 var touch_mode := false
 var joystick_touch_id := -1
 var joystick_touch_position := Vector2.ZERO
+var touch_input_source = TouchInputSourceScript.new()
 
 func _ready() -> void:
+	previous_button.pressed_changed.connect(touch_input_source.set_previous_pressed)
+	next_button.pressed_changed.connect(touch_input_source.set_next_pressed)
+	use_button.pressed_changed.connect(touch_input_source.set_use_pressed)
+	if not visibility_changed.is_connected(_on_visibility_changed):
+		visibility_changed.connect(_on_visibility_changed)
 	var viewport := get_viewport()
 	if not viewport.size_changed.is_connected(_apply_responsive_layout):
 		viewport.size_changed.connect(_apply_responsive_layout)
@@ -35,6 +48,16 @@ func _ready() -> void:
 	set_touch_mode(should_show_controls(
 		_is_physical_touchscreen_available(),
 		force_visible
+	))
+
+func _process(_delta: float) -> void:
+	if not touch_mode:
+		return
+	touch_input_source.set_move_vector(Input.get_vector(
+		TOUCH_MOVE_ACTIONS[0],
+		TOUCH_MOVE_ACTIONS[1],
+		TOUCH_MOVE_ACTIONS[2],
+		TOUCH_MOVE_ACTIONS[3]
 	))
 
 func _exit_tree() -> void:
@@ -50,7 +73,8 @@ func _apply_responsive_layout() -> void:
 		return
 	var joystick_control_size := viewport_height * JOYSTICK_VIEWPORT_HEIGHT_RATIO
 	var scale_factor := joystick_control_size / BASE_JOYSTICK_CONTROL_SIZE
-	var fire_button_size := BASE_FIRE_BUTTON_SIZE * scale_factor
+	var use_button_size := BASE_USE_BUTTON_SIZE * scale_factor
+	var cycle_button_size := BASE_CYCLE_BUTTON_SIZE * scale_factor
 	var screen_margin := BASE_SCREEN_MARGIN * scale_factor
 
 	_set_anchored_rect(
@@ -63,32 +87,41 @@ func _apply_responsive_layout() -> void:
 	virtual_joystick.joystick_size = BASE_JOYSTICK_SIZE * scale_factor
 	virtual_joystick.tip_size = BASE_JOYSTICK_TIP_SIZE * scale_factor
 
-	var fire_left := -screen_margin - fire_button_size
-	var fire_top := -screen_margin - fire_button_size
+	var use_left := -screen_margin - use_button_size
+	var use_top := -screen_margin - use_button_size
 	_set_anchored_rect(
-		fire_button,
-		fire_left,
-		fire_top,
+		use_button,
+		use_left,
+		use_top,
 		-screen_margin,
 		-screen_margin
 	)
-	fire_label.add_theme_font_size_override(
+	use_label.add_theme_font_size_override(
 		&"font_size",
-		roundi(BASE_FIRE_LABEL_FONT_SIZE * scale_factor)
+		roundi(BASE_USE_LABEL_FONT_SIZE * scale_factor)
 	)
-	fire_button.outline_inset = BASE_ACTION_OUTLINE_INSET * scale_factor
-	fire_button.outline_width = BASE_ACTION_OUTLINE_WIDTH * scale_factor
-	fire_button.queue_redraw()
+	for button in [previous_button, next_button, use_button]:
+		button.outline_inset = BASE_ACTION_OUTLINE_INSET * scale_factor
+		button.outline_width = BASE_ACTION_OUTLINE_WIDTH * scale_factor
+		button.queue_redraw()
 
-	var place_item_gap := BASE_PLACE_ITEM_BUTTON_GAP * scale_factor
-	var place_item_left := fire_left - place_item_gap
-	var place_item_bottom := fire_top - place_item_gap
+	var action_gap := BASE_ACTION_BUTTON_GAP * scale_factor
+	var next_left := use_left + (use_button_size - cycle_button_size) * 0.5
+	var next_bottom := use_top - action_gap
 	_set_anchored_rect(
-		place_item_button,
-		place_item_left,
-		place_item_bottom - BASE_PLACE_ITEM_BUTTON_SIZE,
-		place_item_left + BASE_PLACE_ITEM_BUTTON_SIZE,
-		place_item_bottom
+		next_button,
+		next_left,
+		next_bottom - cycle_button_size,
+		next_left + cycle_button_size,
+		next_bottom
+	)
+	var previous_right := use_left - action_gap
+	_set_anchored_rect(
+		previous_button,
+		previous_right - cycle_button_size,
+		next_bottom - cycle_button_size,
+		previous_right,
+		next_bottom
 	)
 
 func _set_anchored_rect(
@@ -125,12 +158,8 @@ func set_touch_mode(enabled: bool) -> void:
 func is_touch_mode() -> bool:
 	return touch_mode
 
-func set_place_item_status(display_name: String, remaining_count: int) -> void:
-	var label := place_item_label
-	if label == null:
-		label = get_node_or_null("Layout/PlaceItemButton/Label") as Label
-	if label != null:
-		label.text = "%s\n%d" % [display_name, maxi(remaining_count, 0)]
+func get_input_source():
+	return touch_input_source
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_APPLICATION_FOCUS_OUT or what == NOTIFICATION_APPLICATION_PAUSED:
@@ -154,13 +183,19 @@ func _input(event: InputEvent) -> void:
 			joystick_touch_position = drag.position
 
 func cancel_all_input() -> void:
+	touch_input_source.clear_input()
+	for action in TOUCH_MOVE_ACTIONS:
+		Input.action_release(action)
 	if not is_node_ready():
 		return
 	_cancel_virtual_joystick()
-	for action in [&"move_left", &"move_right", &"move_forward", &"move_back"]:
-		Input.action_release(action)
-	fire_button.cancel()
-	place_item_button.cancel()
+	previous_button.cancel()
+	next_button.cancel()
+	use_button.cancel()
+
+func _on_visibility_changed() -> void:
+	if not visible:
+		cancel_all_input()
 
 func _is_joystick_touch_start(position: Vector2) -> bool:
 	var touch_rect := virtual_joystick.get_global_rect()

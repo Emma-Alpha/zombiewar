@@ -5,6 +5,9 @@ signal restart_requested
 const HitResult = preload("res://scripts/combat/hit_result.gd")
 const ZombieDifficultyProfile = preload("res://scripts/gameplay/zombie_difficulty_profile.gd")
 const ZOMBIE_SCENE := preload("res://scenes/targets/ZombieTarget.tscn")
+const SinglePlayerInputSourceScript = preload(
+	"res://scripts/input/single_player_input_source.gd"
+)
 const AUTO_WAVE_STATUS := "下一波即将到来"
 const SPAWN_POINT_NAMES: Array[StringName] = [
 	&"NorthWest",
@@ -32,6 +35,7 @@ var player_defeated := false
 var restart_pending := false
 var startup_pending := false
 var warmup_overlay_tween: Tween
+var single_player_input = SinglePlayerInputSourceScript.new()
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_SCENE_INSTANTIATED:
@@ -130,16 +134,6 @@ func _complete_combat_startup(animate_overlay: bool) -> void:
 
 func _release_startup_actions() -> void:
 	for action in [
-		&"move_left",
-		&"move_right",
-		&"move_forward",
-		&"move_back",
-		&"place_item",
-		&"primary_attack",
-		&"weapon_pistol",
-		&"weapon_rifle",
-		&"weapon_knife",
-		&"weapon_slot_4",
 		&"spawn_wave",
 		&"restart_demo",
 	]:
@@ -180,39 +174,24 @@ func _wire_dependencies() -> void:
 		restart_button.pressed.connect(request_restart)
 	_sync_command_controls()
 	var player := get_node_or_null("Player") as PlayerController
-	var place_item_controller := get_node_or_null(
-		"PlaceItemController"
-	) as PlaceItemController
+	var mobile_controls := get_node_or_null("MobileControls") as MobileControls
+	if mobile_controls != null:
+		single_player_input.set_touch_source(mobile_controls.get_input_source())
+	var place_item_service = get_node_or_null(
+		"PlaceItemService"
+	)
+	if player != null:
+		if player.get_input_source() == null:
+			player.set_input_source(single_player_input)
+		player.set_place_item_service(place_item_service)
 	if (
-		player != null and place_item_controller != null and
-		not player.place_item_requested.is_connected(
-			place_item_controller.request_place_item
-		)
-	):
-		player.place_item_requested.connect(
-			place_item_controller.request_place_item
-		)
-	if (
-		place_item_controller != null and
-		not place_item_controller.placement_geometry_changed.is_connected(
+		place_item_service != null and
+		not place_item_service.placement_geometry_changed.is_connected(
 			_on_barrel_navigation_geometry_changed
 		)
 	):
-		place_item_controller.placement_geometry_changed.connect(
+		place_item_service.placement_geometry_changed.connect(
 			_on_barrel_navigation_geometry_changed
-		)
-	if (
-		place_item_controller != null and
-		not place_item_controller.item_count_changed.is_connected(
-			_on_place_item_count_changed
-		)
-	):
-		place_item_controller.item_count_changed.connect(
-			_on_place_item_count_changed
-		)
-		_on_place_item_count_changed(
-			place_item_controller.item_display_name,
-			place_item_controller.get_remaining_count()
 		)
 	var targets := get_node_or_null("World/Targets")
 	if targets != null:
@@ -312,29 +291,6 @@ func _on_barrel_navigation_geometry_changed() -> void:
 	) as NavigationWorldManager
 	if navigation_manager != null:
 		navigation_manager.mark_chunk_dirty(&"demo_arena")
-
-func _on_place_item_count_changed(
-	display_name: String,
-	remaining_count: int
-) -> void:
-	var mobile_controls := get_node_or_null("MobileControls")
-	if (
-		mobile_controls != null and
-		mobile_controls.has_method("set_place_item_status")
-	):
-		mobile_controls.call(
-			"set_place_item_status",
-			display_name,
-			remaining_count
-		)
-	var controls := get_node_or_null(
-		"HUD/ControlsPanel/Controls"
-	) as Label
-	if controls != null:
-		controls.text = (
-			"WASD  MOVE + FACE    K  %s %d    J  FIRE    " +
-			"1-3  WEAPON    T  WAVE    R  RESTART"
-		) % [display_name, remaining_count]
 
 func _on_player_attack(
 	direction: Vector3,

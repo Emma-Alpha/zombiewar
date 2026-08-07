@@ -1,7 +1,8 @@
 extends Control
 class_name MobileActionButton
 
-@export var action: StringName
+signal pressed_changed(value: bool)
+
 @export var normal_color := Color(0.06, 0.08, 0.10, 0.58)
 @export var pressed_color := Color(1.0, 0.38, 0.10, 0.88)
 @export var outline_color := Color(1.0, 0.72, 0.12, 0.82)
@@ -29,11 +30,7 @@ func set_pressed(value: bool) -> void:
 	if pressed == value:
 		return
 	pressed = value
-	if not action.is_empty():
-		if pressed:
-			Input.action_press(action)
-		else:
-			Input.action_release(action)
+	pressed_changed.emit(pressed)
 	queue_redraw()
 
 func cancel() -> void:

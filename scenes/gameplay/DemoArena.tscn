@@ -16,7 +16,7 @@
 [ext_resource type="PackedScene" path="res://scenes/navigation/NavigationChunk3D.tscn" id="14_navigation_chunk"]
 [ext_resource type="PackedScene" path="res://scenes/props/ExplosiveBarrel.tscn" id="15_explosive_barrel"]
 [ext_resource type="Script" path="res://scripts/gameplay/place_item_grid.gd" id="16_place_grid"]
-[ext_resource type="Script" path="res://scripts/gameplay/place_item_controller.gd" id="17_place_controller"]
+[ext_resource type="Script" path="res://scripts/gameplay/place_item_service.gd" id="17_place_service"]
 [ext_resource type="PackedScene" path="res://scenes/props/TrafficBarrier.tscn" id="18_traffic_barrier"]
 [ext_resource type="PackedScene" path="res://scenes/props/PlasticBarrier.tscn" id="19_plastic_barrier"]
 [ext_resource type="PackedScene" path="res://assets/environment/TrafficCone_1.gltf" id="20_traffic_cone"]
@@ -573,11 +573,9 @@ position = Vector3(19, 0, 14)
 [node name="Player" parent="." instance=ExtResource("2_player")]
 position = Vector3(0, 0, 6)
 
-[node name="PlaceItemController" type="Node" parent="."]
-script = ExtResource("17_place_controller")
-item_display_name = "油桶"
-place_item_scene = ExtResource("15_explosive_barrel")
-initial_item_count = 999
+[node name="PlaceItemService" type="Node" parent="."]
+script = ExtResource("17_place_service")
+default_item_scene = ExtResource("15_explosive_barrel")
 grid_path = NodePath("../World/Placement/PlaceItemGrid")
 placed_items_path = NodePath("../World/Props/HazardZone/ExplosiveBarrels")
 

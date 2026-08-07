@@ -34,13 +34,13 @@ tip_size = 88.0
 deadzone_ratio = 0.12
 clampzone_ratio = 1.0
 initial_offset_ratio = Vector2(0.5, 0.5)
-action_left = &"move_left"
-action_right = &"move_right"
-action_up = &"move_forward"
-action_down = &"move_back"
+action_left = &"touch_move_left"
+action_right = &"touch_move_right"
+action_up = &"touch_move_forward"
+action_down = &"touch_move_back"
 visibility_mode = 0
 
-[node name="FireButton" type="Control" parent="Layout"]
+[node name="UseButton" type="Control" parent="Layout"]
 custom_minimum_size = Vector2(160, 160)
 layout_mode = 1
 anchors_preset = 3
@@ -56,9 +56,8 @@ grow_horizontal = 0
 grow_vertical = 0
 mouse_filter = 2
 script = ExtResource("3_button")
-action = &"primary_attack"
 
-[node name="Label" type="Label" parent="Layout/FireButton"]
+[node name="Label" type="Label" parent="Layout/UseButton"]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -72,29 +71,28 @@ theme_override_constants/shadow_offset_x = 2
 theme_override_constants/shadow_offset_y = 2
 theme_override_fonts/font = ExtResource("4_cjk_font")
 theme_override_font_sizes/font_size = 26
-text = "开火"
+text = "使用"
 horizontal_alignment = 1
 vertical_alignment = 1
 
-[node name="PlaceItemButton" type="Control" parent="Layout"]
-custom_minimum_size = Vector2(120, 120)
+[node name="PreviousButton" type="Control" parent="Layout"]
+custom_minimum_size = Vector2(112, 112)
 layout_mode = 1
 anchors_preset = 3
 anchor_left = 1.0
 anchor_top = 1.0
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_left = -336.0
-offset_top = -296.0
+offset_left = -328.0
+offset_top = -328.0
 offset_right = -216.0
-offset_bottom = -176.0
+offset_bottom = -216.0
 grow_horizontal = 0
 grow_vertical = 0
 mouse_filter = 2
 script = ExtResource("3_button")
-action = &"place_item"
 
-[node name="Label" type="Label" parent="Layout/PlaceItemButton"]
+[node name="Label" type="Label" parent="Layout/PreviousButton"]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -108,6 +106,41 @@ theme_override_constants/shadow_offset_x = 2
 theme_override_constants/shadow_offset_y = 2
 theme_override_fonts/font = ExtResource("4_cjk_font")
 theme_override_font_sizes/font_size = 22
-text = "放置物\n0"
+text = "上一件"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="NextButton" type="Control" parent="Layout"]
+custom_minimum_size = Vector2(112, 112)
+layout_mode = 1
+anchors_preset = 3
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -176.0
+offset_top = -328.0
+offset_right = -64.0
+offset_bottom = -216.0
+grow_horizontal = 0
+grow_vertical = 0
+mouse_filter = 2
+script = ExtResource("3_button")
+
+[node name="Label" type="Label" parent="Layout/NextButton"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_override_colors/font_color = Color(1, 0.95, 0.82, 1)
+theme_override_colors/font_shadow_color = Color(0, 0, 0, 0.9)
+theme_override_constants/shadow_offset_x = 2
+theme_override_constants/shadow_offset_y = 2
+theme_override_fonts/font = ExtResource("4_cjk_font")
+theme_override_font_sizes/font_size = 22
+text = "下一件"
 horizontal_alignment = 1
 vertical_alignment = 1

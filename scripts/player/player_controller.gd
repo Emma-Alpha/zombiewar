@@ -8,6 +8,7 @@ const WeaponMath = preload("res://scripts/combat/weapon_math.gd")
 const RangedWeaponDefinition = preload(
 	"res://scripts/combat/weapons/ranged_weapon_definition.gd"
 )
+const PlayerInputStateScript = preload("res://scripts/input/player_input_state.gd")
 
 signal attack_resolved(
 	direction: Vector3,
@@ -17,11 +18,6 @@ signal attack_resolved(
 signal health_changed(current: float, maximum: float)
 signal damaged(amount: float)
 signal died
-signal place_item_requested(
-	requester: CollisionObject3D,
-	origin: Vector3,
-	direction: Vector3
-)
 
 @export_group("Survivability")
 @export var max_health := 100.0
@@ -29,19 +25,6 @@ signal place_item_requested(
 @export var hit_attack_lock_duration := 1.2
 @export var hit_knockback_speed := 8.0
 @export var hit_knockback_deceleration := 18.0
-
-@export_group("Input Actions")
-@export var move_left_action: StringName = &"move_left"
-@export var move_right_action: StringName = &"move_right"
-@export var move_forward_action: StringName = &"move_forward"
-@export var move_back_action: StringName = &"move_back"
-@export_range(0.0, 1.0, 0.01) var move_input_deadzone := 0.0
-@export var place_item_action: StringName = &"place_item"
-@export var primary_attack_action: StringName = &"primary_attack"
-@export var pistol_action: StringName = &"weapon_pistol"
-@export var rifle_action: StringName = &"weapon_rifle"
-@export var knife_action: StringName = &"weapon_knife"
-@export var slot_four_action: StringName = &"weapon_slot_4"
 
 @export_group("Movement Feel")
 @export var move_speed: float = 5.0
@@ -72,7 +55,9 @@ var knockback_velocity := Vector3.ZERO
 var attack_animation_remaining := 0.0
 var health_bar_initialized := false
 var missing_health_bar_warned := false
-var place_item_was_pressed := false
+var input_source
+var last_input_state = PlayerInputStateScript.new()
+var place_item_service
 
 func _ready() -> void:
 	_ensure_health_initialized()
@@ -90,6 +75,7 @@ func _ready() -> void:
 		functional_ray_origin,
 		Callable(weapon_clearance, "try_bind_weapon")
 	)
+	equipment.set_place_item_service(place_item_service)
 
 func _process(delta: float) -> void:
 	hit_reaction_remaining = maxf(hit_reaction_remaining - delta, 0.0)
@@ -105,21 +91,36 @@ func _process(delta: float) -> void:
 func set_movement_camera(camera: Camera3D) -> void:
 	movement_camera = camera
 
-func get_move_input_vector() -> Vector2:
-	return Input.get_vector(
-		move_left_action,
-		move_right_action,
-		move_forward_action,
-		move_back_action,
-		move_input_deadzone
-	)
+func set_input_source(value) -> void:
+	input_source = value
+	if input_source != null:
+		input_source.reset_edges()
+
+func get_input_source():
+	return input_source
+
+func get_last_input_state():
+	return last_input_state
+
+func is_input_online() -> bool:
+	return input_source != null and input_source.is_online()
+
+func set_place_item_service(service) -> void:
+	place_item_service = service
+	if equipment != null:
+		equipment.set_place_item_service(place_item_service)
 
 func _physics_process(delta: float) -> void:
+	last_input_state = (
+		input_source.sample() if input_source != null else PlayerInputStateScript.new()
+	)
 	if defeated:
 		_update_defeated_motion(delta)
 		return
 	var knockback_active := knockback_velocity.length_squared() > 0.000001
-	var input_vector := Vector2.ZERO if knockback_active else get_move_input_vector()
+	var input_vector: Vector2 = (
+		Vector2.ZERO if knockback_active else last_input_state.move_vector
+	)
 	var camera_basis := movement_camera.global_basis if movement_camera != null else Basis.IDENTITY
 	var move_direction := PlayerMotion.world_direction(input_vector, camera_basis)
 
@@ -127,19 +128,11 @@ func _physics_process(delta: float) -> void:
 		move_direction,
 		aim_direction
 	)
-	var place_item_pressed := Input.is_action_pressed(place_item_action)
-	if place_item_pressed and not place_item_was_pressed:
-		place_item_requested.emit(self, global_position, aim_direction)
-	place_item_was_pressed = place_item_pressed
 	var target_yaw := PlayerMotion.next_facing_yaw(aim_direction, rotation.y)
-	if Input.is_action_just_pressed(pistol_action):
-		equipment.equip_slot(0)
-	elif Input.is_action_just_pressed(rifle_action):
-		equipment.equip_slot(1)
-	elif Input.is_action_just_pressed(knife_action):
-		equipment.equip_slot(2)
-	elif Input.is_action_just_pressed(slot_four_action):
-		equipment.equip_slot(3)
+	if last_input_state.previous_equipment_just_pressed:
+		equipment.equip_previous()
+	elif last_input_state.next_equipment_just_pressed:
+		equipment.equip_next()
 
 	var acceleration := ground_acceleration if is_on_floor() else air_acceleration
 	var deceleration := ground_deceleration if is_on_floor() else air_acceleration
@@ -168,8 +161,8 @@ func _physics_process(delta: float) -> void:
 		target_yaw
 	)
 	rotation.y = target_yaw
-	var trigger_pressed := Input.is_action_pressed(primary_attack_action)
-	var trigger_just_pressed := Input.is_action_just_pressed(primary_attack_action)
+	var trigger_pressed: bool = last_input_state.use_pressed
+	var trigger_just_pressed: bool = last_input_state.use_just_pressed
 	var attack_locked := (
 		hit_reaction_remaining > 0.0 or
 		hit_attack_lock_remaining > 0.0
@@ -177,11 +170,11 @@ func _physics_process(delta: float) -> void:
 	if attack_locked:
 		trigger_pressed = false
 		trigger_just_pressed = false
-		equipment.cancel_attack()
+		equipment.cancel_use()
 	var attack_direction := aim_direction
 	if equipment.get_current_definition() is RangedWeaponDefinition:
 		attack_direction = _actual_ranged_attack_direction()
-	equipment.set_attack_input(trigger_pressed, trigger_just_pressed, attack_direction)
+	equipment.set_use_input(trigger_pressed, trigger_just_pressed, attack_direction)
 	move_and_slide()
 	if knockback_active:
 		knockback_velocity = PlayerMotion.next_knockback_velocity(
@@ -283,7 +276,7 @@ func _ensure_health_initialized() -> void:
 	health_changed.emit(health.current, health.maximum)
 
 func _update_defeated_motion(delta: float) -> void:
-	equipment.set_attack_input(false, false, aim_direction)
+	equipment.set_use_input(false, false, aim_direction)
 	velocity.x = move_toward(velocity.x, 0.0, ground_deceleration * delta)
 	velocity.z = move_toward(velocity.z, 0.0, ground_deceleration * delta)
 	velocity.y = PlayerMotion.next_vertical_velocity(
