@@ -95,7 +95,7 @@ func _validate_players(arena, expected_count: int, failures: Array[String]) -> v
 		var equipment_label := player.get_node_or_null("PlayerEquipmentLabel") as Label3D
 		_expect(equipment_label != null, "spawned player must contain persistent equipment label", failures)
 		if equipment_label != null:
-			_expect(equipment_label.text.begins_with("P%d · RIFLE" % (index + 1)), "equipment label must initialize with player number and current equipment", failures)
+			_expect(equipment_label.text.begins_with("P%d · 手枪" % (index + 1)), "equipment label must initialize with player number and current equipment", failures)
 
 func _finish(failures: Array[String]) -> void:
 	if failures.is_empty():

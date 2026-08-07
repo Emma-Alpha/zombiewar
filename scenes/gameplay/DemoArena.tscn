@@ -24,8 +24,8 @@
 [ext_resource type="PackedScene" path="res://scenes/fx/GroundBloodSplat.tscn" id="22_story_blood"]
 [ext_resource type="Script" path="res://scripts/gameplay/player_registry.gd" id="23_player_registry"]
 [ext_resource type="PackedScene" path="res://scenes/gameplay/PickupSpawnPoint.tscn" id="24_pickup_spawn_point"]
-[ext_resource type="Resource" path="res://resources/pickups/rifle_pickup.tres" id="25_rifle_pickup"]
-[ext_resource type="Resource" path="res://resources/pickups/rifle_ammo_pickup.tres" id="26_rifle_ammo_pickup"]
+[ext_resource type="Resource" path="res://resources/pickups/smg_pickup.tres" id="25_smg_pickup"]
+[ext_resource type="Resource" path="res://resources/pickups/smg_ammo_pickup.tres" id="26_smg_ammo_pickup"]
 [ext_resource type="Resource" path="res://resources/pickups/oil_barrel_pickup.tres" id="27_oil_barrel_pickup"]
 [ext_resource type="PackedScene" path="res://scenes/gameplay/RandomPickupDropManager.tscn" id="28_random_pickup_drops"]
 [ext_resource type="Script" path="res://scripts/fx/spatial_sfx_pool.gd" id="29_spatial_sfx_pool"]
@@ -506,17 +506,17 @@ rotation_degrees = Vector3(0, -5, 0)
 [node name="PickupSpawners" type="Node3D" parent="World/Props"]
 
 [node name="RandomPickupDrops" parent="World/Props" instance=ExtResource("28_random_pickup_drops")]
-pickup_definitions = [ExtResource("25_rifle_pickup"), ExtResource("26_rifle_ammo_pickup"), ExtResource("27_oil_barrel_pickup")]
+pickup_definitions = [ExtResource("25_smg_pickup"), ExtResource("26_smg_ammo_pickup"), ExtResource("27_oil_barrel_pickup")]
 
-[node name="Rifle" parent="World/Props/PickupSpawners" instance=ExtResource("24_pickup_spawn_point")]
+[node name="Smg" parent="World/Props/PickupSpawners" instance=ExtResource("24_pickup_spawn_point")]
 position = Vector3(-4.5, 0, 6.0)
-pickup_definition = ExtResource("25_rifle_pickup")
+pickup_definition = ExtResource("25_smg_pickup")
 respawn_enabled = true
 respawn_delay_seconds = 3.0
 
-[node name="RifleAmmo" parent="World/Props/PickupSpawners" instance=ExtResource("24_pickup_spawn_point")]
+[node name="SmgAmmo" parent="World/Props/PickupSpawners" instance=ExtResource("24_pickup_spawn_point")]
 position = Vector3(0, 0, 9.0)
-pickup_definition = ExtResource("26_rifle_ammo_pickup")
+pickup_definition = ExtResource("26_smg_ammo_pickup")
 respawn_enabled = true
 respawn_delay_seconds = 3.0
 

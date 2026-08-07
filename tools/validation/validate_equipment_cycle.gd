@@ -7,7 +7,7 @@ const FakeEquipmentItem = preload("res://tools/validation/support/fake_equipment
 const FakePlaceItemService = preload("res://tools/validation/support/fake_place_item_service.gd")
 const OilBarrelEquipmentScene = preload("res://scenes/player/equipment/OilBarrelEquipment.tscn")
 const PistolScene = preload("res://scenes/weapons/Pistol.tscn")
-const RifleScene = preload("res://scenes/weapons/Rifle.tscn")
+const SmgScene = preload("res://scenes/weapons/Smg.tscn")
 const KnifeScene = preload("res://scenes/weapons/Knife.tscn")
 
 func _init() -> void:
@@ -17,7 +17,7 @@ func _init() -> void:
 	_test_placeable_inventory_changes_only_on_success(failures)
 	_test_placeable_direction_configuration(failures)
 	_test_oil_barrel_rear_direction_configuration(failures)
-	_test_rifle_pickup_grants_owner_ammo_and_auto_equips(failures)
+	_test_smg_pickup_grants_owner_ammo_and_auto_equips(failures)
 	_test_oil_barrel_pickup_caps_per_player_inventory(failures)
 	_test_equipment_label_count_text_contract(failures)
 	_test_demo_arena_uses_place_item_service(failures)
@@ -113,12 +113,12 @@ func _test_oil_barrel_rear_direction_configuration(failures: Array[String]) -> v
 	oil_barrel.free()
 	service.free()
 
-func _test_rifle_pickup_grants_owner_ammo_and_auto_equips(
+func _test_smg_pickup_grants_owner_ammo_and_auto_equips(
 	failures: Array[String]
 ) -> void:
 	var controller = _build_controller([
 		PistolScene,
-		RifleScene,
+		SmgScene,
 		KnifeScene,
 		OilBarrelEquipmentScene,
 	], 0)
@@ -132,36 +132,36 @@ func _test_rifle_pickup_grants_owner_ammo_and_auto_equips(
 	if not controller.has_method(&"get_item_by_id"):
 		controller.free()
 		return
-	var rifle = controller.call("get_item_by_id", &"rifle")
-	_expect(rifle != null, "rifle must retain a stable equipment item id", failures)
-	if rifle == null:
+	var smg = controller.call("get_item_by_id", &"smg")
+	_expect(smg != null, "smg must retain a stable equipment item id", failures)
+	if smg == null:
 		controller.free()
 		return
-	_expect(not rifle.is_available(), "rifle must start unowned", failures)
+	_expect(not smg.is_available(), "smg must start unowned", failures)
 	_expect(
-		int(controller.call("add_ammo", &"rifle", 30)) == 0,
-		"unowned rifle must reject ammo pickups",
+		int(controller.call("add_ammo", &"smg", 30)) == 0,
+		"unowned smg must reject ammo pickups",
 		failures
 	)
 	_expect(
-		bool(controller.call("grant_item", &"rifle", 400, true)),
-		"rifle pickup must grant ownership or ammo",
+		bool(controller.call("grant_item", &"smg", 400, true)),
+		"smg pickup must grant ownership or ammo",
 		failures
 	)
-	_expect(rifle.is_available(), "rifle pickup must grant rifle ownership", failures)
+	_expect(smg.is_available(), "smg pickup must grant smg ownership", failures)
 	_expect(
-		controller.get_current_item() == rifle,
-		"auto-equipped rifle pickup must select the rifle slot",
-		failures
-	)
-	_expect(
-		rifle.get_ammo_count() == 360,
-		"rifle pickup ammo must cap at the 360 round maximum",
+		controller.get_current_item() == smg,
+		"auto-equipped smg pickup must select the smg slot",
 		failures
 	)
 	_expect(
-		not bool(controller.call("grant_item", &"rifle", 1, false)),
-		"full owned rifle pickup must not report a consumed pickup",
+		smg.get_ammo_count() == 360,
+		"smg pickup ammo must cap at the 360 round maximum",
+		failures
+	)
+	_expect(
+		not bool(controller.call("grant_item", &"smg", 1, false)),
+		"full owned smg pickup must not report a consumed pickup",
 		failures
 	)
 	controller.free()
@@ -208,7 +208,7 @@ func _test_oil_barrel_pickup_caps_per_player_inventory(
 func _test_equipment_label_count_text_contract(failures: Array[String]) -> void:
 	var controller = _build_controller([
 		PistolScene,
-		RifleScene,
+		SmgScene,
 		KnifeScene,
 		OilBarrelEquipmentScene,
 	], 0)
@@ -223,12 +223,12 @@ func _test_equipment_label_count_text_contract(failures: Array[String]) -> void:
 			"the default pistol label count must use the unlimited marker",
 			failures
 		)
-	var rifle = controller.get_item_by_id(&"rifle")
-	_expect(rifle.has_method(&"get_count_text"), "ranged weapons must expose count text", failures)
-	if rifle.has_method(&"get_count_text"):
-		rifle.receive_pickup(12)
+	var smg = controller.get_item_by_id(&"smg")
+	_expect(smg != null and smg.has_method(&"get_count_text"), "ranged weapons must expose count text", failures)
+	if smg != null and smg.has_method(&"get_count_text"):
+		smg.receive_pickup(12)
 		_expect(
-			rifle.get_count_text() == "12",
+			smg.get_count_text() == "12",
 			"finite ranged weapons must expose their current ammo as text",
 			failures
 		)

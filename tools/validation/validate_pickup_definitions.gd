@@ -64,10 +64,10 @@ func _test_equipment_definition_grants_configured_reward(
 ) -> void:
 	var definition = definition_script.new()
 	definition.reward_mode = definition.RewardMode.EQUIPMENT
-	definition.item_id = &"rifle"
+	definition.item_id = &"smg"
 	definition.amount = 60
 	definition.auto_equip = true
-	definition.display_name = "步枪"
+	definition.display_name = "冲锋枪"
 	var player := RecordingPlayer.new()
 	_expect(
 		definition.grant_to(player),
@@ -76,7 +76,7 @@ func _test_equipment_definition_grants_configured_reward(
 	)
 	_expect(
 		player.equipment_calls == [{
-			"item_id": &"rifle",
+			"item_id": &"smg",
 			"amount": 60,
 			"auto_equip": true,
 		}],
@@ -85,7 +85,7 @@ func _test_equipment_definition_grants_configured_reward(
 	)
 	_expect(player.ammo_calls.is_empty(), "equipment Definition must not grant ammo", failures)
 	_expect(
-		definition.get_label_text() == "步枪 +60",
+		definition.get_label_text() == "冲锋枪 +60",
 		"Definition label must use display name and amount",
 		failures
 	)
@@ -97,7 +97,7 @@ func _test_ammo_definition_grants_configured_reward(
 ) -> void:
 	var definition = definition_script.new()
 	definition.reward_mode = definition.RewardMode.AMMO
-	definition.item_id = &"rifle"
+	definition.item_id = &"smg"
 	definition.amount = 30
 	var player := RecordingPlayer.new()
 	_expect(
@@ -106,7 +106,7 @@ func _test_ammo_definition_grants_configured_reward(
 		failures
 	)
 	_expect(
-		player.ammo_calls == [{"item_id": &"rifle", "amount": 30}],
+		player.ammo_calls == [{"item_id": &"smg", "amount": 30}],
 		"ammo Definition must forward item id and amount",
 		failures
 	)
@@ -166,7 +166,7 @@ func _test_chest_claim_signal_lifecycle(
 	failures: Array[String]
 ) -> void:
 	var definition = definition_script.new()
-	definition.item_id = &"rifle"
+	definition.item_id = &"smg"
 	definition.amount = 1
 	definition.auto_equip = true
 	var chest = chest_scene.instantiate()
@@ -185,7 +185,7 @@ func _test_chest_claim_signal_lifecycle(
 	chest.claim_area.body_entered.emit(player)
 	_expect(
 		player.equipment_calls == [{
-			"item_id": &"rifle",
+			"item_id": &"smg",
 			"amount": 1,
 			"auto_equip": true,
 		}],

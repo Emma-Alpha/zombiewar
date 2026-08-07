@@ -6,10 +6,10 @@ const SpawnPointScene = preload("res://scenes/gameplay/PickupSpawnPoint.tscn")
 const OilBarrelDefinition = preload(
 	"res://resources/pickups/oil_barrel_pickup.tres"
 )
-const RifleAmmoDefinition = preload(
-	"res://resources/pickups/rifle_ammo_pickup.tres"
+const SmgAmmoDefinition = preload(
+	"res://resources/pickups/smg_ammo_pickup.tres"
 )
-const RifleDefinition = preload("res://resources/pickups/rifle_pickup.tres")
+const SmgDefinition = preload("res://resources/pickups/smg_pickup.tres")
 const DROP_MANAGER_SCENE_PATH := (
 	"res://scenes/gameplay/RandomPickupDropManager.tscn"
 )
@@ -189,8 +189,8 @@ func _test_random_drop_manager_probability_and_spawn_contract(
 	)
 	manager.random_seed = 4399
 	var definitions: Array[PickupDefinition] = []
-	definitions.append(RifleDefinition)
-	definitions.append(RifleAmmoDefinition)
+	definitions.append(SmgDefinition)
+	definitions.append(SmgAmmoDefinition)
 	definitions.append(OilBarrelDefinition)
 	manager.pickup_definitions = definitions
 	root.add_child(manager)
@@ -280,7 +280,7 @@ func _test_one_shot_spawn_point_survives_failed_claim(
 		spawner.free()
 		player.free()
 		return
-	spawner.pickup_definition = RifleAmmoDefinition
+	spawner.pickup_definition = SmgAmmoDefinition
 	spawner.respawn_enabled = false
 	spawner.remove_after_collection = true
 	player.position = Vector3(100.0, 0.0, 100.0)

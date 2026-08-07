@@ -1,11 +1,11 @@
 [gd_scene load_steps=5 format=3]
 
 [ext_resource type="Script" path="res://scripts/combat/weapons/ranged_weapon.gd" id="1_weapon"]
-[ext_resource type="Resource" path="res://resources/weapons/rifle.tres" id="2_definition"]
+[ext_resource type="Resource" path="res://resources/weapons/smg.tres" id="2_definition"]
 [ext_resource type="PackedScene" path="res://scenes/fx/MuzzleFlash.tscn" id="3_muzzle_flash"]
-[ext_resource type="AudioStream" path="res://assets/sfx/boxhead/rifle_fire.mp3" id="4_shot_audio"]
+[ext_resource type="AudioStream" path="res://assets/sfx/boxhead/smg_fire.mp3" id="4_shot_audio"]
 
-[node name="Rifle" type="Node3D"]
+[node name="Smg" type="Node3D"]
 script = ExtResource("1_weapon")
 definition = ExtResource("2_definition")
 initially_owned = false

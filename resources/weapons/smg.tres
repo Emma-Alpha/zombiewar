@@ -6,9 +6,9 @@
 script = ExtResource("1_definition")
 uses_ammo = true
 max_ammo = 360
-weapon_id = &"rifle"
-display_name = "步枪"
-visual_node_name = &"Rifle"
+weapon_id = &"smg"
+display_name = "冲锋枪"
+visual_node_name = &"SMG"
 trigger_mode = 1
 attacks_per_second = 4.0
 damage = 25.0

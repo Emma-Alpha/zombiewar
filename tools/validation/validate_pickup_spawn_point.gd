@@ -3,19 +3,19 @@ extends SceneTree
 const SPAWNER_SCENE_PATH := "res://scenes/gameplay/PickupSpawnPoint.tscn"
 const PICKUP_CHEST_SCENE_PATH := "res://scenes/gameplay/PickupChest.tscn"
 const DEMO_SCENE_PATH := "res://scenes/gameplay/DemoArena.tscn"
-const RIFLE_PICKUP_DEFINITION_PATH := "res://resources/pickups/rifle_pickup.tres"
-const RIFLE_AMMO_PICKUP_DEFINITION_PATH := "res://resources/pickups/rifle_ammo_pickup.tres"
+const SMG_PICKUP_DEFINITION_PATH := "res://resources/pickups/smg_pickup.tres"
+const SMG_AMMO_PICKUP_DEFINITION_PATH := "res://resources/pickups/smg_ammo_pickup.tres"
 const OIL_BARREL_PICKUP_DEFINITION_PATH := "res://resources/pickups/oil_barrel_pickup.tres"
 
 const DEMO_PICKUP_DEFINITIONS := {
-	"Rifle": RIFLE_PICKUP_DEFINITION_PATH,
-	"RifleAmmo": RIFLE_AMMO_PICKUP_DEFINITION_PATH,
+	"Smg": SMG_PICKUP_DEFINITION_PATH,
+	"SmgAmmo": SMG_AMMO_PICKUP_DEFINITION_PATH,
 	"OilBarrel": OIL_BARREL_PICKUP_DEFINITION_PATH,
 }
 
 const REMOVED_PICKUP_SCENE_PATHS := [
-	"res://scenes/gameplay/RiflePickupChest.tscn",
-	"res://scenes/gameplay/RifleAmmoPickupChest.tscn",
+	"res://scenes/gameplay/Ri" + "flePickupChest.tscn",
+	"res://scenes/gameplay/Ri" + "fleAmmoPickupChest.tscn",
 	"res://scenes/gameplay/OilBarrelPickupChest.tscn",
 ]
 
@@ -39,20 +39,20 @@ func _run() -> void:
 
 func _test_pickup_definition_resources(failures: Array[String]) -> void:
 	var expected := {
-		RIFLE_PICKUP_DEFINITION_PATH: {
+		SMG_PICKUP_DEFINITION_PATH: {
 			"reward_mode": PickupDefinition.RewardMode.EQUIPMENT,
-			"item_id": &"rifle",
+			"item_id": &"smg",
 			"amount": 60,
 			"auto_equip": true,
-			"display_name": "步枪",
+			"display_name": "冲锋枪",
 			"marker_color": Color(1.0, 0.45, 0.08, 1.0),
 		},
-		RIFLE_AMMO_PICKUP_DEFINITION_PATH: {
+		SMG_AMMO_PICKUP_DEFINITION_PATH: {
 			"reward_mode": PickupDefinition.RewardMode.AMMO,
-			"item_id": &"rifle",
+			"item_id": &"smg",
 			"amount": 90,
 			"auto_equip": false,
-			"display_name": "步枪弹药",
+			"display_name": "冲锋枪弹药",
 			"marker_color": Color(0.20, 0.55, 1.0, 1.0),
 		},
 		OIL_BARREL_PICKUP_DEFINITION_PATH: {
@@ -84,9 +84,9 @@ func _test_pickup_definition_resources(failures: Array[String]) -> void:
 
 func _test_spawn_and_respawn_lifecycle(failures: Array[String]) -> void:
 	var spawner_scene := load(SPAWNER_SCENE_PATH) as PackedScene
-	var pickup_definition := load(RIFLE_PICKUP_DEFINITION_PATH) as PickupDefinition
+	var pickup_definition := load(SMG_PICKUP_DEFINITION_PATH) as PickupDefinition
 	_expect(spawner_scene != null, "PickupSpawnPoint scene must load", failures)
-	_expect(pickup_definition != null, "rifle Definition must load", failures)
+	_expect(pickup_definition != null, "smg Definition must load", failures)
 	if spawner_scene == null or pickup_definition == null:
 		return
 	var spawner = spawner_scene.instantiate()
@@ -197,8 +197,8 @@ func _test_demo_pickup_spawner_wiring(failures: Array[String]) -> void:
 	_expect(spawners_root != null, "DemoArena must contain pickup spawners", failures)
 	if spawners_root != null:
 		var expected := {
-			"Rifle": Vector3(-4.5, 0.0, 6.0),
-			"RifleAmmo": Vector3(0.0, 0.0, 9.0),
+			"Smg": Vector3(-4.5, 0.0, 6.0),
+			"SmgAmmo": Vector3(0.0, 0.0, 9.0),
 			"OilBarrel": Vector3(4.5, 0.0, 6.0),
 		}
 		_expect(

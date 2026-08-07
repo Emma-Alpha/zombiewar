@@ -4,7 +4,7 @@ const GamepadInputSourceScript = preload("res://scripts/input/gamepad_input_sour
 const PlayerRegistryScript = preload("res://scripts/gameplay/player_registry.gd")
 const ZombieTargetSelectorScript = preload("res://scripts/combat/zombie_target_selector.gd")
 const PlayerScene = preload("res://scenes/player/Player.tscn")
-const RifleScene = preload("res://scenes/weapons/Rifle.tscn")
+const SmgScene = preload("res://scenes/weapons/Smg.tscn")
 const KnifeScene = preload("res://scenes/weapons/Knife.tscn")
 
 func _init() -> void:
@@ -44,11 +44,11 @@ func _run() -> void:
 	_expect(selected == player, "offline but living registered player must remain targetable", failures)
 	_expect(registry.get_players().has(player), "disconnect must not release the player registry slot", failures)
 
-	var rifle = RifleScene.instantiate()
+	var smg = SmgScene.instantiate()
 	var knife = KnifeScene.instantiate()
-	_expect((rifle.definition.hit_collision_mask & 2) == 0, "ranged weapon query must exclude player collision layer 2", failures)
+	_expect((smg.definition.hit_collision_mask & 2) == 0, "smg query must exclude player collision layer 2", failures)
 	_expect((knife.definition.hit_collision_mask & 2) == 0, "melee weapon query must exclude player collision layer 2", failures)
-	rifle.free()
+	smg.free()
 	knife.free()
 	player.queue_free()
 	registry.queue_free()

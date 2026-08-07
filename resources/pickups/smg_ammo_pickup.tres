@@ -4,9 +4,9 @@
 
 [resource]
 script = ExtResource("1_pickup_definition")
-reward_mode = 0
-item_id = &"rifle"
-amount = 60
-auto_equip = true
-display_name = "步枪"
-marker_color = Color(1, 0.45, 0.08, 1)
+reward_mode = 1
+item_id = &"smg"
+amount = 90
+auto_equip = false
+display_name = "冲锋枪弹药"
+marker_color = Color(0.2, 0.55, 1, 1)
