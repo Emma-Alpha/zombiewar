@@ -2,6 +2,9 @@ extends CharacterBody3D
 class_name PlayerController
 
 const PlayerMotion = preload("res://scripts/player/player_motion.gd")
+const PlayerScreenBoundsScript = preload(
+	"res://scripts/camera/player_screen_bounds.gd"
+)
 const HitResult = preload("res://scripts/combat/hit_result.gd")
 const Health = preload("res://scripts/combat/health.gd")
 const WeaponMath = preload("res://scripts/combat/weapon_math.gd")
@@ -33,6 +36,7 @@ signal died
 @export var ground_deceleration: float = 42.0
 @export var air_acceleration: float = 12.0
 @export var gravity: float = 24.0
+@export_range(0.0, 0.25, 0.01) var screen_safe_margin_ratio := 0.08
 
 @export_group("Weapon Feel")
 @export var visual_recoil_recovery := 1.2
@@ -47,6 +51,7 @@ signal died
 )
 
 var movement_camera: Camera3D
+var screen_camera: Camera3D
 var animation_player: AnimationPlayer
 var aim_direction := Vector3.FORWARD
 var visual_rest_position := Vector3.ZERO
@@ -99,6 +104,9 @@ func _process(delta: float) -> void:
 
 func set_movement_camera(camera: Camera3D) -> void:
 	movement_camera = camera
+
+func set_screen_camera(camera: Camera3D) -> void:
+	screen_camera = camera
 
 func set_input_source(value) -> void:
 	input_source = value
@@ -164,6 +172,19 @@ func _physics_process(delta: float) -> void:
 		gravity
 	)
 	var desired_motion := Vector3(velocity.x, 0.0, velocity.z) * delta
+	if screen_camera != null and is_input_online():
+		desired_motion = PlayerScreenBoundsScript.limit_motion(
+			screen_camera,
+			global_position,
+			desired_motion,
+			screen_safe_margin_ratio
+		)
+		if delta > 0.000001:
+			velocity.x = desired_motion.x / delta
+			velocity.z = desired_motion.z / delta
+			if knockback_active:
+				knockback_velocity.x = velocity.x
+				knockback_velocity.z = velocity.z
 	weapon_clearance.update_clearance(
 		delta,
 		desired_motion,

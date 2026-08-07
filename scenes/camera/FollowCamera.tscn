@@ -4,12 +4,17 @@
 
 [node name="FollowCamera" type="Node3D"]
 script = ExtResource("1_follow_camera")
-follow_speed = 10.0
+follow_speed = 6.0
+edge_start_ratio = 0.72
+max_direction_offset = 3.0
+safe_margin_ratio = 0.08
 shot_impulse_strength = 0.06
 shot_impulse_maximum = 0.12
 shot_impulse_recovery = 1.5
 
-[node name="Camera3D" type="Camera3D" parent="."]
+[node name="VisualOffset" type="Node3D" parent="."]
+
+[node name="Camera3D" type="Camera3D" parent="VisualOffset"]
 position = Vector3(0, 12, 14.142136)
 rotation_degrees = Vector3(-40.3, 0, 0)
 projection = 1

@@ -2,6 +2,9 @@ extends Node
 class_name LocalPlayerSpawner
 
 const GameSessionScript = preload("res://scripts/gameplay/game_session.gd")
+const PlayerScreenBoundsScript = preload(
+	"res://scripts/camera/player_screen_bounds.gd"
+)
 const PLAYER_SHAPE_RADIUS := 0.45
 const PLAYER_SHAPE_HEIGHT := 1.8
 const PLAYER_SHAPE_CENTER_Y := 0.93
@@ -35,6 +38,10 @@ func spawn_players(
 		return _fail_spawn(spawned, "Local player session has no valid spawn slots")
 	if player_scene == null:
 		return _fail_spawn(spawned, "Player scene is unavailable")
+	var screen_camera := container.get_viewport().get_camera_3d()
+	if screen_camera == null:
+		return _fail_spawn(spawned, "Shared screen camera is unavailable")
+	var safe_margin_ratio := _resolve_safe_margin_ratio(screen_camera)
 
 	for index in range(descriptors.size()):
 		var input_source = single_player_input
@@ -42,6 +49,13 @@ func spawn_players(
 			input_source = descriptors[index].create_input_source()
 		if input_source == null:
 			return _fail_spawn(spawned, "Player %d has an invalid input source" % (index + 1))
+		if not PlayerScreenBoundsScript.limit_motion(
+			screen_camera,
+			spawn_points[index].global_position,
+			Vector3.ZERO,
+			safe_margin_ratio
+		).is_zero_approx():
+			return _fail_spawn(spawned, "Player %d spawn is outside the shared safe view" % (index + 1))
 		var spawn_position = _find_open_spawn_position(container, spawn_points[index])
 		if spawn_position == null:
 			return _fail_spawn(spawned, "Player %d has no open spawn position" % (index + 1))
@@ -50,12 +64,18 @@ func spawn_players(
 			return _fail_spawn(spawned, "Player %d could not be instantiated" % (index + 1))
 		player.name = "P%d" % (index + 1)
 		player.player_index = index
+		player.screen_safe_margin_ratio = safe_margin_ratio
 		player.set_input_source(input_source)
 		player.set_place_item_service(place_item_service)
+		player.set_screen_camera(screen_camera)
 		container.add_child(player)
 		player.global_position = spawn_position
 		spawned.append(player)
 	return spawned
+
+func _resolve_safe_margin_ratio(camera: Camera3D) -> float:
+	var follow_camera := camera.get_parent().get_parent() as FollowCamera
+	return follow_camera.safe_margin_ratio if follow_camera != null else 0.08
 
 func _find_open_spawn_position(container: Node3D, marker: Marker3D):
 	var world := container.get_world_3d()

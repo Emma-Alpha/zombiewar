@@ -10,6 +10,7 @@ const SinglePlayerInputSourceScript = preload(
 )
 const LocalTeamStateScript = preload("res://scripts/gameplay/local_team_state.gd")
 const AUTO_WAVE_STATUS := "下一波即将到来"
+const ARENA_CAMERA_BOUNDS := Rect2(Vector2(-10.0, -7.0), Vector2(20.0, 14.0))
 const SPAWN_POINT_NAMES: Array[StringName] = [
 	&"NorthWest",
 	&"NorthEast",
@@ -115,7 +116,7 @@ func _run_combat_startup() -> void:
 	var prewarmer := get_node_or_null(
 		"CombatFxPrewarmer"
 	) as CombatFxPrewarmer
-	var camera := get_node_or_null("FollowCamera/Camera3D") as Camera3D
+	var camera := get_node_or_null("FollowCamera/VisualOffset/Camera3D") as Camera3D
 	var warmup_layer := get_node_or_null("WarmupLayer") as CanvasLayer
 	if prewarmer != null:
 		await get_tree().process_frame
@@ -230,15 +231,15 @@ func _wire_dependencies() -> void:
 	):
 		auto_wave_timer.timeout.connect(_on_auto_wave_timeout)
 	var follow_camera := get_node_or_null("FollowCamera") as FollowCamera
-	var movement_camera := get_node_or_null("FollowCamera/Camera3D") as Camera3D
+	var movement_camera := get_node_or_null(
+		"FollowCamera/VisualOffset/Camera3D"
+	) as Camera3D
 	var current_players := _get_spawned_players()
 	if current_players.is_empty() or follow_camera == null or movement_camera == null:
 		return
-	var primary_player := current_players[0]
-	if follow_camera.is_inside_tree():
-		follow_camera.set_target(primary_player)
-	else:
-		follow_camera.target = primary_player
+	var player_registry := get_node_or_null("PlayerRegistry") as PlayerRegistry
+	follow_camera.set_player_registry(player_registry)
+	follow_camera.set_world_bounds(ARENA_CAMERA_BOUNDS)
 	for player in current_players:
 		player.set_movement_camera(movement_camera)
 		player.set_place_item_service(place_item_service)
