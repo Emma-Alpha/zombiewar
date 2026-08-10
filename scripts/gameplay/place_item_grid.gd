@@ -158,7 +158,7 @@ func has_dynamic_blocker(
 	query.exclude = excluded
 	return not world.direct_space_state.intersect_shape(query, 32).is_empty()
 
-func _shape_local_aabb(shape: Shape3D) -> AABB:
+static func shape_local_aabb(shape: Shape3D) -> AABB:
 	var half := Vector3.ZERO
 	if shape is BoxShape3D:
 		half = (shape as BoxShape3D).size * 0.5
@@ -174,6 +174,30 @@ func _shape_local_aabb(shape: Shape3D) -> AABB:
 	else:
 		return AABB()
 	return AABB(-half, half * 2.0)
+
+## 供流场烘焙与运行时标脏使用：把一个碰撞体的全部可用碰撞形状合并为世界 AABB。
+static func collision_object_world_aabb(obstacle: CollisionObject3D) -> AABB:
+	if obstacle == null:
+		return AABB()
+	var combined := AABB()
+	var has_bounds := false
+	for candidate in obstacle.find_children("*", "CollisionShape3D", true, false):
+		var collision_shape := candidate as CollisionShape3D
+		if (
+			collision_shape == null or collision_shape.disabled or
+			collision_shape.shape == null
+		):
+			continue
+		var local_aabb := shape_local_aabb(collision_shape.shape)
+		if local_aabb.size == Vector3.ZERO:
+			continue
+		var world_aabb := collision_shape.global_transform * local_aabb
+		combined = world_aabb if not has_bounds else combined.merge(world_aabb)
+		has_bounds = true
+	return combined if has_bounds else AABB()
+
+func _shape_local_aabb(shape: Shape3D) -> AABB:
+	return shape_local_aabb(shape)
 
 func _cells_for_world_aabb(bounds: AABB) -> Array[Vector2i]:
 	var size := maxf(cell_size, 0.001)

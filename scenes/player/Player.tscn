@@ -30,7 +30,7 @@ height = 1.55
 
 [node name="Player" type="CharacterBody3D" groups=["damageable_targets"]]
 collision_layer = 2
-collision_mask = 1
+collision_mask = 9
 floor_snap_length = 0.25
 script = ExtResource("1_controller")
 max_health = 100.0

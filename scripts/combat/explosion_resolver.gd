@@ -1,6 +1,15 @@
 extends RefCounted
 class_name ExplosionResolver
 
+## 物理世界里的爆炸波及判定，S0 之后**只剩玩家**这一类目标。
+##
+## 僵尸不在此列：僵尸已退出 Godot 物理世界（表现节点在层 4 ZombieBlocker，
+## 且不在 damageable_targets 组），其波及判定与伤害衰减由
+## SimCombat.resolve_explosion_targets() 在 SimWorld 上完成。
+## 其他爆炸桶也不在此列：连锁引爆由 SimWorld 的 tick 引信驱动
+## （SimCombat.resolve_explosion_barrels()），调用方必须传
+## can_trigger_explosives = false，否则同一串桶会被物理与模拟各炸一遍。
+## 两条路径共用 ExplosionMath.damage_at_distance() 的衰减公式。
 const ExplosionMath = preload("res://scripts/combat/explosion_math.gd")
 const MAX_INTERSECTIONS := 128
 

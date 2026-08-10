@@ -39,6 +39,77 @@ func _run() -> void:
 	_expect(bounds.limit_motion(camera, right_world, inward_world, 0.10).is_equal_approx(inward_world), "motion back toward screen center must remain", failures)
 	_expect(bounds.limit_motion(camera, right_world, outward_world, 0.10).is_equal_approx(outward_limited), "knockback must use the same deterministic limiter as ordinary motion", failures)
 
+	var anchor := Vector3(4.0, 0.0, -2.0)
+	var inside := Vector3(4.0, 0.0, -2.0)
+	var free_motion := Vector3(1.0, 0.0, 1.0)
+	_expect(
+		bounds.limit_motion_in_world_rect(
+			anchor,
+			inside,
+			free_motion,
+			bounds.ONLINE_BOUNDS_HALF_WIDTH,
+			bounds.ONLINE_BOUNDS_HALF_DEPTH
+		).is_equal_approx(free_motion),
+		"world rect must not clip motion near the anchor",
+		failures
+	)
+	var edge := Vector3(
+		anchor.x + bounds.ONLINE_BOUNDS_HALF_WIDTH,
+		0.0,
+		anchor.z + bounds.ONLINE_BOUNDS_HALF_DEPTH
+	)
+	var outward := Vector3(3.0, 0.0, 3.0)
+	var clipped: Vector3 = bounds.limit_motion_in_world_rect(
+		anchor,
+		edge,
+		outward,
+		bounds.ONLINE_BOUNDS_HALF_WIDTH,
+		bounds.ONLINE_BOUNDS_HALF_DEPTH
+	)
+	_expect(
+		clipped.is_equal_approx(Vector3.ZERO),
+		"world rect must clip motion that leaves the fixed rectangle",
+		failures
+	)
+	var inward := Vector3(-2.0, 0.0, -2.0)
+	_expect(
+		bounds.limit_motion_in_world_rect(
+			anchor,
+			edge,
+			inward,
+			bounds.ONLINE_BOUNDS_HALF_WIDTH,
+			bounds.ONLINE_BOUNDS_HALF_DEPTH
+		).is_equal_approx(inward),
+		"world rect must allow motion back toward the anchor",
+		failures
+	)
+	var shifted_anchor := anchor + Vector3(5.0, 0.0, 0.0)
+	_expect(
+		bounds.limit_motion_in_world_rect(
+			shifted_anchor,
+			edge,
+			outward,
+			bounds.ONLINE_BOUNDS_HALF_WIDTH,
+			bounds.ONLINE_BOUNDS_HALF_DEPTH
+		).x > 0.0,
+		"the world rect must travel with the shared camera anchor",
+		failures
+	)
+	var player_probe = PlayerScene.instantiate()
+	root.add_child(player_probe)
+	player_probe.set_physics_process(false)
+	_expect(
+		player_probe.has_method("set_world_bounds_anchor"),
+		"PlayerController must accept a world bounds anchor",
+		failures
+	)
+	_expect(
+		not player_probe.uses_world_bounds(),
+		"single player must keep the screen-space bounds",
+		failures
+	)
+	player_probe.queue_free()
+
 	var player = PlayerScene.instantiate()
 	root.add_child(player)
 	player.set_physics_process(false)

@@ -1,45 +1,22 @@
-[gd_scene load_steps=8 format=3]
+[gd_scene load_steps=6 format=3]
 
 [ext_resource type="Script" path="res://scripts/combat/zombie_target.gd" id="1_target"]
 [ext_resource type="PackedScene" path="res://assets/enemies/Zombie_Basic.gltf" id="2_model"]
-[ext_resource type="Script" path="res://scripts/combat/zombie_hitbox.gd" id="3_hitbox"]
 [ext_resource type="AudioStream" path="res://assets/sfx/boxhead/zombie_attack.mp3" id="4_attack_audio"]
 [ext_resource type="AudioStream" path="res://assets/sfx/boxhead/creature_fall.mp3" id="5_death_audio"]
 
-[sub_resource type="CapsuleShape3D" id="CapsuleShape3D_target"]
+[sub_resource type="CapsuleShape3D" id="CapsuleShape3D_blocker"]
 radius = 0.5
 height = 1.9
 
-[sub_resource type="CylinderShape3D" id="CylinderShape3D_body"]
-radius = 1.1
-height = 2.2
-
-[node name="ZombieTarget" type="CharacterBody3D" groups=["damageable_targets"]]
-collision_layer = 0
-collision_mask = 1
-floor_snap_length = 0.2
+[node name="ZombieTarget" type="CharacterBody3D"]
+collision_layer = 8
+collision_mask = 0
 script = ExtResource("1_target")
-max_health = 50.0
-perception_range = 7.0
-perception_exit_margin = 1.0
-wander_speed = 0.55
-wander_radius = 3.5
-movement_acceleration = 5.0
-attack_range = 1.45
-attack_damage = 10.0
-attack_cooldown = 1.4
-attack_windup = 0.5
-attack_animation_duration = 0.7
 
-[node name="MotionCollision" type="CollisionShape3D" parent="."]
+[node name="BlockerCollision" type="CollisionShape3D" parent="."]
 position = Vector3(0, 0.95, 0)
-shape = SubResource("CapsuleShape3D_target")
-
-[node name="NavigationAgent3D" type="NavigationAgent3D" parent="."]
-path_desired_distance = 0.35
-target_desired_distance = 0.25
-avoidance_enabled = false
-navigation_layers = 1
+shape = SubResource("CapsuleShape3D_blocker")
 
 [node name="VoiceAudio" type="AudioStreamPlayer3D" parent="."]
 volume_db = -5.0
@@ -54,18 +31,6 @@ max_distance = 24.0
 stream = ExtResource("5_death_audio")
 volume_db = -4.0
 max_distance = 24.0
-
-[node name="Hitboxes" type="Node3D" parent="."]
-
-[node name="BodyHitbox" type="Area3D" parent="Hitboxes"]
-position = Vector3(0, 1.1, 0)
-collision_layer = 4
-collision_mask = 0
-monitoring = false
-script = ExtResource("3_hitbox")
-
-[node name="CollisionShape3D" type="CollisionShape3D" parent="Hitboxes/BodyHitbox"]
-shape = SubResource("CylinderShape3D_body")
 
 [node name="VisualRoot" type="Node3D" parent="."]
 

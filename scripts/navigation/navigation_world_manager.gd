@@ -1,6 +1,11 @@
 extends Node3D
 class_name NavigationWorldManager
 
+## RETIRED (S0 确定性模拟地基, 2026-08-07)：僵尸寻路已全量迁移到
+## scripts/sim/flow_field.gd 的确定性流场。本文件保留是为了让 DemoArena 的
+## World/Navigation 子树继续加载，以及给尚未迁移的将来消费者留一个过渡期。
+## 不要在其上构建新功能。待 S3 同步层落地并确认无其他消费者后删除。
+
 signal chunk_bake_started(chunk_id: StringName, generation: int)
 signal chunk_ready(chunk_id: StringName, generation: int)
 signal chunk_bake_failed(chunk_id: StringName, generation: int, message: String)

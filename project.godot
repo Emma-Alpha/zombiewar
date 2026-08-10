@@ -20,6 +20,7 @@ config/icon="res://icon.svg"
 PhantomCameraManager="*uid://duq6jhf6unyis"
 _mcp_game_helper="*res://addons/godot_ai/runtime/game_helper.gd"
 GameSession="*res://scripts/gameplay/game_session.gd"
+NetSession="*res://scripts/net/net_session.gd"
 
 [display]
 
@@ -72,6 +73,7 @@ pointing/emulate_touch_from_mouse=true
 3d_physics/layer_1="World"
 3d_physics/layer_2="Player"
 3d_physics/layer_3="Target"
+3d_physics/layer_4="ZombieBlocker"
 
 [physics]
 

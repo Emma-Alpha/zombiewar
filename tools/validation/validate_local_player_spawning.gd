@@ -90,12 +90,18 @@ func _validate_players(arena, expected_count: int, failures: Array[String]) -> v
 		var player = container.get_child(index)
 		_expect(player.player_index == index, "spawned player must retain sequential player index", failures)
 		_expect(player.collision_layer == 2, "spawned players must remain on collision layer 2", failures)
-		_expect(player.collision_mask == 1, "spawned players must only collide with world layer 1", failures)
+		_expect(player.collision_mask == 9, "spawned players must collide with world layer 1 and zombie blocker layer 4", failures)
 		_expect(player.get_input_source() != null, "spawned player must receive an input source", failures)
 		var equipment_label := player.get_node_or_null("PlayerEquipmentLabel") as Label3D
 		_expect(equipment_label != null, "spawned player must contain persistent equipment label", failures)
 		if equipment_label != null:
-			_expect(equipment_label.text.begins_with("P%d · 手枪" % (index + 1)), "equipment label must initialize with player number and current equipment", failures)
+			var display_name: String = player.equipment.get_current_display_name()
+			var count_text: String = player.equipment.get_current_count_text()
+			_expect(player.equipment.get_current_item() != null, "spawned player must start with an available equipment item", failures)
+			var expected_text := "P%d · %s" % [index + 1, display_name]
+			if not count_text.is_empty():
+				expected_text += ":%s" % count_text
+			_expect(equipment_label.text == expected_text, "equipment label must initialize with player number and current equipment, expected \"%s\" but got \"%s\"" % [expected_text, equipment_label.text], failures)
 
 func _finish(failures: Array[String]) -> void:
 	if failures.is_empty():

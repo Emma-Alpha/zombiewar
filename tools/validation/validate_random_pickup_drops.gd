@@ -1,6 +1,7 @@
 extends SceneTree
 
 const ZombieScene = preload("res://scenes/targets/ZombieTarget.tscn")
+const SimWorldScript = preload("res://scripts/sim/sim_world.gd")
 const PlayerScene = preload("res://scenes/player/Player.tscn")
 const SpawnPointScene = preload("res://scenes/gameplay/PickupSpawnPoint.tscn")
 const OilBarrelDefinition = preload(
@@ -38,45 +39,41 @@ func _run() -> void:
 		push_error(failure)
 	quit(1)
 
+## 掉落机会现在由模拟层的击杀事件给出，而不是僵尸节点的 died 信号。
+## 换接缝的理由不是好看：近景视图是池化的，远处的僵尸压根没有节点，
+## 挂节点信号会让视野外的击杀一个都不掉东西——而尸潮里绝大多数击杀都在视野外。
+## 这里守的仍是同一条不变量：一次死亡恰好给出一次掉落机会。
 func _test_zombie_emits_one_death_position(failures: Array[String]) -> void:
-	var zombie := ZombieScene.instantiate() as ZombieTarget
-	root.add_child(zombie)
-	await process_frame
+	var world = SimWorldScript.new()
+	world.configure(Vector2(-24.5, -19.5), 1.0, 49, 39)
+	world.reset(20260810)
+	var expected_position := Vector2(2.0, -2.0)
+	world.spawn_zombie(expected_position, 0.0, 50.0)
+	world.step_tick()
+
+	# 连打三次，只扫一次事件表：tick_hit_events 要到下一个 step_tick() 才清空，
+	# 在循环里边打边扫会把同一条击杀事件重复计进去，于是一条「补刀不该再掉一次」
+	# 的断言反而会被测试自己的重复计数弄假。
+	for _attempt in range(3):
+		world.apply_zombie_damage(
+			0, 100 * 100, expected_position, 1.0, Vector2.RIGHT, &"body"
+		)
+	var kill_events: Array = []
+	for event in world.tick_hit_events:
+		if bool(event.get("killed", false)):
+			kill_events.append(event)
 	_expect(
-		zombie.has_signal(&"died"),
-		"ZombieTarget must expose one death-position event",
-		failures
-	)
-	if not zombie.has_signal(&"died"):
-		zombie.queue_free()
-		await process_frame
-		return
-	var death_positions: Array[Vector3] = []
-	zombie.connect(
-		&"died",
-		func(position: Vector3) -> void: death_positions.append(position)
-	)
-	var expected_position := zombie.global_position
-	zombie.apply_hit(
-		zombie.max_health,
-		expected_position + Vector3.UP,
-		Vector3.FORWARD
-	)
-	zombie.apply_hit(1.0, expected_position, Vector3.FORWARD)
-	_expect(
-		death_positions.size() == 1,
+		kill_events.size() == 1,
 		"one zombie death must emit exactly one drop opportunity",
 		failures
 	)
-	if death_positions.size() == 1:
+	if kill_events.size() == 1:
+		var reported: Vector2 = kill_events[0]["position"]
 		_expect(
-			death_positions[0].is_equal_approx(expected_position),
+			reported.is_equal_approx(expected_position),
 			"death event must carry the zombie world position",
 			failures
 		)
-	if is_instance_valid(zombie):
-		zombie.queue_free()
-	await process_frame
 
 func _test_one_shot_spawn_point_reclaims_after_success(
 	failures: Array[String]
@@ -247,25 +244,35 @@ func _test_demo_routes_zombie_death_to_drop_manager(
 		failures
 	)
 	manager.drop_chance = 1.0
-	var zombie: ZombieTarget
-	for child in arena.get_node("World/Targets").get_children():
-		if child is ZombieTarget:
-			zombie = child as ZombieTarget
-			break
-	_expect(zombie != null, "DemoArena must spawn a zombie for drop wiring", failures)
-	if zombie != null:
-		var drop_count_before := manager.get_child_count()
-		var death_position := Vector3(2.0, 0.0, -2.0)
-		zombie.died.emit(death_position)
-		_expect(
-			manager.get_child_count() == drop_count_before + 1,
-			"zombie death must request one random drop from the Demo manager",
-			failures
-		)
+	# 打模拟层的击杀事件，而不是某个僵尸节点：竞技场就是从这里接掉落的，
+	# 而视野外的击杀根本没有对应的节点可打。
+	var drop_count_before := manager.get_child_count()
+	var death_position := Vector3(2.0, 0.0, -2.0)
+	arena._on_sim_hit_event({
+		"zombie_id": 1,
+		"position": Vector2(death_position.x, death_position.z),
+		"height": 1.0,
+		"direction": Vector2.RIGHT,
+		"damage": 50.0,
+		"zone": &"body",
+		"killed": true,
+	})
+	_expect(
+		manager.get_child_count() == drop_count_before + 1,
+		"zombie death must request one random drop from the Demo manager",
+		failures
+	)
+	if manager.get_child_count() > drop_count_before:
 		var drop_spawner = manager.get_child(manager.get_child_count() - 1)
 		_expect(
 			drop_spawner.global_position.is_equal_approx(death_position),
 			"Demo death wiring must preserve the zombie world position",
+			failures
+		)
+		# 掉落出来的箱子也是阻挡几何，没接上标脏就会在被捡走后留下一格永久墙。
+		_expect(
+			drop_spawner.blocker_changed.is_connected(arena._on_pickup_blocker_changed),
+			"dropped pickup must be wired into the flow field blocker dirtying",
 			failures
 		)
 	arena.queue_free()

@@ -58,6 +58,7 @@ signal died
 
 var movement_camera: Camera3D
 var screen_camera: Camera3D
+var world_bounds_anchor: Node3D
 var animation_player: AnimationPlayer
 var aim_direction := Vector3.FORWARD
 var visual_rest_position := Vector3.ZERO
@@ -73,6 +74,20 @@ var missing_health_bar_warned := false
 var input_source
 var last_input_state = PlayerInputStateScript.new()
 var place_item_service
+var sim_request_sink := Callable()
+## 联机远端玩家的权威位置（Vector3 或 null）。
+## 非空时本机不再让这具身体自己走：它的位置由帧里的量化坐标决定，
+## 而输入仍然照常喂给装备与动画。位置若也交给 move_and_slide() 复算，
+## 各端会各算各的，而僵尸追的是帧里那一份，于是「他明明躲开了却还是被咬」。
+var network_position_target = null
+
+func set_network_position_target(target) -> void:
+	network_position_target = target
+
+func set_sim_request_sink(value: Callable) -> void:
+	sim_request_sink = value
+	if equipment != null:
+		equipment.set_sim_request_sink(sim_request_sink)
 
 func _ready() -> void:
 	_ensure_health_initialized()
@@ -92,6 +107,7 @@ func _ready() -> void:
 		Callable(weapon_clearance, "try_bind_weapon")
 	)
 	equipment.set_place_item_service(place_item_service)
+	equipment.set_sim_request_sink(sim_request_sink)
 	_on_equipment_changed(
 		equipment.get_current_display_name(),
 		equipment.get_current_count_text()
@@ -113,6 +129,19 @@ func set_movement_camera(camera: Camera3D) -> void:
 
 func set_screen_camera(camera: Camera3D) -> void:
 	screen_camera = camera
+
+func set_world_bounds_anchor(anchor: Node3D) -> void:
+	world_bounds_anchor = anchor
+
+## 只有联机模式才用世界坐标矩形；单人与本地多人保持现有屏幕安全区行为。
+func uses_world_bounds() -> bool:
+	if world_bounds_anchor == null or not is_instance_valid(world_bounds_anchor):
+		return false
+	var session := get_node_or_null("/root/GameSession")
+	return (
+		session != null and
+		session.mode == GameSessionState.Mode.ONLINE_MULTIPLAYER
+	)
 
 func set_input_source(value) -> void:
 	input_source = value
@@ -192,13 +221,8 @@ func _physics_process(delta: float) -> void:
 		gravity
 	)
 	var desired_motion := Vector3(velocity.x, 0.0, velocity.z) * delta
-	if screen_camera != null and is_input_online():
-		desired_motion = PlayerScreenBoundsScript.limit_motion(
-			screen_camera,
-			global_position,
-			desired_motion,
-			screen_safe_margin_ratio
-		)
+	if _bounds_are_active():
+		desired_motion = _limit_desired_motion(desired_motion)
 		if delta > 0.000001:
 			velocity.x = desired_motion.x / delta
 			velocity.z = desired_motion.z / delta
@@ -225,6 +249,9 @@ func _physics_process(delta: float) -> void:
 	if equipment.get_current_definition() is RangedWeaponDefinition:
 		attack_direction = _actual_ranged_attack_direction()
 	equipment.set_use_input(trigger_pressed, trigger_just_pressed, attack_direction)
+	if network_position_target != null:
+		_follow_network_position(delta)
+		return
 	move_and_slide()
 	if knockback_active:
 		knockback_velocity = PlayerMotion.next_knockback_velocity(
@@ -235,6 +262,56 @@ func _physics_process(delta: float) -> void:
 		velocity.x = knockback_velocity.x
 		velocity.z = knockback_velocity.z
 	_update_animation(Vector2(velocity.x, velocity.z).length())
+
+## 远端玩家的位移：向权威位置收敛，而不是自己走。
+## 用平滑收敛而不是直接赋值，是因为帧以 20Hz 到达而渲染是 60Hz，
+## 直接赋值会让远端角色以每秒 20 次的频率瞬移。
+## 收敛速度按剩余距离给，差得越远追得越快；差到离谱（切后台回来、刚重连）
+## 就直接瞬移，慢慢挪过去只会让这具身体在半路上被僵尸围殴一路。
+const NETWORK_POSITION_SNAP_DISTANCE := 3.0
+const NETWORK_POSITION_FOLLOW_RATE := 14.0
+
+func _follow_network_position(delta: float) -> void:
+	var target: Vector3 = network_position_target
+	var previous := global_position
+	var offset := target - previous
+	offset.y = 0.0
+	if offset.length() > NETWORK_POSITION_SNAP_DISTANCE:
+		global_position = Vector3(target.x, previous.y, target.z)
+	else:
+		var weight := clampf(NETWORK_POSITION_FOLLOW_RATE * delta, 0.0, 1.0)
+		global_position = Vector3(
+			lerpf(previous.x, target.x, weight),
+			previous.y,
+			lerpf(previous.z, target.z, weight)
+		)
+	# 动画要的是「看上去走多快」，所以速度取实际位移而不是输入意图：
+	# 远端玩家撞墙停下时输入仍然是满的，按输入播就会原地跑步。
+	var travelled := global_position - previous
+	velocity.x = travelled.x / delta if delta > 0.000001 else 0.0
+	velocity.z = travelled.z / delta if delta > 0.000001 else 0.0
+	_update_animation(Vector2(velocity.x, velocity.z).length())
+
+func _bounds_are_active() -> bool:
+	if uses_world_bounds():
+		return true
+	return screen_camera != null and is_input_online()
+
+func _limit_desired_motion(desired_motion: Vector3) -> Vector3:
+	if uses_world_bounds():
+		return PlayerScreenBoundsScript.limit_motion_in_world_rect(
+			world_bounds_anchor.global_position,
+			global_position,
+			desired_motion,
+			PlayerScreenBoundsScript.ONLINE_BOUNDS_HALF_WIDTH,
+			PlayerScreenBoundsScript.ONLINE_BOUNDS_HALF_DEPTH
+		)
+	return PlayerScreenBoundsScript.limit_motion(
+		screen_camera,
+		global_position,
+		desired_motion,
+		screen_safe_margin_ratio
+	)
 
 func _actual_ranged_attack_direction() -> Vector3:
 	return WeaponMath.flat_direction(-global_basis.z)

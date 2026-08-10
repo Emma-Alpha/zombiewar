@@ -1,6 +1,9 @@
 extends Node3D
 class_name NavigationChunk3D
 
+## RETIRED (S0 确定性模拟地基, 2026-08-07)：运行时异步烘焙的完成时机不确定，
+## 与确定性模拟互斥，已不参与僵尸寻路。保留但不得用于新功能。
+
 const NavigationBakeState = preload("res://scripts/navigation/navigation_bake_state.gd")
 
 signal bake_started(chunk_id: StringName, generation: int)

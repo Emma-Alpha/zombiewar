@@ -24,14 +24,37 @@ func _run() -> void:
 		var main = main_scene.instantiate()
 		var single_button := main.get_node_or_null("MenuLayer/MenuRoot/LeftColumn/Actions/SinglePlayerButton") as Button
 		var local_button := main.get_node_or_null("MenuLayer/MenuRoot/LeftColumn/Actions/LocalMultiplayerButton") as Button
+		var online_button := main.get_node_or_null("MenuLayer/MenuRoot/LeftColumn/Actions/OnlineMultiplayerButton") as Button
+		var leaderboard_button := main.get_node_or_null("MenuLayer/MenuRoot/LeftColumn/Actions/LeaderboardButton") as Button
 		var quit_button := main.get_node_or_null("MenuLayer/MenuRoot/LeftColumn/Actions/QuitButton") as Button
 		_expect(single_button != null, "MainMenu must contain SinglePlayerButton", failures)
 		_expect(local_button != null, "MainMenu must contain LocalMultiplayerButton", failures)
+		_expect(online_button != null, "MainMenu must contain OnlineMultiplayerButton", failures)
+		_expect(leaderboard_button != null, "MainMenu must contain LeaderboardButton", failures)
 		_expect(quit_button != null, "MainMenu must contain QuitButton", failures)
-		if single_button != null and local_button != null and quit_button != null:
-			_expect(single_button.focus_neighbor_bottom == single_button.get_path_to(local_button), "single-player focus must move down to local multiplayer", failures)
-			_expect(local_button.focus_neighbor_top == local_button.get_path_to(single_button), "local multiplayer focus must move up to single-player", failures)
-			_expect(local_button.focus_neighbor_bottom == local_button.get_path_to(quit_button), "local multiplayer focus must move down to quit", failures)
+		# 焦点链必须是一条不断的链：手柄用户只有方向键，链上少一环就等于
+		# 那个按钮在手柄下不可达。逐段断言而不是只测两端。
+		var focus_chain: Array = [
+			single_button, local_button, online_button, leaderboard_button, quit_button
+		]
+		var chain_is_complete := true
+		for button in focus_chain:
+			if button == null:
+				chain_is_complete = false
+		if chain_is_complete:
+			for index in range(focus_chain.size() - 1):
+				var upper: Button = focus_chain[index]
+				var lower: Button = focus_chain[index + 1]
+				_expect(
+					upper.focus_neighbor_bottom == upper.get_path_to(lower),
+					"%s focus must move down to %s" % [upper.name, lower.name],
+					failures
+				)
+				_expect(
+					lower.focus_neighbor_top == lower.get_path_to(upper),
+					"%s focus must move up to %s" % [lower.name, upper.name],
+					failures
+				)
 		main.free()
 
 	var lobby_scene := load("res://scenes/menu/LocalMultiplayerLobby.tscn") as PackedScene

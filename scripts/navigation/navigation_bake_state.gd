@@ -1,6 +1,9 @@
 extends RefCounted
 class_name NavigationBakeState
 
+## RETIRED (S0 确定性模拟地基, 2026-08-07)：随 NavigationChunk3D 一并退役。
+## 保留但不得用于新功能。
+
 enum Status {
 	UNBAKED,
 	QUEUED,

@@ -3,7 +3,12 @@ class_name PlaceItemService
 
 signal placement_geometry_changed
 signal placement_rejected(reason: StringName)
-signal item_placed(world_position: Vector3)
+## 运行时放置的物件是新的阻挡几何，必须标脏对应 cell；
+## 若它是爆炸桶，还要注册成模拟层实体（见 DemoArena._on_item_placed()）。
+signal item_placed(item: Node3D)
+## 移除时把节点与消失前采集的世界 AABB 一起广播：
+## 爆炸桶要靠节点本身拿到模拟层 id，光有 AABB 不够。
+signal item_removed(item: Node3D, world_aabb: AABB)
 
 @export var default_item_scene: PackedScene
 @export_node_path("PlaceItemGrid") var grid_path: NodePath
@@ -46,7 +51,8 @@ func request_place_item(
 	tracked_items[item.get_instance_id()] = item
 	item.tree_exiting.connect(_on_item_tree_exiting.bind(item), CONNECT_ONE_SHOT)
 	placement_geometry_changed.emit()
-	item_placed.emit(item.global_position)
+	# 必须在 item.global_position 落位之后再发：注册方要按它读世界坐标。
+	item_placed.emit(item)
 	return true
 
 func _reject(reason: StringName) -> bool:
@@ -57,8 +63,12 @@ func _on_item_tree_exiting(item: Node3D) -> void:
 	var item_id := item.get_instance_id()
 	if not tracked_items.erase(item_id):
 		return
+	var bounds := PlaceItemGrid.collision_object_world_aabb(
+		item as CollisionObject3D
+	)
 	var grid := get_node_or_null(grid_path) as PlaceItemGrid
 	if grid != null:
 		grid.release_owner(item)
 	if is_inside_tree():
 		placement_geometry_changed.emit()
+	item_removed.emit(item, bounds)

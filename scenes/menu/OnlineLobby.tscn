@@ -1,0 +1,283 @@
+[gd_scene load_steps=7 format=3]
+
+[ext_resource type="Script" path="res://scripts/menu/online_lobby.gd" id="1_lobby"]
+[ext_resource type="PackedScene" path="res://scenes/menu/MenuBackdrop.tscn" id="2_backdrop"]
+[ext_resource type="FontFile" path="res://assets/fonts/NotoSansSC-UI.ttf" id="3_cjk_font"]
+[ext_resource type="PackedScene" path="res://scenes/ui/MobileOrientationGuard.tscn" id="4_orientation_guard"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBox_panel"]
+bg_color = Color(0.035, 0.043, 0.045, 0.94)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.72, 0.2, 0.14, 1)
+corner_radius_top_left = 5
+corner_radius_top_right = 5
+corner_radius_bottom_right = 5
+corner_radius_bottom_left = 5
+content_margin_left = 26.0
+content_margin_top = 22.0
+content_margin_right = 26.0
+content_margin_bottom = 22.0
+
+[sub_resource type="StyleBoxFlat" id="StyleBox_button"]
+bg_color = Color(0.075, 0.09, 0.095, 0.94)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.72, 0.2, 0.14, 1)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+
+[node name="OnlineLobby" type="Node3D"]
+script = ExtResource("1_lobby")
+
+[node name="MenuBackdrop" parent="." instance=ExtResource("2_backdrop")]
+
+[node name="MobileOrientationGuard" parent="." instance=ExtResource("4_orientation_guard")]
+
+[node name="MenuLayer" type="CanvasLayer" parent="."]
+
+[node name="Root" type="Control" parent="MenuLayer"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Panel" type="PanelContainer" parent="MenuLayer/Root"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 48.0
+offset_top = 32.0
+offset_right = -48.0
+offset_bottom = -32.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_styles/panel = SubResource("StyleBox_panel")
+
+[node name="Content" type="VBoxContainer" parent="MenuLayer/Root/Panel"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="Title" type="Label" parent="MenuLayer/Root/Panel/Content"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.97, 0.95, 0.9, 1)
+theme_override_fonts/font = ExtResource("3_cjk_font")
+theme_override_font_sizes/font_size = 30
+text = "联机多人"
+
+[node name="StatusLabel" type="Label" parent="MenuLayer/Root/Panel/Content"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.86, 0.72, 0.44, 1)
+theme_override_fonts/font = ExtResource("3_cjk_font")
+theme_override_font_sizes/font_size = 18
+text = "正在获取身份…"
+autowrap_mode = 3
+
+[node name="IdentityRow" type="HBoxContainer" parent="MenuLayer/Root/Panel/Content"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="NicknameLabel" type="Label" parent="MenuLayer/Root/Panel/Content/IdentityRow"]
+custom_minimum_size = Vector2(90, 0)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.86, 0.86, 0.84, 1)
+theme_override_fonts/font = ExtResource("3_cjk_font")
+theme_override_font_sizes/font_size = 18
+text = "昵称"
+
+[node name="NicknameEdit" type="LineEdit" parent="MenuLayer/Root/Panel/Content/IdentityRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(240, 40)
+layout_mode = 2
+theme_override_fonts/font = ExtResource("3_cjk_font")
+theme_override_font_sizes/font_size = 18
+max_length = 12
+placeholder_text = "2-12 个字"
+
+[node name="SaveNicknameButton" type="Button" parent="MenuLayer/Root/Panel/Content/IdentityRow"]
+custom_minimum_size = Vector2(120, 40)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.97, 0.95, 0.9, 1)
+theme_override_fonts/font = ExtResource("3_cjk_font")
+theme_override_font_sizes/font_size = 18
+theme_override_styles/normal = SubResource("StyleBox_button")
+theme_override_styles/hover = SubResource("StyleBox_button")
+theme_override_styles/pressed = SubResource("StyleBox_button")
+theme_override_styles/focus = SubResource("StyleBox_button")
+text = "保存昵称"
+
+[node name="ServerRow" type="HBoxContainer" parent="MenuLayer/Root/Panel/Content"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="ServerLabel" type="Label" parent="MenuLayer/Root/Panel/Content/ServerRow"]
+custom_minimum_size = Vector2(90, 0)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.86, 0.86, 0.84, 1)
+theme_override_fonts/font = ExtResource("3_cjk_font")
+theme_override_font_sizes/font_size = 18
+text = "服务器"
+
+[node name="ServerEdit" type="LineEdit" parent="MenuLayer/Root/Panel/Content/ServerRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(420, 40)
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_fonts/font = ExtResource("3_cjk_font")
+theme_override_font_sizes/font_size = 16
+placeholder_text = "https://zombiewar-api.lumentechnologies.stream"
+
+[node name="ApplyServerButton" type="Button" parent="MenuLayer/Root/Panel/Content/ServerRow"]
+custom_minimum_size = Vector2(120, 40)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.97, 0.95, 0.9, 1)
+theme_override_fonts/font = ExtResource("3_cjk_font")
+theme_override_font_sizes/font_size = 18
+theme_override_styles/normal = SubResource("StyleBox_button")
+theme_override_styles/hover = SubResource("StyleBox_button")
+theme_override_styles/pressed = SubResource("StyleBox_button")
+theme_override_styles/focus = SubResource("StyleBox_button")
+text = "切换"
+
+[node name="RoomRow" type="HBoxContainer" parent="MenuLayer/Root/Panel/Content"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="RoomCodeEdit" type="LineEdit" parent="MenuLayer/Root/Panel/Content/RoomRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(180, 40)
+layout_mode = 2
+theme_override_fonts/font = ExtResource("3_cjk_font")
+theme_override_font_sizes/font_size = 20
+max_length = 6
+placeholder_text = "房间码"
+
+[node name="JoinRoomButton" type="Button" parent="MenuLayer/Root/Panel/Content/RoomRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(120, 40)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.97, 0.95, 0.9, 1)
+theme_override_fonts/font = ExtResource("3_cjk_font")
+theme_override_font_sizes/font_size = 18
+theme_override_styles/normal = SubResource("StyleBox_button")
+theme_override_styles/hover = SubResource("StyleBox_button")
+theme_override_styles/pressed = SubResource("StyleBox_button")
+theme_override_styles/focus = SubResource("StyleBox_button")
+text = "加入"
+
+[node name="CreateRoomButton" type="Button" parent="MenuLayer/Root/Panel/Content/RoomRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(120, 40)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.97, 0.95, 0.9, 1)
+theme_override_fonts/font = ExtResource("3_cjk_font")
+theme_override_font_sizes/font_size = 18
+theme_override_styles/normal = SubResource("StyleBox_button")
+theme_override_styles/hover = SubResource("StyleBox_button")
+theme_override_styles/pressed = SubResource("StyleBox_button")
+theme_override_styles/focus = SubResource("StyleBox_button")
+text = "建房"
+
+[node name="RefreshRoomsButton" type="Button" parent="MenuLayer/Root/Panel/Content/RoomRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(120, 40)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.97, 0.95, 0.9, 1)
+theme_override_fonts/font = ExtResource("3_cjk_font")
+theme_override_font_sizes/font_size = 18
+theme_override_styles/normal = SubResource("StyleBox_button")
+theme_override_styles/hover = SubResource("StyleBox_button")
+theme_override_styles/pressed = SubResource("StyleBox_button")
+theme_override_styles/focus = SubResource("StyleBox_button")
+text = "刷新房间"
+
+[node name="Split" type="HBoxContainer" parent="MenuLayer/Root/Panel/Content"]
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_constants/separation = 14
+
+[node name="RoomList" type="ItemList" parent="MenuLayer/Root/Panel/Content/Split"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(360, 160)
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_fonts/font = ExtResource("3_cjk_font")
+theme_override_font_sizes/font_size = 18
+
+[node name="RosterLabel" type="Label" parent="MenuLayer/Root/Panel/Content/Split"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(360, 160)
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(0.9, 0.9, 0.88, 1)
+theme_override_fonts/font = ExtResource("3_cjk_font")
+theme_override_font_sizes/font_size = 18
+text = ""
+vertical_alignment = 0
+autowrap_mode = 3
+
+[node name="ActionRow" type="HBoxContainer" parent="MenuLayer/Root/Panel/Content"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="ReadyButton" type="Button" parent="MenuLayer/Root/Panel/Content/ActionRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(160, 46)
+layout_mode = 2
+disabled = true
+theme_override_colors/font_color = Color(0.97, 0.95, 0.9, 1)
+theme_override_fonts/font = ExtResource("3_cjk_font")
+theme_override_font_sizes/font_size = 20
+theme_override_styles/normal = SubResource("StyleBox_button")
+theme_override_styles/hover = SubResource("StyleBox_button")
+theme_override_styles/pressed = SubResource("StyleBox_button")
+theme_override_styles/focus = SubResource("StyleBox_button")
+theme_override_styles/disabled = SubResource("StyleBox_button")
+text = "准备"
+
+[node name="StartButton" type="Button" parent="MenuLayer/Root/Panel/Content/ActionRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(200, 46)
+layout_mode = 2
+disabled = true
+theme_override_colors/font_color = Color(0.97, 0.95, 0.9, 1)
+theme_override_fonts/font = ExtResource("3_cjk_font")
+theme_override_font_sizes/font_size = 20
+theme_override_styles/normal = SubResource("StyleBox_button")
+theme_override_styles/hover = SubResource("StyleBox_button")
+theme_override_styles/pressed = SubResource("StyleBox_button")
+theme_override_styles/focus = SubResource("StyleBox_button")
+theme_override_styles/disabled = SubResource("StyleBox_button")
+text = "开始对局"
+
+[node name="BackButton" type="Button" parent="MenuLayer/Root/Panel/Content/ActionRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(160, 46)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.97, 0.95, 0.9, 1)
+theme_override_fonts/font = ExtResource("3_cjk_font")
+theme_override_font_sizes/font_size = 20
+theme_override_styles/normal = SubResource("StyleBox_button")
+theme_override_styles/hover = SubResource("StyleBox_button")
+theme_override_styles/pressed = SubResource("StyleBox_button")
+theme_override_styles/focus = SubResource("StyleBox_button")
+text = "返回主菜单"
+
+[connection signal="pressed" from="MenuLayer/Root/Panel/Content/IdentityRow/SaveNicknameButton" to="." method="_on_save_nickname_button_pressed"]
+[connection signal="pressed" from="MenuLayer/Root/Panel/Content/ServerRow/ApplyServerButton" to="." method="_on_apply_server_button_pressed"]
+[connection signal="pressed" from="MenuLayer/Root/Panel/Content/RoomRow/JoinRoomButton" to="." method="_on_join_room_button_pressed"]
+[connection signal="pressed" from="MenuLayer/Root/Panel/Content/RoomRow/CreateRoomButton" to="." method="_on_create_room_button_pressed"]
+[connection signal="pressed" from="MenuLayer/Root/Panel/Content/RoomRow/RefreshRoomsButton" to="." method="_on_refresh_rooms_button_pressed"]
+[connection signal="pressed" from="MenuLayer/Root/Panel/Content/ActionRow/ReadyButton" to="." method="_on_ready_button_pressed"]
+[connection signal="pressed" from="MenuLayer/Root/Panel/Content/ActionRow/StartButton" to="." method="_on_start_button_pressed"]
+[connection signal="pressed" from="MenuLayer/Root/Panel/Content/ActionRow/BackButton" to="." method="_on_back_button_pressed"]

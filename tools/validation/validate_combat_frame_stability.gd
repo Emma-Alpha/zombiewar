@@ -169,54 +169,37 @@ func _test_demo_arena_queues_ground_blood_requests(
 	await process_frame
 	var manager := arena.get_node("GroundBloodManager") as GroundBloodManager
 	manager.process_mode = Node.PROCESS_MODE_DISABLED
-	var targets := arena.get_node("World/Targets")
-	var zombie: ZombieTarget
-	for child in targets.get_children():
-		if child is ZombieTarget:
-			zombie = child as ZombieTarget
-			break
-	_expect(zombie != null, "DemoArena must spawn a zombie for hit FX validation", failures)
-	if zombie != null:
-		var active_impacts_before := _count_active_impacts(manager)
-		zombie.apply_hit(
-			1.0,
-			zombie.global_position + Vector3.UP,
-			Vector3.FORWARD
-		)
-		_expect(
-			_count_active_impacts(manager) == active_impacts_before + 1,
-			"zombie hits must activate the scene-level blood impact pool",
-			failures
-		)
+	# 命中特效现在由模拟层的命中事件驱动。改接缝的理由是覆盖面：
+	# 远处的僵尸没有节点可打，而一 tick 打死一整片正是帧预算要挡的场景。
+	var active_impacts_before := _count_active_impacts(manager)
 	var pending_requests_before := manager.get_pending_request_count()
-	arena.call(
-		"_on_ground_blood_requested",
-		Vector3.ZERO,
-		Vector3.FORWARD,
-		1.0,
-		false
+	arena._on_sim_hit_event(_hit_event(false))
+	_expect(
+		_count_active_impacts(manager) == active_impacts_before + 1,
+		"zombie hits must activate the scene-level blood impact pool",
+		failures
 	)
-	arena.call(
-		"_on_ground_blood_requested",
-		Vector3.ZERO,
-		Vector3.FORWARD,
-		1.25,
-		true
-	)
-	arena.call(
-		"_on_ground_blood_trail_requested",
-		Vector3.ZERO,
-		Vector3.FORWARD,
-		1.0,
-		0.5
-	)
+	arena._on_sim_hit_event(_hit_event(true))
+	# 一次普通命中排一条血迹，一次击杀再多排一滩血泊：共 3 条。
+	# 断言的是「排队」而不是「立即生成」——立即生成会在尸潮里把一帧顶爆。
 	_expect(
 		manager.get_pending_request_count() == pending_requests_before + 3,
-		"DemoArena must queue hit, death, and trail blood work for later frames",
+		"DemoArena must queue hit and death blood work for later frames",
 		failures
 	)
 	arena.queue_free()
 	await process_frame
+
+func _hit_event(killed: bool) -> Dictionary:
+	return {
+		"zombie_id": 1,
+		"position": Vector2(1.0, -1.0),
+		"height": 1.1,
+		"direction": Vector2.RIGHT,
+		"damage": 25.0,
+		"zone": &"body",
+		"killed": killed,
+	}
 
 func _count_active_impacts(manager: GroundBloodManager) -> int:
 	var active_count := 0

@@ -16,13 +16,86 @@ Use GDScript with tabs for indentation and follow the existing Godot style. Name
 
 ## 3D Runtime Navigation
 
-Each playable 3D world owns a scene-level navigation manager; do not use an Autoload for world navigation state. Split navigation into registerable chunk lifecycle units that all share the current `World3D` navigation map so adjacent regions can form continuous paths.
+Zombie pathfinding uses the deterministic flow field in `scripts/sim/`
+(`FlowFieldGrid` + `FlowField`): an XZ integer grid with multi-source BFS over
+integer costs, rebuilt synchronously whenever a player crosses a cell boundary
+or the blocker set is marked dirty. Runtime navigation baking does not
+participate in the simulation layer, and no simulation code may call
+`NavigationAgent3D`, `NavigationServer3D`, or any asynchronous bake: the
+completion time of an async bake is itself nondeterministic and would break
+lockstep replay.
 
-Bake navigation meshes asynchronously at runtime from simplified static collision geometry. Do not parse high-polygon visual models when equivalent gameplay collision shapes exist. Keep the previous usable mesh active during a rebake, prevent concurrent bakes for the same chunk, and coalesce repeated dirty or rebake requests.
+Any system that adds, removes, moves, enables, or disables collision geometry
+that blocks movement must mark the affected flow field cells dirty after the
+geometry change, by routing a world AABB through
+`SimWorld.set_blocker_world_rect()`. `PlaceItemService` placement and removal
+and pickup chest appearance and disappearance go through this path. Missing a
+dirty mark leaves zombies walking around obstacles that no longer exist.
 
-Any system that adds, removes, moves, enables, or disables collision geometry used by navigation must mark the affected navigation chunk dirty after the geometry change. `NavigationAgent3D` avoidance remains disabled by default and should only be enabled for a feature that explicitly requires local crowd avoidance.
+Explosive barrels are the exception: they are simulation entities
+(`SimWorld.spawn_barrel()`), and `SimWorld` owns their blocker rectangle end to
+end -- blocked on registration, cleared on the exact tick they detonate. Their
+hit count, damaged state, fuse (counted in **ticks**, never in seconds), chain
+detonation, and zombie damage all live in the simulation; `ExplosiveBarrel` is a
+presentation node plus the player damage source, driven by
+`SimWorld.tick_barrel_events`. Never give a barrel node its own timer, its own
+hit counter, or its own physics ray: wall-clock fuses land on different ticks on
+different clients and desync every zombie the blast kills.
 
-When changing navigation behavior, verify pursuit, wandering, unreachable targets, runtime bake failure behavior, and attacks blocked by world obstacles. Navigation-unavailable fallback behavior must not become the permanent fallback for an unreachable target after a valid navigation map exists.
+`NavigationWorldManager`, `NavigationChunk3D`, and `NavigationBakeState` are
+**retired but retained**. They are still instantiated by `DemoArena` and still
+respond to geometry-changed signals, but nothing in gameplay consumes their
+navigation meshes. Do not build new features on them. They will be deleted once
+the S3 synchronisation layer lands and confirms no other consumer exists.
+
+When changing zombie movement behaviour, verify pursuit, wandering, unreachable
+targets, blocked attack paths, and runtime blocker changes with
+`tools/validation/validate_flow_field.gd`,
+`tools/validation/validate_sim_collision.gd`, and
+`tools/validation/validate_sim_determinism.gd`. When changing explosive barrels,
+also run `tools/validation/validate_sim_barrel.gd`.
+
+## Online Multiplayer
+
+The backend lives in `server/` (Cloudflare Worker + D1 + Durable Objects) and is
+deployed separately from the game. See `server/README.md` for the deploy steps,
+the anti-cheat boundary, and the protocol-drift gates.
+
+The room Durable Object owns the tick counter and pumps one frame every 50 ms.
+A client advances its simulation by **exactly one tick per frame received** and
+stalls when the queue is empty. Never advance a tick the server has not sent:
+inventing a tick nobody else has is the definition of a desync.
+
+Player position is an **input**, not an output. `SimWorld.set_player_snapshot()`
+already consumes quantised player coordinates, so every client feeds the
+simulation the position that came over the wire -- including for its own player,
+whose body is allowed to run ahead locally for feel. This is what makes
+`move_and_slide()` free to be non-deterministic, and it is the reason this sync
+layer is a fraction of the size of a full lockstep one.
+
+Anything that changes gameplay state in online mode must reach the simulation
+through a frame, never directly:
+
+- Weapon fire, melee, and spread resets are buffered by
+  `DemoArena._buffer_local_sim_request()` and applied when they come back.
+- A manual wave request sets `pending_wave_request`; the server ORs it into a
+  frame so every client queues the wave on the same tick.
+- The auto-wave rule is counted in **ticks** (`_tick_online_auto_wave`), never on
+  the wall-clock `AutoWaveTimer`, which is stopped in online mode.
+- The room seed comes from the room. A client that picks its own desyncs by
+  construction.
+
+`LobbyProtocol.QUANT` must stay equal to `SimWorld.POSITION_QUANTIZATION`, and
+`LobbyProtocol.TICK_HZ` must stay the reciprocal of `SimClock.TICK_SECONDS`.
+When changing anything in `scripts/net/` or `server/src/lib/protocol.ts`, bump
+`PROTOCOL_VERSION` on both sides and run
+`tools/validation/validate_online_frame_sync.gd`, which reads the TypeScript
+source directly and diffs every shared constant against the GDScript copy.
+
+Known gap: runtime item placement (`PlaceItemService`) is driven per physics
+frame rather than per tick, so a placement made while moving can land on
+different cells across clients. It is detected by the frame-hash cross-check,
+not prevented. Route it through the frame channel before relying on it online.
 
 ## Combat FX Render Warmup
 
