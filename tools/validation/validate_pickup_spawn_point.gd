@@ -1,8 +1,23 @@
 extends SceneTree
 
 const SPAWNER_SCENE_PATH := "res://scenes/gameplay/PickupSpawnPoint.tscn"
-const RIFLE_PICKUP_PATH := "res://scenes/gameplay/RiflePickupChest.tscn"
+const PICKUP_CHEST_SCENE_PATH := "res://scenes/gameplay/PickupChest.tscn"
 const DEMO_SCENE_PATH := "res://scenes/gameplay/DemoArena.tscn"
+const SMG_PICKUP_DEFINITION_PATH := "res://resources/pickups/smg_pickup.tres"
+const SMG_AMMO_PICKUP_DEFINITION_PATH := "res://resources/pickups/smg_ammo_pickup.tres"
+const OIL_BARREL_PICKUP_DEFINITION_PATH := "res://resources/pickups/oil_barrel_pickup.tres"
+
+const DEMO_PICKUP_DEFINITIONS := {
+	"Smg": SMG_PICKUP_DEFINITION_PATH,
+	"SmgAmmo": SMG_AMMO_PICKUP_DEFINITION_PATH,
+	"OilBarrel": OIL_BARREL_PICKUP_DEFINITION_PATH,
+}
+
+const REMOVED_PICKUP_SCENE_PATHS := [
+	"res://scenes/gameplay/Ri" + "flePickupChest.tscn",
+	"res://scenes/gameplay/Ri" + "fleAmmoPickupChest.tscn",
+	"res://scenes/gameplay/OilBarrelPickupChest.tscn",
+]
 
 func _init() -> void:
 	call_deferred("_run")
@@ -17,19 +32,73 @@ func _run() -> void:
 	if not failures.is_empty():
 		_finish(failures)
 		return
+	_test_pickup_definition_resources(failures)
 	await _test_spawn_and_respawn_lifecycle(failures)
 	await _test_demo_pickup_spawner_wiring(failures)
 	_finish(failures)
 
+func _test_pickup_definition_resources(failures: Array[String]) -> void:
+	var expected := {
+		SMG_PICKUP_DEFINITION_PATH: {
+			"reward_mode": PickupDefinition.RewardMode.EQUIPMENT,
+			"item_id": &"smg",
+			"amount": 60,
+			"auto_equip": true,
+			"display_name": "冲锋枪",
+			"marker_color": Color(1.0, 0.45, 0.08, 1.0),
+		},
+		SMG_AMMO_PICKUP_DEFINITION_PATH: {
+			"reward_mode": PickupDefinition.RewardMode.AMMO,
+			"item_id": &"smg",
+			"amount": 90,
+			"auto_equip": false,
+			"display_name": "冲锋枪弹药",
+			"marker_color": Color(0.20, 0.55, 1.0, 1.0),
+		},
+		OIL_BARREL_PICKUP_DEFINITION_PATH: {
+			"reward_mode": PickupDefinition.RewardMode.EQUIPMENT,
+			"item_id": &"oil_barrel",
+			"amount": 30,
+			"auto_equip": false,
+			"display_name": "油桶",
+			"marker_color": Color(0.20, 0.90, 0.35, 1.0),
+		},
+	}
+	for definition_path: String in expected:
+		var definition := load(definition_path) as PickupDefinition
+		_expect(definition != null, "%s must load as a PickupDefinition" % definition_path, failures)
+		if definition == null:
+			continue
+		for property_name: String in expected[definition_path]:
+			_expect(
+				definition.get(property_name) == expected[definition_path][property_name],
+				"%s must configure %s" % [definition_path, property_name],
+				failures
+			)
+	for removed_scene_path: String in REMOVED_PICKUP_SCENE_PATHS:
+		_expect(
+			not ResourceLoader.exists(removed_scene_path),
+			"specialized pickup scene must be removed: %s" % removed_scene_path,
+			failures
+		)
+
 func _test_spawn_and_respawn_lifecycle(failures: Array[String]) -> void:
 	var spawner_scene := load(SPAWNER_SCENE_PATH) as PackedScene
-	var pickup_scene := load(RIFLE_PICKUP_PATH) as PackedScene
+	var pickup_definition := load(SMG_PICKUP_DEFINITION_PATH) as PickupDefinition
 	_expect(spawner_scene != null, "PickupSpawnPoint scene must load", failures)
-	_expect(pickup_scene != null, "Rifle pickup scene must load", failures)
-	if spawner_scene == null or pickup_scene == null:
+	_expect(pickup_definition != null, "smg Definition must load", failures)
+	if spawner_scene == null or pickup_definition == null:
 		return
 	var spawner = spawner_scene.instantiate()
-	spawner.pickup_scene = pickup_scene
+	_expect(
+		"pickup_definition" in spawner,
+		"PickupSpawnPoint must expose pickup_definition",
+		failures
+	)
+	if not ("pickup_definition" in spawner):
+		spawner.free()
+		return
+	spawner.pickup_definition = pickup_definition
 	spawner.respawn_enabled = true
 	spawner.respawn_delay_seconds = 60.0
 	var geometry_changes := [0]
@@ -46,6 +115,11 @@ func _test_spawn_and_respawn_lifecycle(failures: Array[String]) -> void:
 	_expect(
 		spawner.current_pickup != null and is_instance_valid(spawner.current_pickup),
 		"deferred startup must create one pickup",
+		failures
+	)
+	_expect(
+		spawner.current_pickup != null and spawner.current_pickup.definition == pickup_definition,
+		"spawned PickupChest must be configured with the injected Definition",
 		failures
 	)
 	_expect(
@@ -123,15 +197,9 @@ func _test_demo_pickup_spawner_wiring(failures: Array[String]) -> void:
 	_expect(spawners_root != null, "DemoArena must contain pickup spawners", failures)
 	if spawners_root != null:
 		var expected := {
-			"Rifle": [Vector3(-4.5, 0.0, 6.0), RIFLE_PICKUP_PATH],
-			"RifleAmmo": [
-				Vector3(0.0, 0.0, 9.0),
-				"res://scenes/gameplay/RifleAmmoPickupChest.tscn",
-			],
-			"OilBarrel": [
-				Vector3(4.5, 0.0, 6.0),
-				"res://scenes/gameplay/OilBarrelPickupChest.tscn",
-			],
+			"Smg": Vector3(-4.5, 0.0, 6.0),
+			"SmgAmmo": Vector3(0.0, 0.0, 9.0),
+			"OilBarrel": Vector3(4.5, 0.0, 6.0),
 		}
 		_expect(
 			spawners_root.get_child_count() == 3,
@@ -148,7 +216,7 @@ func _test_demo_pickup_spawner_wiring(failures: Array[String]) -> void:
 			if spawner == null:
 				continue
 			_expect(
-				spawner.position.is_equal_approx(expected[spawner_name][0]),
+				spawner.position.is_equal_approx(expected[spawner_name]),
 				"DemoArena pickup spawner %s must keep its fixed position" % spawner_name,
 				failures
 			)
@@ -159,8 +227,21 @@ func _test_demo_pickup_spawner_wiring(failures: Array[String]) -> void:
 				failures
 			)
 			_expect(
-				spawner.pickup_scene.resource_path == expected[spawner_name][1],
-				"%s must use the configured pickup chest scene" % spawner_name,
+				"pickup_definition" in spawner,
+				"%s must expose a pickup Definition" % spawner_name,
+				failures
+			)
+			if "pickup_definition" in spawner:
+				_expect(
+					spawner.pickup_definition != null
+					and spawner.pickup_definition.resource_path == DEMO_PICKUP_DEFINITIONS[spawner_name],
+					"%s must use the configured pickup Definition" % spawner_name,
+					failures
+				)
+			_expect(
+				spawner.current_pickup != null
+				and spawner.current_pickup.scene_file_path == PICKUP_CHEST_SCENE_PATH,
+				"%s must instantiate the shared PickupChest scene" % spawner_name,
 				failures
 			)
 			_expect(

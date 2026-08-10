@@ -8,6 +8,7 @@ const SinglePlayerInputSourceScript = preload(
 	"res://scripts/input/single_player_input_source.gd"
 )
 const LocalTeamStateScript = preload("res://scripts/gameplay/local_team_state.gd")
+const BARREL_PLACE_SOUND := preload("res://assets/sfx/boxhead/barrel_place.mp3")
 const AUTO_WAVE_STATUS := "下一波即将到来"
 const ARENA_CAMERA_BOUNDS := Rect2(Vector2(-10.0, -7.0), Vector2(20.0, 14.0))
 const SimClockScript = preload("res://scripts/sim/sim_clock.gd")
@@ -26,7 +27,7 @@ const DEFAULT_SIM_SEED := 20260807
 const ZOMBIE_MAX_HEALTH := 50.0
 const BLOCKER_GROUP: StringName = &"place_item_obstacle"
 const PISTOL_DEFINITION := preload("res://resources/weapons/pistol.tres")
-const RIFLE_DEFINITION := preload("res://resources/weapons/rifle.tres")
+const SMG_DEFINITION := preload("res://resources/weapons/smg.tres")
 const SPAWN_POINT_NAMES: Array[StringName] = [
 	&"NorthWest",
 	&"NorthEast",
@@ -44,6 +45,8 @@ const SPAWN_POINT_NAMES: Array[StringName] = [
 @export_range(0.0, 4.0, 0.05) var minimum_spawn_spacing := 1.1
 @export_range(1.0, 100.0, 0.5) var wave_perception_range := 60.0
 @export var random_seed: int = 0
+
+@onready var game_over_audio: AudioStreamPlayer = $GameOverAudio
 
 var hit_confirm_tween: Tween
 var damage_flash_tween: Tween
@@ -372,6 +375,15 @@ func _setup_simulation() -> void:
 		if net != null and net.match_seed != 0:
 			resolved_seed = net.match_seed
 	sim_world.reset(resolved_seed)
+	# 随机掉落是表现层的 RNG，但它掉出来的弹药会改变战局，所以联机下必须
+	# 与房间同种子：击杀事件在各端顺序一致，同种子的同序消费就给出同一批掉落。
+	# 单机保持原有的 randomize() 行为不变。
+	if online_mode:
+		var drops := get_node_or_null(
+			"World/Props/RandomPickupDrops"
+		) as RandomPickupDropManager
+		if drops != null:
+			drops.rng.seed = resolved_seed
 	_register_scene_barrels()
 	if zombie_difficulty != null:
 		sim_world.set_default_move_speed(zombie_difficulty.perception_move_speed)
@@ -387,7 +399,7 @@ func register_weapon_profiles() -> void:
 	weapon_profile_indices = {}
 	var definitions: Array[RangedWeaponDefinition] = [
 		PISTOL_DEFINITION,
-		RIFLE_DEFINITION,
+		SMG_DEFINITION,
 	]
 	for profile_index in range(definitions.size()):
 		var definition := definitions[profile_index]
@@ -493,7 +505,9 @@ func _on_sim_shot_event(event: Dictionary) -> void:
 	if shooter != null:
 		var weapon = shooter.equipment.get_current_weapon()
 		if weapon is RangedWeapon:
-			(weapon as RangedWeapon).show_tracer(from_position, to_position)
+			(weapon as RangedWeapon).show_tracer(
+				from_position, to_position, bool(event.get("hit_blocker", false))
+			)
 	if not bool(event["did_hit"]):
 		return
 	var label := get_node_or_null("HUD/HitConfirm") as Label
@@ -621,6 +635,9 @@ func _on_sim_barrel_event(event: Dictionary) -> void:
 ## 所以这里**不**再调 mark_blocker()：阻挡格是布尔量，重复标记本身无害，
 ## 但把生命周期收在模拟层一处，「哪一 tick 清的格」才是确定的。
 func _on_item_placed(item: Node3D) -> void:
+	var pool := SpatialSfxPool.find_for(self)
+	if pool != null:
+		pool.play_at(BARREL_PLACE_SOUND, item.global_position, -4.0, 1.0, 24.0)
 	var barrel := item as ExplosiveBarrel
 	if barrel != null:
 		_register_barrel(barrel)
@@ -697,13 +714,35 @@ func _on_sim_hit_event(event: Dictionary) -> void:
 			hit_position,
 			direction * SimWorldScript.ZOMBIE_KNOCKBACK_IMPULSE
 		)
-	_spawn_blood_impact(hit_position, direction)
 	var manager := get_node_or_null("GroundBloodManager") as GroundBloodManager
 	if manager == null:
+		_spawn_blood_impact(hit_position, direction)
 		return
-	manager.spawn_hit_splat(hit_position, direction, 1.0)
+	# 走池化的冲击特效与**排队**的地面血迹，而不是立即生成。
+	# 模拟层一 tick 能打死一整片僵尸，逐个立刻实例化血迹会把这一帧顶爆；
+	# GroundBloodManager 的帧预算就是为这个场景准备的。
+	manager.spawn_blood_impact(hit_position, direction, 1.0)
+	manager.queue_hit_splat(hit_position, direction, 1.0)
 	if bool(event["killed"]):
-		manager.spawn_death_pool(Vector3(planar.x, 0.0, planar.y), 1.25)
+		manager.queue_death_pool(Vector3(planar.x, 0.0, planar.y), 1.25)
+		_try_random_pickup_drop(Vector3(planar.x, 0.0, planar.y))
+
+## 随机掉落改由模拟层的击杀事件驱动，而不是挂在僵尸节点的 died 信号上。
+## 近景视图是池化的，远处的僵尸根本没有节点——挂节点信号会让视野外的击杀
+## 一个都不掉东西，而那恰恰是尸潮里绝大多数的击杀。
+func _try_random_pickup_drop(world_position: Vector3) -> void:
+	var drops := get_node_or_null(
+		"World/Props/RandomPickupDrops"
+	) as RandomPickupDropManager
+	if drops == null:
+		return
+	var spawner := drops.try_spawn_drop(world_position)
+	if spawner != null and not spawner.blocker_changed.is_connected(
+		_on_pickup_blocker_changed
+	):
+		# 掉落生成的拾取箱同样是阻挡几何，必须接上标脏这条线，
+		# 否则箱子被捡走后那一格会永远堵着。
+		spawner.blocker_changed.connect(_on_pickup_blocker_changed)
 
 func _on_sim_player_damage_event(event: Dictionary) -> void:
 	var view := zombie_renderer.get_near_view(int(event["zombie_id"]))
@@ -862,6 +901,18 @@ func _wire_dependencies() -> void:
 				)
 			if not spawner.blocker_changed.is_connected(_on_pickup_blocker_changed):
 				spawner.blocker_changed.connect(_on_pickup_blocker_changed)
+	var random_pickup_drops := get_node_or_null(
+		"World/Props/RandomPickupDrops"
+	) as RandomPickupDropManager
+	if (
+		random_pickup_drops != null and
+		not random_pickup_drops.navigation_geometry_changed.is_connected(
+			_on_runtime_navigation_geometry_changed
+		)
+	):
+		random_pickup_drops.navigation_geometry_changed.connect(
+			_on_runtime_navigation_geometry_changed
+		)
 	var spawn_button := get_node_or_null("HUD/SpawnWaveButton") as Button
 	if spawn_button != null and not spawn_button.pressed.is_connected(request_spawn_wave):
 		spawn_button.pressed.connect(request_spawn_wave)
@@ -1038,6 +1089,8 @@ func _on_all_players_defeated() -> void:
 	if team_defeated:
 		return
 	team_defeated = true
+	if game_over_audio != null:
+		game_over_audio.play()
 	_cancel_auto_wave()
 	var game_over := get_node_or_null("HUD/GameOver") as Label
 	if game_over != null:

@@ -28,7 +28,7 @@ const BLOCKER_RECTS: Array[Rect2] = [
 	Rect2(Vector2(-6.0, -2.0), Vector2(12.0, 1.0)),
 ]
 
-# 与 resources/weapons/rifle.tres 一致
+# 与 resources/weapons/smg.tres 一致（rifle 已在 50daa0b 迁移为 smg）
 const RIFLE_PROFILE := 0
 const RIFLE_DAMAGE := 25.0
 const RIFLE_RANGE := 28.0

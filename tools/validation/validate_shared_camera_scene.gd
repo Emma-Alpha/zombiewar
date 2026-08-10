@@ -19,7 +19,10 @@ func _run() -> void:
 	_expect(camera != null, "Camera3D must be a child of VisualOffset", failures)
 	if camera != null:
 		_expect(camera.projection == Camera3D.PROJECTION_ORTHOGONAL, "shared camera must remain orthogonal", failures)
-		_expect(is_equal_approx(camera.size, 15.0), "shared camera size must remain 15", failures)
+		# e62dd06「随机掉落」把正交尺寸从 15 放宽到 18（掉落物要落在视野内），
+		# 但漏改了这条断言，于是这个测试在 origin/main 上一直是红的。
+		# 这里跟上场景的实际取值——一条永远失败的断言等于没有断言。
+		_expect(is_equal_approx(camera.size, 18.0), "shared camera size must remain 18", failures)
 		_expect(camera.position.is_equal_approx(Vector3(0.0, 12.0, 14.142136)), "camera local position and height must remain unchanged", failures)
 		_expect(camera.rotation_degrees.is_equal_approx(Vector3(-40.3, 0.0, 0.0)), "camera rotation must remain unchanged", failures)
 	_expect(follow.has_method("set_player_registry"), "FollowCamera must accept PlayerRegistry", failures)

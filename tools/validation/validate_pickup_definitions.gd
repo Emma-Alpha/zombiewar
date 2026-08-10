@@ -1,0 +1,230 @@
+extends SceneTree
+
+const PICKUP_DEFINITION_PATH := "res://scripts/gameplay/pickup_definition.gd"
+const PICKUP_CHEST_SCENE_PATH := "res://scenes/gameplay/PickupChest.tscn"
+
+class RecordingPlayer extends PlayerController:
+	var equipment_calls: Array[Dictionary] = []
+	var ammo_calls: Array[Dictionary] = []
+	var alive := true
+
+	func is_alive() -> bool:
+		return alive
+
+	func receive_equipment_pickup(
+		item_id: StringName,
+		amount: int,
+		auto_equip: bool = false
+	) -> bool:
+		equipment_calls.append({
+			"item_id": item_id,
+			"amount": amount,
+			"auto_equip": auto_equip,
+		})
+		return true
+
+	func receive_ammo_pickup(item_id: StringName, amount: int) -> bool:
+		ammo_calls.append({"item_id": item_id, "amount": amount})
+		return true
+
+func _init() -> void:
+	call_deferred("_run")
+
+func _run() -> void:
+	var failures: Array[String] = []
+	_expect(
+		ResourceLoader.exists(PICKUP_DEFINITION_PATH),
+		"PickupDefinition script must exist",
+		failures
+	)
+	_expect(
+		ResourceLoader.exists(PICKUP_CHEST_SCENE_PATH),
+		"PickupChest scene must exist",
+		failures
+	)
+	if not failures.is_empty():
+		_finish(failures)
+		return
+	var definition_script = load(PICKUP_DEFINITION_PATH)
+	var chest_scene := load(PICKUP_CHEST_SCENE_PATH) as PackedScene
+	_expect(definition_script != null, "PickupDefinition script must load", failures)
+	_expect(chest_scene != null, "PickupChest scene must load", failures)
+	if definition_script == null or chest_scene == null:
+		_finish(failures)
+		return
+	_test_equipment_definition_grants_configured_reward(definition_script, failures)
+	_test_ammo_definition_grants_configured_reward(definition_script, failures)
+	await _test_chest_configuration_and_empty_definition(definition_script, chest_scene, failures)
+	await _test_chest_claim_signal_lifecycle(definition_script, chest_scene, failures)
+	_finish(failures)
+
+func _test_equipment_definition_grants_configured_reward(
+	definition_script,
+	failures: Array[String]
+) -> void:
+	var definition = definition_script.new()
+	definition.reward_mode = definition.RewardMode.EQUIPMENT
+	definition.item_id = &"smg"
+	definition.amount = 60
+	definition.auto_equip = true
+	definition.display_name = "冲锋枪"
+	var player := RecordingPlayer.new()
+	_expect(
+		definition.grant_to(player),
+		"equipment Definition must grant its configured reward",
+		failures
+	)
+	_expect(
+		player.equipment_calls == [{
+			"item_id": &"smg",
+			"amount": 60,
+			"auto_equip": true,
+		}],
+		"equipment Definition must forward item id, amount, and auto-equip",
+		failures
+	)
+	_expect(player.ammo_calls.is_empty(), "equipment Definition must not grant ammo", failures)
+	_expect(
+		definition.get_label_text() == "冲锋枪 +60",
+		"Definition label must use display name and amount",
+		failures
+	)
+	player.free()
+
+func _test_ammo_definition_grants_configured_reward(
+	definition_script,
+	failures: Array[String]
+) -> void:
+	var definition = definition_script.new()
+	definition.reward_mode = definition.RewardMode.AMMO
+	definition.item_id = &"smg"
+	definition.amount = 30
+	var player := RecordingPlayer.new()
+	_expect(
+		definition.grant_to(player),
+		"ammo Definition must grant its configured reward",
+		failures
+	)
+	_expect(
+		player.ammo_calls == [{"item_id": &"smg", "amount": 30}],
+		"ammo Definition must forward item id and amount",
+		failures
+	)
+	_expect(player.equipment_calls.is_empty(), "ammo Definition must not grant equipment", failures)
+	player.free()
+
+func _test_chest_configuration_and_empty_definition(
+	definition_script,
+	chest_scene: PackedScene,
+	failures: Array[String]
+) -> void:
+	var definition = definition_script.new()
+	definition.item_id = &"oil_barrel"
+	definition.amount = 2
+	definition.display_name = "油桶"
+	definition.marker_color = Color(0.20, 0.90, 0.35, 1.0)
+	var chest = chest_scene.instantiate()
+	_expect("definition" in chest, "PickupChest must expose definition", failures)
+	_expect(chest.has_method("configure"), "PickupChest must expose configure", failures)
+	if not ("definition" in chest) or not chest.has_method("configure"):
+		chest.free()
+		return
+	chest.configure(definition)
+	_expect(chest.definition == definition, "configure must retain the Definition", failures)
+	_expect(
+		chest.get_reward_label_text() == "油桶 +2",
+		"configured chest must expose the Definition label",
+		failures
+	)
+	root.add_child(chest)
+	await process_frame
+	_expect(
+		chest.reward_label.modulate.is_equal_approx(definition.marker_color),
+		"configured chest label must use Definition marker color",
+		failures
+	)
+	var empty_chest = chest_scene.instantiate()
+	var player := RecordingPlayer.new()
+	_expect(
+		not empty_chest._grant_reward(player),
+		"chest without a Definition must reject collection",
+		failures
+	)
+	_expect(
+		empty_chest.get_reward_label_text() == "未配置补给",
+		"unconfigured chest must show an explicit label",
+		failures
+	)
+	empty_chest.free()
+	player.free()
+	chest.queue_free()
+	await process_frame
+
+func _test_chest_claim_signal_lifecycle(
+	definition_script,
+	chest_scene: PackedScene,
+	failures: Array[String]
+) -> void:
+	var definition = definition_script.new()
+	definition.item_id = &"smg"
+	definition.amount = 1
+	definition.auto_equip = true
+	var chest = chest_scene.instantiate()
+	chest.configure(definition)
+	root.add_child(chest)
+	await process_frame
+	var player := RecordingPlayer.new()
+	var collection_count := [0]
+	var monitoring_disabled_on_exit := [false]
+	var claim_area: Area3D = chest.claim_area
+	chest.collected.connect(func(_pickup) -> void: collection_count[0] += 1)
+	claim_area.tree_exiting.connect(
+		func() -> void: monitoring_disabled_on_exit[0] = not claim_area.monitoring
+	)
+	chest.claim_area.body_entered.emit(player)
+	chest.claim_area.body_entered.emit(player)
+	_expect(
+		player.equipment_calls == [{
+			"item_id": &"smg",
+			"amount": 1,
+			"auto_equip": true,
+		}],
+		"ClaimArea body_entered must grant the configured reward exactly once",
+		failures
+	)
+	_expect(chest.claim_locked, "successful ClaimArea entry must lock the chest", failures)
+	_expect(
+		collection_count[0] == 1,
+		"successful ClaimArea entry must emit collected exactly once",
+		failures
+	)
+	_expect(
+		chest.is_queued_for_deletion(),
+		"successful ClaimArea entry must queue the chest for deletion",
+		failures
+	)
+	await process_frame
+	_expect(
+		not is_instance_valid(chest),
+		"claimed chest must be freed after the ClaimArea lifecycle completes",
+		failures
+	)
+	_expect(
+		monitoring_disabled_on_exit[0],
+		"successful ClaimArea entry must disable claim-area monitoring",
+		failures
+	)
+	player.free()
+
+func _finish(failures: Array[String]) -> void:
+	if failures.is_empty():
+		print("validate_pickup_definitions: PASS")
+		quit(0)
+		return
+	for failure in failures:
+		push_error(failure)
+	quit(1)
+
+func _expect(condition: bool, message: String, failures: Array[String]) -> void:
+	if not condition:
+		failures.append(message)

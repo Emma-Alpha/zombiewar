@@ -24,17 +24,17 @@ func _run() -> void:
 	player.set_input_source(source)
 	_expect(player.get_input_source() == source, "Player must retain injected input source", failures)
 	var equipment = player.get_node("EquipmentController")
-	_expect(equipment.get_current_display_name() == "RIFLE", "Player must preserve configured starting equipment", failures)
+	_expect(equipment.get_current_display_name() == "手枪", "Player must start with the owned pistol", failures)
 
 	source.next_pressed = true
 	player._physics_process(0.016)
-	_expect(equipment.get_current_display_name() == "KNIFE", "next edge must switch one equipment slot", failures)
+	_expect(equipment.get_current_display_name() == "匕首", "next edge must skip the unowned smg", failures)
 	player._physics_process(0.016)
-	_expect(equipment.get_current_display_name() == "KNIFE", "held next input must not switch repeatedly", failures)
+	_expect(equipment.get_current_display_name() == "匕首", "held next input must not switch repeatedly", failures)
 
 	source.next_pressed = false
 	player._physics_process(0.016)
-	equipment.equip_slot(1)
+	equipment.equip_slot(0)
 	source.use_pressed = true
 	player._physics_process(0.016)
 	var weapon = equipment.get_current_weapon()
@@ -42,6 +42,7 @@ func _run() -> void:
 
 	var place_service := FakePlaceItemService.new()
 	player.set_place_item_service(place_service)
+	equipment.grant_item(&"oil_barrel", 1)
 	equipment.equip_slot(3)
 	var placeable = equipment.get_current_item()
 	_expect(placeable.place_item_service == place_service, "place item service must reach placeable equipment", failures)

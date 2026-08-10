@@ -16,12 +16,12 @@ Open `project.godot` in Godot 4.7.1 and run the configured main scene, or use:
 - `Space`: grounded jump
 - `J`: use the current weapon's primary attack
 - `1`: equip the semi-automatic pistol
-- `2`: equip the automatic rifle
+- `2`: equip the SMG
 - `3`: equip the melee knife
 - `4`: reserved empty weapon slot; with no fourth weapon yet, keep the current weapon equipped
 
 - 手枪每次按下J只发射一枪，持续按住不会自动补发。
-- 步枪按住J以每秒4发持续射击。
+- 冲锋枪按住J以每秒4发持续射击，单发造成25点基础伤害。
 - 刀每次按下J播放一次Slash，在0.22秒命中窗口攻击前方最近的一只僵尸。
 - 切换武器会立即更换模型、移动动画和攻击方式，并取消上一把武器未完成的攻击。
 - WASD始终同时改变移动、角色朝向和攻击方向；松开后保留最后一个非零方向。
@@ -38,7 +38,7 @@ Mouse input is not used by the demo.
 
 ## Demo scope
 
-The demo contains one orthographic 2.5D arena, a controllable player, static collision props, and four active damageable zombies. Each zombie has 50 health; the rifle deals 25 base damage at 6 shots per second. The player starts with 100 health.
+The demo contains one orthographic 2.5D arena, a controllable player, static collision props, and four active damageable zombies. Each zombie has 50 health; the SMG deals 25 base damage at 4 shots per second. The player starts with 100 health.
 
 The first version has no ammunition, reloads, inventory, pickups, drops, weapon upgrades, or mobile weapon-switching buttons. The mobile attack button uses the currently equipped weapon.
 

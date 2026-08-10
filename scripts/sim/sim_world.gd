@@ -1374,6 +1374,10 @@ func _resolve_shot_event(event: Dictionary) -> void:
 		"killed": killed,
 		"damage": total_damage,
 		"zone": zone,
+		# 射线被阻挡几何截断了：表现层据此播墙面弹着音。判定留在模拟层，
+		# 因为「打没打到墙」只有这里知道——表现层再补一次射线，就等于在
+		# 确定性解算之外又开了一条会分叉的判定路径。
+		"hit_blocker": attack_range < weapon_range,
 	})
 
 func _resolve_melee_event(event: Dictionary) -> void:

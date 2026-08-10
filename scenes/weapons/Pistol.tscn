@@ -3,7 +3,7 @@
 [ext_resource type="Script" path="res://scripts/combat/weapons/ranged_weapon.gd" id="1_weapon"]
 [ext_resource type="Resource" path="res://resources/weapons/pistol.tres" id="2_definition"]
 [ext_resource type="PackedScene" path="res://scenes/fx/MuzzleFlash.tscn" id="3_muzzle_flash"]
-[ext_resource type="AudioStream" path="res://assets/sfx/weapons/impactMetal_heavy_002.ogg" id="4_shot_audio"]
+[ext_resource type="AudioStream" path="res://assets/sfx/boxhead/pistol_fire.mp3" id="4_shot_audio"]
 
 [node name="Pistol" type="Node3D"]
 script = ExtResource("1_weapon")

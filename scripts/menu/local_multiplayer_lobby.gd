@@ -54,7 +54,10 @@ func _handle_joypad_button(event: InputEventJoypadButton) -> void:
 	if not event.pressed:
 		return
 	if event.button_index == JOY_BUTTON_A:
-		_try_join(LocalPlayerDescriptorScript.SourceKind.GAMEPAD, event.device)
+		if _p1_is_gamepad(event.device) and _p1_can_start():
+			_start_local_game()
+		else:
+			_try_join(LocalPlayerDescriptorScript.SourceKind.GAMEPAD, event.device)
 		return
 	if not _p1_is_gamepad(event.device):
 		return
@@ -122,10 +125,16 @@ func _sync_slots() -> void:
 			label.text += " · 设备离线"
 	var hint := get_node_or_null("MenuLayer/P1Hint") as Label
 	if hint != null:
-		hint.text = (
-			"P1 设备离线 · 等待恢复" if not join_state.players.is_empty() and not join_state.players[0].online
-			else "P1：ENTER / START 开始 · ESC / B 返回"
-		)
+		hint.text = _p1_hint_text()
+
+func _p1_hint_text() -> String:
+	if join_state.players.is_empty():
+		return "按 WASD / 方向键 / A 加入"
+	if not join_state.players[0].online:
+		return "P1 设备离线 · 等待恢复"
+	if _p1_is_keyboard():
+		return "P1：ENTER 开始 · ESC 返回"
+	return "P1：A / START 开始 · B 返回"
 
 func _sync_slot_preview(index: int, descriptor) -> void:
 	var marker := get_node_or_null(

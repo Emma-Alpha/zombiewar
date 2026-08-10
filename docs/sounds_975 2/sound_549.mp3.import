@@ -1,0 +1,19 @@
+[remap]
+
+importer="mp3"
+type="AudioStreamMP3"
+uid="uid://bwnevyno2u2qk"
+path="res://.godot/imported/sound_549.mp3-c36965151361eacef21959cb09df9671.mp3str"
+
+[deps]
+
+source_file="res://docs/sounds_975 2/sound_549.mp3"
+dest_files=["res://.godot/imported/sound_549.mp3-c36965151361eacef21959cb09df9671.mp3str"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

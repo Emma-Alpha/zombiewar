@@ -10,6 +10,7 @@ class_name BloodImpact
 
 var remaining: float = 0.0
 var splat_start_scale := Vector3.ONE
+var pooled := false
 
 func _ready() -> void:
 	_ensure_nodes()
@@ -17,6 +18,7 @@ func _ready() -> void:
 
 func setup(hit_position: Vector3, shot_direction: Vector3, intensity: float = 1.0) -> void:
 	_ensure_nodes()
+	visible = true
 	if is_inside_tree():
 		global_position = hit_position
 	else:
@@ -45,6 +47,21 @@ func setup(hit_position: Vector3, shot_direction: Vector3, intensity: float = 1.
 		droplets.emitting = true
 	set_process(true)
 
+func set_pooled(value: bool) -> void:
+	pooled = value
+	if pooled:
+		deactivate()
+
+func is_active() -> bool:
+	return remaining > 0.0 and visible
+
+func deactivate() -> void:
+	remaining = 0.0
+	if droplets != null:
+		droplets.emitting = false
+	visible = false
+	set_process(false)
+
 func warmup_for_render(context: FxWarmupContext) -> void:
 	setup(
 		context.position_in_view(3.0, Vector2(0.0, -0.2)),
@@ -54,11 +71,7 @@ func warmup_for_render(context: FxWarmupContext) -> void:
 	set_process(false)
 
 func finish_render_warmup() -> void:
-	remaining = 0.0
-	if droplets != null:
-		droplets.emitting = false
-	visible = false
-	set_process(false)
+	deactivate()
 
 func _process(delta: float) -> void:
 	remaining -= delta
@@ -69,7 +82,10 @@ func _process(delta: float) -> void:
 	splat_color.a = 0.94 * (1.0 - progress)
 	splat.modulate = splat_color
 	if remaining <= 0.0:
-		queue_free()
+		if pooled:
+			deactivate()
+		else:
+			queue_free()
 
 func _ensure_nodes() -> void:
 	if splat == null:

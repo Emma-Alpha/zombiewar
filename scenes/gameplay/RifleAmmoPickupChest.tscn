@@ -1,7 +1,0 @@
-[gd_scene load_steps=2 format=3]
-
-[ext_resource type="PackedScene" path="res://scenes/gameplay/PickupChest.tscn" id="1_base"]
-
-[node name="RifleAmmoPickupChest" instance=ExtResource("1_base")]
-reward_type = 1
-reward_amount = 90

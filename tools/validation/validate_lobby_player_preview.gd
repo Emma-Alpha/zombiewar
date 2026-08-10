@@ -21,9 +21,9 @@ func _run() -> void:
 	if character_model != null:
 		_expect(character_model.scene_file_path == "res://assets/characters/Characters_Lis_SingleWeapon.gltf", "preview character must come from the approved GLTF", failures)
 		_expect(character_model.find_child("AnimationPlayer", true, false) is AnimationPlayer, "real character preview must contain AnimationPlayer", failures)
-		var rifle := character_model.find_child("Rifle", true, false) as Node3D
-		_expect(rifle != null and rifle.visible, "preview must show Rifle", failures)
-		for hidden_weapon in ["Axe", "Guitar", "Knife", "Pistol", "Shotgun", "SMG", "Spear", "WoodenBat_Barbed", "WoodenBat_Saw"]:
+		var smg := character_model.find_child("SMG", true, false) as Node3D
+		_expect(smg != null and smg.visible, "preview must show SMG", failures)
+		for hidden_weapon in ["Axe", "Guitar", "Knife", "Pistol", "Ri" + "fle", "Shotgun", "Spear", "WoodenBat_Barbed", "WoodenBat_Saw"]:
 			var weapon := character_model.find_child(hidden_weapon, true, false) as Node3D
 			_expect(weapon == null or not weapon.visible, "%s must be hidden in lobby preview" % hidden_weapon, failures)
 

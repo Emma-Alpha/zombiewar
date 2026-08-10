@@ -17,6 +17,15 @@ const ATTACK_ANIMATION_SECONDS := 0.7
 const DEATH_LINGER_SECONDS := 1.2
 const RUN_ANIMATION_SPEED := 0.2
 
+const AMBIENT_SOUNDS := [
+	preload("res://assets/sfx/boxhead/zombie_ambience_1.mp3"),
+	preload("res://assets/sfx/boxhead/zombie_ambience_2.mp3"),
+	preload("res://assets/sfx/boxhead/zombie_ambience_3.mp3"),
+	preload("res://assets/sfx/boxhead/zombie_ambience_4.mp3"),
+]
+const HIT_SOUND := preload("res://assets/sfx/boxhead/zombie_hit.mp3")
+const HIT_AUDIO_COOLDOWN_SECONDS := 0.12
+
 @export var reaction_spring: float = 18.0
 @export var reaction_damping: float = 8.0
 @export var max_visual_tilt_degrees: float = 18.0
@@ -24,6 +33,9 @@ const RUN_ANIMATION_SPEED := 0.2
 @onready var visual_root: Node3D = $VisualRoot
 @onready var blocker_collision: CollisionShape3D = $BlockerCollision
 @onready var health_label: Label3D = $HealthLabel
+@onready var voice_audio: AudioStreamPlayer3D = get_node_or_null("VoiceAudio")
+@onready var attack_audio: AudioStreamPlayer3D = get_node_or_null("AttackAudio")
+@onready var death_audio: AudioStreamPlayer3D = get_node_or_null("DeathAudio")
 
 var animation_player: AnimationPlayer
 var mesh_instances: Array[MeshInstance3D] = []
@@ -36,6 +48,11 @@ var hit_reaction_remaining := 0.0
 var attack_animation_remaining := 0.0
 var death_remaining := 0.0
 var dying := false
+## 音效随机是纯表现，不进模拟层：它不改变任何判定，各端听到的音高不同
+## 也不会让任何一颗子弹打到不同的地方。
+var audio_rng := RandomNumberGenerator.new()
+var ambient_audio_remaining := 0.0
+var hit_audio_cooldown := 0.0
 
 func _ready() -> void:
 	_ensure_initialized()
@@ -67,6 +84,8 @@ func _ensure_initialized() -> void:
 		if mesh_instance != null:
 			mesh_instances.append(mesh_instance)
 	visual_rest_rotation = visual_root.rotation
+	audio_rng.randomize()
+	ambient_audio_remaining = audio_rng.randf_range(2.0, 8.0)
 	initialized = true
 
 func bind_zombie(
@@ -88,8 +107,20 @@ func bind_zombie(
 	rotation.y = facing_yaw
 	visible = true
 	set_blocker_enabled(true)
+	# 视图是池化复用的：不停掉上一具尸体的声音，死亡音会盖在刚生成的僵尸身上。
+	_reset_audio()
 	if animation_player != null:
 		animation_player.play(&"Idle", 0.05)
+
+func _reset_audio() -> void:
+	hit_audio_cooldown = 0.0
+	ambient_audio_remaining = audio_rng.randf_range(2.0, 8.0)
+	if voice_audio != null:
+		voice_audio.stop()
+	if attack_audio != null:
+		attack_audio.stop()
+	if death_audio != null:
+		death_audio.stop()
 
 func get_bound_zombie_id() -> int:
 	return bound_zombie_id
@@ -124,6 +155,7 @@ func play_hit_reaction(hit_position: Vector3, impulse: Vector3) -> void:
 	var local_impulse := global_basis.inverse() * impulse
 	var torque := local_hit.cross(local_impulse) * 0.075
 	reaction_angular_velocity += Vector3(torque.x, 0.0, torque.z)
+	_play_hit_sound()
 	if animation_player != null and animation_player.has_animation(&"HitReact"):
 		animation_player.play(&"HitReact", 0.05)
 		hit_reaction_remaining = HIT_REACTION_SECONDS
@@ -133,6 +165,8 @@ func play_attack_windup() -> void:
 	_ensure_initialized()
 	if dying:
 		return
+	if attack_audio != null:
+		attack_audio.play()
 	if animation_player != null and animation_player.has_animation(&"Punch"):
 		animation_player.play(&"Punch", 0.08)
 		attack_animation_remaining = ATTACK_ANIMATION_SECONDS
@@ -145,12 +179,22 @@ func begin_death() -> void:
 	death_remaining = DEATH_LINGER_SECONDS
 	set_blocker_enabled(false)
 	health_label.visible = false
+	if voice_audio != null:
+		voice_audio.stop()
+	if attack_audio != null:
+		attack_audio.stop()
+	if death_audio != null:
+		death_audio.play()
 	if animation_player != null and animation_player.has_animation(&"Death"):
 		animation_player.play(&"Death", 0.08)
 		death_remaining = minf(
 			animation_player.get_animation(&"Death").length,
 			DEATH_LINGER_SECONDS
 		)
+	# 视图被回收时声音也跟着停，所以留场时间至少要盖住死亡音的长度，
+	# 否则每一次击杀的音效都会被自己的尸体消失掐掉半句。
+	if death_audio != null and death_audio.stream != null:
+		death_remaining = maxf(death_remaining, death_audio.stream.get_length())
 
 func is_dying() -> bool:
 	return dying
@@ -182,6 +226,8 @@ func _process(delta: float) -> void:
 		return
 	hit_reaction_remaining = maxf(hit_reaction_remaining - delta, 0.0)
 	attack_animation_remaining = maxf(attack_animation_remaining - delta, 0.0)
+	hit_audio_cooldown = maxf(hit_audio_cooldown - delta, 0.0)
+	_update_ambient_audio(delta)
 	visual_root.scale = visual_root.scale.move_toward(Vector3.ONE, delta * 1.5)
 	_update_visual_reaction(delta)
 	if not dying:
@@ -211,3 +257,28 @@ func _on_animation_finished(animation_name: StringName) -> void:
 		hit_reaction_remaining = 0.0
 	elif animation_name == &"Punch":
 		attack_animation_remaining = 0.0
+
+## 中弹声。冷却是为了让穿透的一枪不至于在同一帧里把整排僵尸的受击声叠成爆音。
+func _play_hit_sound() -> void:
+	if voice_audio == null or hit_audio_cooldown > 0.0:
+		return
+	voice_audio.stop()
+	voice_audio.stream = HIT_SOUND
+	voice_audio.pitch_scale = audio_rng.randf_range(0.96, 1.04)
+	voice_audio.play()
+	hit_audio_cooldown = HIT_AUDIO_COOLDOWN_SECONDS
+
+func _update_ambient_audio(delta: float) -> void:
+	if dying or voice_audio == null:
+		return
+	ambient_audio_remaining -= delta
+	if ambient_audio_remaining > 0.0:
+		return
+	ambient_audio_remaining = audio_rng.randf_range(8.0, 18.0)
+	if voice_audio.playing:
+		return
+	voice_audio.stream = AMBIENT_SOUNDS[
+		audio_rng.randi_range(0, AMBIENT_SOUNDS.size() - 1)
+	]
+	voice_audio.pitch_scale = audio_rng.randf_range(0.96, 1.04)
+	voice_audio.play()

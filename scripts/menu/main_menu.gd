@@ -25,9 +25,30 @@ func _ready() -> void:
 	single_player_button.grab_focus()
 
 func _unhandled_input(event: InputEvent) -> void:
-	if event.is_action_pressed("ui_cancel") and flow.state == MenuFlow.State.EXIT_CONFIRM:
+	var joy_button := event as InputEventJoypadButton
+	var joy_a_pressed := (
+		joy_button != null and joy_button.pressed and
+		joy_button.button_index == JOY_BUTTON_A
+	)
+	var joy_b_pressed := (
+		joy_button != null and joy_button.pressed and
+		joy_button.button_index == JOY_BUTTON_B
+	)
+	if (
+		(event.is_action_pressed("ui_cancel") or joy_b_pressed) and
+		flow.state == MenuFlow.State.EXIT_CONFIRM
+	):
 		_on_cancel_exit_button_pressed()
 		get_viewport().set_input_as_handled()
+	elif joy_a_pressed and _activate_focused_button():
+		get_viewport().set_input_as_handled()
+
+func _activate_focused_button() -> bool:
+	var focused_button := get_viewport().gui_get_focus_owner() as Button
+	if focused_button == null or focused_button.disabled:
+		return false
+	focused_button.pressed.emit()
+	return true
 
 func _on_single_player_button_pressed() -> void:
 	if not flow.request_single():

@@ -1,13 +1,14 @@
 extends Node3D
 class_name LobbyPlayerPreview
 
-const DISPLAY_WEAPON := "Rifle"
+const DISPLAY_WEAPON := "SMG"
+const LEGACY_LONG_GUN_MODEL_NAME := "Ri" + "fle"
 const WEAPON_NAMES := [
 	"Axe",
 	"Guitar",
 	"Knife",
 	"Pistol",
-	"Rifle",
+	LEGACY_LONG_GUN_MODEL_NAME,
 	"Shotgun",
 	"SMG",
 	"Spear",

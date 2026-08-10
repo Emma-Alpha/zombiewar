@@ -6,9 +6,12 @@ signal navigation_geometry_changed
 ## 出现与消失都必须标脏对应 cell。
 signal blocker_changed(world_aabb: AABB, blocked: bool)
 
-@export var pickup_scene: PackedScene
+const PICKUP_SCENE := preload("res://scenes/gameplay/PickupChest.tscn")
+
+@export var pickup_definition: PickupDefinition
 @export var respawn_enabled := false
 @export_range(0.0, 300.0, 0.1) var respawn_delay_seconds := 3.0
+@export var remove_after_collection := false
 
 @onready var respawn_timer: Timer = $RespawnTimer
 
@@ -16,6 +19,7 @@ var current_pickup: PickupChest
 var current_pickup_id := 0
 var respawn_requested := false
 var current_pickup_bounds := AABB()
+var collected_successfully := false
 
 func _ready() -> void:
 	respawn_timer.timeout.connect(_spawn_pickup)
@@ -24,19 +28,16 @@ func _ready() -> void:
 func _spawn_pickup() -> void:
 	if current_pickup != null and is_instance_valid(current_pickup):
 		return
-	if pickup_scene == null:
-		push_warning("PickupSpawnPoint has no pickup scene: %s" % get_path())
+	if pickup_definition == null:
+		push_warning("PickupSpawnPoint has no pickup Definition: %s" % get_path())
 		return
-	var instance := pickup_scene.instantiate()
-	if not instance is PickupChest:
-		push_warning("PickupSpawnPoint requires a PickupChest scene: %s" % get_path())
-		instance.free()
-		return
-	current_pickup = instance as PickupChest
+	current_pickup = PICKUP_SCENE.instantiate() as PickupChest
+	current_pickup.configure(pickup_definition)
 	add_child(current_pickup)
 	current_pickup.transform = _next_spawn_transform()
 	current_pickup_id = current_pickup.get_instance_id()
 	respawn_requested = false
+	collected_successfully = false
 	current_pickup.collected.connect(_on_pickup_collected)
 	current_pickup.tree_exited.connect(
 		_on_pickup_tree_exited.bind(current_pickup_id),
@@ -48,6 +49,7 @@ func _spawn_pickup() -> void:
 
 func _on_pickup_collected(pickup: PickupChest) -> void:
 	if pickup == current_pickup:
+		collected_successfully = true
 		respawn_requested = respawn_enabled
 
 func _on_pickup_tree_exited(pickup_id: int) -> void:
@@ -56,8 +58,14 @@ func _on_pickup_tree_exited(pickup_id: int) -> void:
 	current_pickup = null
 	current_pickup_id = 0
 	navigation_geometry_changed.emit()
+	# 清阻挡必须排在 remove_after_collection 的提前返回**之前**：
+	# 一次性拾取点在这里 queue_free() 自己，若先返回就再没有人来清这块格，
+	# 箱子早就没了而僵尸还在绕着它走。
 	blocker_changed.emit(current_pickup_bounds, false)
 	current_pickup_bounds = AABB()
+	if remove_after_collection and collected_successfully:
+		queue_free()
+		return
 	if not respawn_requested:
 		return
 	respawn_requested = false

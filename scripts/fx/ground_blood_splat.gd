@@ -8,6 +8,7 @@ var current_size := Vector2.ONE
 var current_tint := Color.WHITE
 var current_surface_normal := Vector3.UP
 var current_rotation := 0.0
+var runtime_material: StandardMaterial3D
 
 static func surface_basis(
 	surface_normal: Vector3,
@@ -49,12 +50,13 @@ func setup(
 	else:
 		position = resolved_position
 	_apply_size_basis()
-	var material := material_override as StandardMaterial3D
-	material = material.duplicate() as StandardMaterial3D
-	material.albedo_texture = texture
-	material.albedo_color = tint
-	material.roughness = clampf(roughness, 0.2, 0.8)
-	material_override = material
+	if runtime_material == null:
+		var source_material := material_override as StandardMaterial3D
+		runtime_material = source_material.duplicate() as StandardMaterial3D
+		material_override = runtime_material
+	runtime_material.albedo_texture = texture
+	runtime_material.albedo_color = tint
+	runtime_material.roughness = clampf(roughness, 0.2, 0.8)
 	visible = true
 
 func merge_limited(size_growth: float, darken_amount: float) -> void:

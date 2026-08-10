@@ -4,6 +4,11 @@ class_name RangedWeapon
 const TRACER_SCENE := preload("res://scenes/fx/ShotTracer.tscn")
 const MuzzleFlash = preload("res://scripts/fx/muzzle_flash.gd")
 const WeaponTrigger = preload("res://scripts/combat/weapons/weapon_trigger.gd")
+const WALL_IMPACT_SOUNDS := [
+	preload("res://assets/sfx/boxhead/bullet_wall_1.mp3"),
+	preload("res://assets/sfx/boxhead/bullet_wall_2.mp3"),
+	preload("res://assets/sfx/boxhead/bullet_wall_3.mp3"),
+]
 
 @onready var muzzle: Marker3D = $Muzzle
 @onready var muzzle_flash: MuzzleFlash = $Muzzle/MuzzleFlash
@@ -13,6 +18,10 @@ var weapon_trigger: WeaponTrigger
 var tracer_pool: Array[ShotTracer] = []
 var tracer_pool_cursor := 0
 var current_ammo := 0
+var spatial_sfx_pool: SpatialSfxPool
+## 音高与选音是纯表现，不进模拟层：散布已经由 Stream.WEAPON_SPREAD
+## 在各端确定性地算过了，这里再摇一次骰子不影响任何判定。
+var audio_rng := RandomNumberGenerator.new()
 
 func _ready() -> void:
 	var ranged_definition := definition as RangedWeaponDefinition
@@ -20,6 +29,8 @@ func _ready() -> void:
 		ranged_definition.trigger_mode,
 		ranged_definition.attacks_per_second
 	)
+	audio_rng.randomize()
+	spatial_sfx_pool = SpatialSfxPool.find_for(self)
 	_prewarm_tracers()
 
 func bind_context(
@@ -145,7 +156,7 @@ func _fire(shot_direction: Vector3) -> void:
 	})
 	# 枪口火焰与射击音高是纯表现，立即播放；曳光的终点要等模拟层解算。
 	muzzle_flash.flash()
-	shot_audio.pitch_scale = randf_range(0.97, 1.03)
+	shot_audio.pitch_scale = audio_rng.randf_range(0.97, 1.03)
 	shot_audio.play()
 	attack_resolved.emit(
 		ray_origin,
@@ -156,9 +167,26 @@ func _fire(shot_direction: Vector3) -> void:
 	)
 
 ## 由竞技场在模拟层解算出本次射击的终点后调用。
-func show_tracer(from_position: Vector3, to_position: Vector3) -> void:
+##
+## 墙面弹着音也在这里播，而不是在 _fire() 里：开火那一刻本机还不知道子弹
+## 会停在哪——那是模拟层的判定。表现层再补一次射线来自己判断，就等于在
+## 确定性解算之外又开了一条会分叉的路径。
+func show_tracer(
+	from_position: Vector3,
+	to_position: Vector3,
+	hit_blocker: bool = false
+) -> void:
 	var tracer := _acquire_tracer()
 	tracer.setup(from_position, to_position)
+	if not hit_blocker or spatial_sfx_pool == null:
+		return
+	spatial_sfx_pool.play_at(
+		WALL_IMPACT_SOUNDS[audio_rng.randi_range(0, WALL_IMPACT_SOUNDS.size() - 1)],
+		to_position,
+		-7.0,
+		audio_rng.randf_range(0.96, 1.04),
+		24.0
+	)
 
 func _sync_to_visual_anchor() -> void:
 	if visual_anchor != null and is_instance_valid(visual_anchor):
