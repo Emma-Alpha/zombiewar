@@ -55,6 +55,48 @@ targets, blocked attack paths, and runtime blocker changes with
 `tools/validation/validate_sim_determinism.gd`. When changing explosive barrels,
 also run `tools/validation/validate_sim_barrel.gd`.
 
+## Online Multiplayer
+
+The backend lives in `server/` (Cloudflare Worker + D1 + Durable Objects) and is
+deployed separately from the game. See `server/README.md` for the deploy steps,
+the anti-cheat boundary, and the protocol-drift gates.
+
+The room Durable Object owns the tick counter and pumps one frame every 50 ms.
+A client advances its simulation by **exactly one tick per frame received** and
+stalls when the queue is empty. Never advance a tick the server has not sent:
+inventing a tick nobody else has is the definition of a desync.
+
+Player position is an **input**, not an output. `SimWorld.set_player_snapshot()`
+already consumes quantised player coordinates, so every client feeds the
+simulation the position that came over the wire -- including for its own player,
+whose body is allowed to run ahead locally for feel. This is what makes
+`move_and_slide()` free to be non-deterministic, and it is the reason this sync
+layer is a fraction of the size of a full lockstep one.
+
+Anything that changes gameplay state in online mode must reach the simulation
+through a frame, never directly:
+
+- Weapon fire, melee, and spread resets are buffered by
+  `DemoArena._buffer_local_sim_request()` and applied when they come back.
+- A manual wave request sets `pending_wave_request`; the server ORs it into a
+  frame so every client queues the wave on the same tick.
+- The auto-wave rule is counted in **ticks** (`_tick_online_auto_wave`), never on
+  the wall-clock `AutoWaveTimer`, which is stopped in online mode.
+- The room seed comes from the room. A client that picks its own desyncs by
+  construction.
+
+`LobbyProtocol.QUANT` must stay equal to `SimWorld.POSITION_QUANTIZATION`, and
+`LobbyProtocol.TICK_HZ` must stay the reciprocal of `SimClock.TICK_SECONDS`.
+When changing anything in `scripts/net/` or `server/src/lib/protocol.ts`, bump
+`PROTOCOL_VERSION` on both sides and run
+`tools/validation/validate_online_frame_sync.gd`, which reads the TypeScript
+source directly and diffs every shared constant against the GDScript copy.
+
+Known gap: runtime item placement (`PlaceItemService`) is driven per physics
+frame rather than per tick, so a placement made while moving can land on
+different cells across clients. It is detected by the frame-hash cross-check,
+not prevented. Route it through the frame channel before relying on it online.
+
 ## Combat FX Render Warmup
 
 Place new runtime combat VFX scenes that use meshes, custom shaders, GPU particles, or first-use animations under `scenes/fx/`. If the effect can appear during gameplay, its root script must implement `warmup_for_render(context)` and `finish_render_warmup()` so `CombatFxPrewarmer` discovers it automatically.

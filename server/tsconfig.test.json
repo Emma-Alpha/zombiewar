@@ -1,0 +1,11 @@
+{
+  // The test suite reads the Godot client's protocol file off disk to diff it
+  // against the TypeScript copy, so it needs Node's types. The Worker itself
+  // must NOT see them: `fs` and `path` do not exist at runtime, and having them
+  // typecheck is how an import of one ends up shipped.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": ["@cloudflare/workers-types", "node"]
+  },
+  "include": ["src/**/*.ts", "test/**/*.ts"]
+}

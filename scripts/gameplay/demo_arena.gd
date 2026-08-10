@@ -14,6 +14,9 @@ const SimClockScript = preload("res://scripts/sim/sim_clock.gd")
 const SimWorldScript = preload("res://scripts/sim/sim_world.gd")
 const PlaceItemGridScript = preload("res://scripts/gameplay/place_item_grid.gd")
 const SimHitGeometryScript = preload("res://scripts/sim/sim_hit_geometry.gd")
+const SimHasherScript = preload("res://scripts/sim/sim_hasher.gd")
+const LobbyProtocolScript = preload("res://scripts/net/lobby_protocol.gd")
+const GameSessionScript = preload("res://scripts/gameplay/game_session.gd")
 const BLOOD_IMPACT_SCENE := preload("res://scenes/fx/BloodImpact.tscn")
 const ARENA_SIM_GRID_ORIGIN := Vector2(-24.5, -19.5)
 const ARENA_SIM_CELL_SIZE := 1.0
@@ -59,6 +62,32 @@ var single_player_input = SinglePlayerInputSourceScript.new()
 var players: Array[PlayerController] = []
 var local_team_state = LocalTeamStateScript.new()
 
+## 空场后自动开下一波所需的 tick 数，等于 AutoWaveTimer 的 1.5 秒。
+## 联机下必须换成 tick：墙钟计时器在各端的到点时刻不同，同一波僵尸会
+## 落在不同的 tick 上，之后每一次随机取样都错位。
+const ONLINE_AUTO_WAVE_TICKS := 30
+## 每隔这么多 tick 附一次帧哈希给服务端对拍。每 tick 都发是浪费，
+## 隔太久则不同步会在被发现前先积累出一整场错误的战斗。
+const ONLINE_HASH_INTERVAL_TICKS := 20
+
+var online_mode := false
+var online_slot := -1
+var online_accumulator := 0.0
+## 本机这一 tick 抬起的模拟层请求。联机下它们不直接进模拟层，
+## 而是发给服务端、等它随帧回来再统一应用——各端于是在同一个 tick 上开火。
+var pending_local_events: Array = []
+var pending_wave_request := false
+var online_empty_ticks := 0
+var online_started := false
+var online_result_reported := false
+var net_input_sources: Dictionary = {}
+var online_kills: Dictionary = {}
+## 自上一条命令发出以来累积的本机输入位与最新移动向量。
+## 玩家层每物理帧采样一次而命令每 tick 才发一次，边沿位必须在这里攒着，
+## 否则三次采样里只有一次能上网，换枪键按了往往传不出去。
+var pending_input_bits := 0
+var pending_move_vector := Vector2.ZERO
+
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_SCENE_INSTANTIATED:
 		_wire_dependencies()
@@ -68,6 +97,7 @@ func _enter_tree() -> void:
 
 func _ready() -> void:
 	add_child(local_team_state)
+	_detect_online_mode()
 	if not _spawn_session_players():
 		_handle_player_spawn_failure()
 		return
@@ -94,12 +124,15 @@ func _process(delta: float) -> void:
 	if zombie_renderer != null:
 		zombie_renderer.render_frame(
 			sim_world,
-			sim_clock.get_interpolation_alpha(),
+			_interpolation_alpha(),
 			delta
 		)
 
 func _physics_process(delta: float) -> void:
 	if startup_pending or zombie_renderer == null:
+		return
+	if online_mode:
+		_advance_online_ticks(delta)
 		return
 	var ticks := sim_clock.consume_frame(delta)
 	for _tick_offset in range(ticks):
@@ -111,6 +144,218 @@ func _physics_process(delta: float) -> void:
 func get_sim_world() -> SimWorld:
 	return sim_world
 
+func _interpolation_alpha() -> float:
+	if online_mode:
+		return clampf(online_accumulator / SimClockScript.TICK_SECONDS, 0.0, 1.0)
+	return sim_clock.get_interpolation_alpha()
+
+func _detect_online_mode() -> void:
+	var session := get_node_or_null("/root/GameSession")
+	online_mode = (
+		session != null and
+		session.mode == GameSessionScript.Mode.ONLINE_MULTIPLAYER
+	)
+	if not online_mode:
+		return
+	var net := get_node_or_null("/root/NetSession")
+	online_slot = net.local_slot if net != null else -1
+	# 墙钟驱动的自动开波在联机下必须闭嘴：它的到点时刻各端不同，
+	# 同一波僵尸会落在不同的 tick 上。联机版本按 tick 计数，见
+	# _tick_online_auto_wave()。
+	var auto_wave_timer := get_node_or_null("AutoWaveTimer") as Timer
+	if auto_wave_timer != null:
+		auto_wave_timer.stop()
+
+## 联机的推进入口。
+##
+## 墙钟只决定「什么时候想推进一个 tick」，能不能推进由服务端的帧说了算：
+## 队列空就原地等。客户端自行补一个服务端没发过的 tick，等于凭空发明了
+## 一段其他人都没有的历史，而那正是不同步的定义。
+func _advance_online_ticks(delta: float) -> void:
+	var net := get_node_or_null("/root/NetSession")
+	if net == null or net.room == null:
+		return
+	var room = net.room
+	_accumulate_local_input()
+	online_accumulator += delta
+	var spent := 0
+	while (
+		online_accumulator >= SimClockScript.TICK_SECONDS and
+		spent < SimClockScript.MAX_CATCHUP_TICKS
+	):
+		var frame = room.pop_frame()
+		if frame == null:
+			# 欠账钳到一个 tick：不钳会在断流期间攒出一大笔，等帧一到就
+			# 连推 MAX_CATCHUP_TICKS 个 tick，画面直接跳一大段。
+			online_accumulator = minf(online_accumulator, SimClockScript.TICK_SECONDS)
+			return
+		online_accumulator -= SimClockScript.TICK_SECONDS
+		spent += 1
+		_apply_online_frame(frame)
+	# 落后太多（切后台、长卡顿）时额外追帧，不受本帧墙钟预算限制：
+	# 队列只会越积越深，靠正常节奏永远追不上。
+	var catchup: int = room.catchup_frames()
+	while catchup > 0:
+		var frame = room.pop_frame()
+		if frame == null:
+			break
+		_apply_online_frame(frame)
+		catchup -= 1
+
+func _apply_online_frame(frame: Dictionary) -> void:
+	var slot_commands = frame.get("s", [])
+	if typeof(slot_commands) != TYPE_ARRAY:
+		slot_commands = []
+	for slot in range(SimWorldScript.MAX_PLAYER_SLOTS):
+		var command = slot_commands[slot] if slot < slot_commands.size() else null
+		if typeof(command) != TYPE_DICTIONARY:
+			sim_world.set_player_snapshot(slot, Vector2.ZERO, false, false)
+			var idle_source = net_input_sources.get(slot)
+			if idle_source != null:
+				idle_source.clear()
+			continue
+		_apply_slot_command(slot, command as Dictionary)
+	if bool(frame.get("w", false)):
+		spawn_wave()
+	sim_world.step_tick()
+	_consume_sim_events()
+	zombie_renderer.sync_lod(sim_world)
+	_tally_online_kills()
+	_tick_online_auto_wave()
+	_send_online_command(int(frame.get("t", -1)))
+
+## 一个座位在这一 tick 做了什么。
+##
+## 位置进模拟层的是**帧里那一份**，本机玩家也不例外：本机的身体可以跑在
+## 前面（那是手感），但僵尸追谁、谁被咬到，全世界必须读同一个坐标。
+func _apply_slot_command(slot: int, command: Dictionary) -> void:
+	var position := LobbyProtocolScript.command_position(command)
+	var alive := LobbyProtocolScript.command_has_bit(
+		command, LobbyProtocolScript.BIT_ALIVE
+	)
+	var present := LobbyProtocolScript.command_has_bit(
+		command, LobbyProtocolScript.BIT_PRESENT
+	)
+	sim_world.set_player_snapshot(slot, position, alive, present)
+	var source = net_input_sources.get(slot)
+	if source != null:
+		source.apply_command(command)
+	var player := _player_for_slot(slot)
+	if player != null and slot != online_slot:
+		player.set_network_position_target(
+			Vector3(position.x, player.global_position.y, position.y)
+		)
+	for event in LobbyProtocolScript.command_events(command):
+		if typeof(event) == TYPE_DICTIONARY:
+			_queue_online_event(slot, event as Dictionary)
+
+func _queue_online_event(slot: int, event: Dictionary) -> void:
+	var kind := int(event.get("k", -1))
+	if kind == LobbyProtocolScript.EVENT_SHOT:
+		sim_world.queue_fire_event(
+			slot,
+			int(event.get("w", -1)),
+			LobbyProtocolScript.dequantize_pair(event.get("o", [0, 0])),
+			LobbyProtocolScript.dequantize(int(event.get("oy", 0))),
+			LobbyProtocolScript.dequantize_pair(event.get("a", [0, 0]))
+		)
+		return
+	if kind == LobbyProtocolScript.EVENT_MELEE:
+		sim_world.queue_melee_event(
+			slot,
+			LobbyProtocolScript.dequantize(int(event.get("d", 0))),
+			LobbyProtocolScript.dequantize(int(event.get("r", 0))),
+			LobbyProtocolScript.dequantize(int(event.get("hw", 0))),
+			LobbyProtocolScript.dequantize_pair(event.get("o", [0, 0])),
+			LobbyProtocolScript.dequantize(int(event.get("oy", 0))),
+			LobbyProtocolScript.dequantize_pair(event.get("a", [0, 0]))
+		)
+		return
+	if kind == LobbyProtocolScript.EVENT_SPREAD_RESET:
+		sim_world.queue_spread_reset(slot, int(event.get("w", -1)))
+
+## 击杀归属取射击事件的 slot。带穿透的一枪可能带走多个目标而这里只记一次，
+## 是刻意的取舍：所有客户端读的是同一批事件，因此少算得**一模一样**，
+## 而服务端的多数投票要的正是「大家算出同一个数」，不是「算得绝对准」。
+func _tally_online_kills() -> void:
+	for event in sim_world.tick_shot_events:
+		if bool(event.get("killed", false)):
+			var slot := int(event.get("slot", -1))
+			if slot >= 0:
+				online_kills[slot] = int(online_kills.get(slot, 0)) + 1
+
+func _tick_online_auto_wave() -> void:
+	if team_defeated or get_active_zombie_count() != 0:
+		online_empty_ticks = 0
+		return
+	online_empty_ticks += 1
+	if online_empty_ticks >= ONLINE_AUTO_WAVE_TICKS:
+		online_empty_ticks = 0
+		spawn_wave()
+
+## 把本机这一 tick 的输入、位置与请求发出去。
+## 发送频率天然等于服务端泵帧频率：每消费一帧就回一条。
+func _send_online_command(tick_index: int) -> void:
+	var net := get_node_or_null("/root/NetSession")
+	if net == null or net.room == null:
+		return
+	var player := _player_for_slot(online_slot)
+	var position := Vector2.ZERO
+	if player != null:
+		position = Vector2(player.global_position.x, player.global_position.z)
+	var bits := pending_input_bits
+	if player != null:
+		bits |= LobbyProtocolScript.BIT_PRESENT
+		if player.is_alive():
+			bits |= LobbyProtocolScript.BIT_ALIVE
+	var frame_hash := ""
+	var hash_tick := -1
+	if tick_index >= 0 and tick_index % ONLINE_HASH_INTERVAL_TICKS == 0:
+		frame_hash = SimHasherScript.hash_world(sim_world)
+		hash_tick = tick_index
+	var command := LobbyProtocolScript.pack_command_bits(
+		pending_move_vector,
+		bits,
+		position,
+		pending_local_events,
+		frame_hash,
+		pending_wave_request
+	)
+	pending_local_events = []
+	pending_wave_request = false
+	# 一次性的位发出去就清掉，「按住」类的留着：留着边沿会让远端把一次
+	# 换枪看成每 tick 都在换枪。
+	pending_input_bits &= ~LobbyProtocolScript.ONE_SHOT_BITS
+	net.room.send_command(command, hash_tick)
+
+## 每物理帧把本机玩家的输入并进待发缓冲。边沿位用「或」累积，
+## 移动向量与「按住」取最新一次采样。
+func _accumulate_local_input() -> void:
+	var player := _player_for_slot(online_slot)
+	if player == null:
+		return
+	var state = player.get_last_input_state()
+	if state == null:
+		return
+	pending_move_vector = state.move_vector
+	pending_input_bits |= LobbyProtocolScript.bits_from_state(state, false, false)
+	if not state.use_pressed:
+		pending_input_bits &= ~LobbyProtocolScript.BIT_USE_PRESSED
+
+## 联机结束时上报本机看到的成绩。服务端收齐后做多数投票再写榜，
+## 客户端没有任何直接写榜路径。
+func _report_online_result() -> void:
+	if online_result_reported:
+		return
+	online_result_reported = true
+	var net := get_node_or_null("/root/NetSession")
+	if net == null or net.room == null:
+		return
+	var kills := {}
+	for slot in online_kills.keys():
+		kills[str(slot)] = int(online_kills[slot])
+	net.room.report_result(wave_number, kills)
+
 func _setup_simulation() -> void:
 	sim_world.configure(
 		ARENA_SIM_GRID_ORIGIN,
@@ -119,7 +364,14 @@ func _setup_simulation() -> void:
 		ARENA_SIM_GRID_HEIGHT
 	)
 	_bake_static_blockers()
-	sim_world.reset(DEFAULT_SIM_SEED if random_seed == 0 else random_seed)
+	# 联机的种子来自房间，不是任何一个客户端：每端的 DeterministicRng 都由它
+	# 派生，谁自己挑一个都必然分叉。
+	var resolved_seed := DEFAULT_SIM_SEED if random_seed == 0 else random_seed
+	if online_mode:
+		var net := get_node_or_null("/root/NetSession")
+		if net != null and net.match_seed != 0:
+			resolved_seed = net.match_seed
+	sim_world.reset(resolved_seed)
 	_register_scene_barrels()
 	if zombie_difficulty != null:
 		sim_world.set_default_move_speed(zombie_difficulty.perception_move_speed)
@@ -157,6 +409,13 @@ func get_weapon_profile_index(weapon_id: StringName) -> int:
 
 func _on_sim_request(request: Dictionary, slot: int) -> void:
 	var kind: StringName = request["kind"]
+	# 联机下本机的请求不直接进模拟层：它要先发给服务端，等随帧回来再由
+	# _queue_online_event() 统一应用。直接进模拟层就意味着本机比别人早一个
+	# RTT 开枪，而那一枪杀掉的僵尸此后在各端的位置全部不同。
+	# 远端座位的请求本来就只从帧里来，不会走到这里。
+	if online_mode and slot == online_slot:
+		_buffer_local_sim_request(request)
+		return
 	if kind == &"shot":
 		var profile_index := get_weapon_profile_index(request["weapon_id"])
 		if profile_index < 0:
@@ -189,6 +448,41 @@ func _on_sim_request(request: Dictionary, slot: int) -> void:
 		sim_world.queue_spread_reset(
 			slot, get_weapon_profile_index(request["weapon_id"])
 		)
+
+## 联机下把本机的模拟层请求量化后攒起来，等下一条命令一起发。
+## 一个 tick 内最多攒 8 条，与服务端 parseCommand 的上限一致：
+## 超出的部分服务端会丢，本机若照旧应用就会比别人多打几枪。
+func _buffer_local_sim_request(request: Dictionary) -> void:
+	if pending_local_events.size() >= 8:
+		return
+	var kind: StringName = request["kind"]
+	if kind == &"shot":
+		var profile_index := get_weapon_profile_index(request["weapon_id"])
+		if profile_index < 0:
+			return
+		pending_local_events.append(
+			LobbyProtocolScript.pack_shot_event(
+				profile_index, request["origin"], request["aim_direction"]
+			)
+		)
+		return
+	if kind == &"melee":
+		pending_local_events.append(
+			LobbyProtocolScript.pack_melee_event(
+				float(request["damage"]),
+				float(request["reach"]),
+				float(request["half_width"]),
+				request["origin"],
+				request["aim_direction"]
+			)
+		)
+		return
+	if kind == &"spread_reset":
+		var reset_index := get_weapon_profile_index(request["weapon_id"])
+		if reset_index >= 0:
+			pending_local_events.append(
+				LobbyProtocolScript.pack_spread_reset_event(reset_index)
+			)
 
 func _on_sim_shot_event(event: Dictionary) -> void:
 	var origin: Vector2 = event["origin"]
@@ -452,6 +746,11 @@ func _unhandled_input(event: InputEvent) -> void:
 func request_spawn_wave() -> int:
 	if startup_pending or team_defeated:
 		return 0
+	# 联机下玩家按 T 只是提出请求：它随下一条命令上行，服务端把它 OR 进某一帧，
+	# 各端于是在**同一个 tick** 上排队同一波。本机自己先开一波就是分叉。
+	if online_mode:
+		pending_wave_request = true
+		return 0
 	_cancel_auto_wave()
 	return spawn_wave()
 
@@ -461,6 +760,13 @@ func request_restart() -> void:
 	restart_pending = true
 	_set_touch_game_over_active(false)
 	restart_requested.emit()
+	# 联机不能就地重开：种子、tick 与座位都由房间发放，本机重载场景只会
+	# 得到一个谁也不认识的模拟。回大厅，由房主再开一局。
+	if online_mode:
+		get_tree().change_scene_to_file.call_deferred(
+			"res://scenes/menu/OnlineLobby.tscn"
+		)
+		return
 	call_deferred("_reload_current_scene")
 
 func _reload_current_scene() -> void:
@@ -494,7 +800,11 @@ func _complete_combat_startup(animate_overlay: bool) -> void:
 	for player in players:
 		player.set_physics_process(true)
 	startup_pending = false
-	spawn_wave()
+	# 联机下开场第一波也走确定性路径：各端的开场时刻本来就差着几十毫秒，
+	# 在这里直接开一波会让第一波僵尸落在不同的 tick 上。空场满 30 tick 后
+	# _tick_online_auto_wave() 会在同一个 tick 上把它开出来。
+	if not online_mode:
+		spawn_wave()
 	var warmup_layer := get_node_or_null("WarmupLayer") as CanvasLayer
 	var overlay := get_node_or_null("WarmupLayer/Overlay") as ColorRect
 	if warmup_layer == null or overlay == null:
@@ -637,7 +947,21 @@ func _spawn_session_players() -> bool:
 	if player_registry != null:
 		for player in players:
 			player_registry.register_player(player)
+	_collect_network_input_sources()
 	return not players.is_empty()
+
+## 记下每个远端座位的输入源，之后每一帧都靠它把命令喂给对应的身体。
+## 本机座位不在表里：它由真实设备驱动。
+func _collect_network_input_sources() -> void:
+	net_input_sources.clear()
+	if not online_mode:
+		return
+	for slot in range(players.size()):
+		if slot == online_slot:
+			continue
+		var source = players[slot].get_input_source()
+		if source is NetworkInputSource:
+			net_input_sources[slot] = source
 
 func _get_player_spawn_points() -> Array[Marker3D]:
 	var points: Array[Marker3D] = []
@@ -667,8 +991,11 @@ func _handle_player_spawn_failure() -> void:
 		return
 	var session := get_node_or_null("/root/GameSession")
 	var destination := "res://scenes/menu/MainMenu.tscn"
-	if session != null and session.mode == 1:
-		destination = "res://scenes/menu/LocalMultiplayerLobby.tscn"
+	if session != null:
+		if session.mode == GameSessionScript.Mode.LOCAL_MULTIPLAYER:
+			destination = "res://scenes/menu/LocalMultiplayerLobby.tscn"
+		elif session.mode == GameSessionScript.Mode.ONLINE_MULTIPLAYER:
+			destination = "res://scenes/menu/OnlineLobby.tscn"
 	get_tree().change_scene_to_file.call_deferred(destination)
 
 func _on_navigation_chunk_bake_failed(
@@ -719,6 +1046,8 @@ func _on_all_players_defeated() -> void:
 	_set_touch_game_over_active(true)
 	_sync_command_controls()
 	_update_wave_hud()
+	if online_mode:
+		_report_online_result()
 
 func _set_touch_game_over_active(active: bool) -> void:
 	var mobile_controls := get_node_or_null("MobileControls") as MobileControls
@@ -797,6 +1126,9 @@ func _get_spawn_points() -> Array[Marker3D]:
 	return points
 
 func _schedule_auto_wave_if_empty() -> bool:
+	# 联机走 _tick_online_auto_wave() 的 tick 计数，墙钟计时器在这里必须不参与。
+	if online_mode:
+		return false
 	if team_defeated or get_active_zombie_count() != 0:
 		return false
 	var timer := get_node_or_null("AutoWaveTimer") as Timer

@@ -30,7 +30,10 @@ func spawn_players(
 		return _fail_spawn(spawned, "GameSession is unavailable")
 	session.last_error = ""
 	var descriptors: Array = []
-	if session.mode == GameSessionScript.Mode.LOCAL_MULTIPLAYER:
+	if session.mode in [
+		GameSessionScript.Mode.LOCAL_MULTIPLAYER,
+		GameSessionScript.Mode.ONLINE_MULTIPLAYER,
+	]:
 		descriptors = session.local_players
 	else:
 		descriptors = [null]
@@ -45,8 +48,14 @@ func spawn_players(
 
 	for index in range(descriptors.size()):
 		var input_source = single_player_input
-		if descriptors[index] != null:
-			input_source = descriptors[index].create_input_source()
+		var descriptor = descriptors[index]
+		if descriptor != null:
+			# 联机的本机座位刻意返回 null：它要复用竞技场那一个已经接好触屏
+			# 摇杆的输入源实例，而不是新建一个没人给它喂输入的。
+			# 只认 is_local 这一条替换理由——本地多人下 create_input_source()
+			# 返回 null 的意思是「手柄不见了」，那必须照旧失败，不能被顶替掉。
+			var wants_shared_input: bool = "is_local" in descriptor and descriptor.is_local
+			input_source = single_player_input if wants_shared_input else descriptor.create_input_source()
 		if input_source == null:
 			return _fail_spawn(spawned, "Player %d has an invalid input source" % (index + 1))
 		if not PlayerScreenBoundsScript.limit_motion(

@@ -1,0 +1,178 @@
+[gd_scene load_steps=7 format=3]
+
+[ext_resource type="Script" path="res://scripts/menu/leaderboard_panel.gd" id="1_board"]
+[ext_resource type="PackedScene" path="res://scenes/menu/MenuBackdrop.tscn" id="2_backdrop"]
+[ext_resource type="FontFile" path="res://assets/fonts/NotoSansSC-UI.ttf" id="3_cjk_font"]
+[ext_resource type="PackedScene" path="res://scenes/ui/MobileOrientationGuard.tscn" id="4_orientation_guard"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBox_panel"]
+bg_color = Color(0.035, 0.043, 0.045, 0.94)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.72, 0.2, 0.14, 1)
+corner_radius_top_left = 5
+corner_radius_top_right = 5
+corner_radius_bottom_right = 5
+corner_radius_bottom_left = 5
+content_margin_left = 26.0
+content_margin_top = 22.0
+content_margin_right = 26.0
+content_margin_bottom = 22.0
+
+[sub_resource type="StyleBoxFlat" id="StyleBox_button"]
+bg_color = Color(0.075, 0.09, 0.095, 0.94)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.72, 0.2, 0.14, 1)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+
+[node name="LeaderboardPanel" type="Node3D"]
+script = ExtResource("1_board")
+
+[node name="MenuBackdrop" parent="." instance=ExtResource("2_backdrop")]
+
+[node name="MobileOrientationGuard" parent="." instance=ExtResource("4_orientation_guard")]
+
+[node name="MenuLayer" type="CanvasLayer" parent="."]
+
+[node name="Root" type="Control" parent="MenuLayer"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Panel" type="PanelContainer" parent="MenuLayer/Root"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 64.0
+offset_top = 32.0
+offset_right = -64.0
+offset_bottom = -32.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_styles/panel = SubResource("StyleBox_panel")
+
+[node name="Content" type="VBoxContainer" parent="MenuLayer/Root/Panel"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="Title" type="Label" parent="MenuLayer/Root/Panel/Content"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.97, 0.95, 0.9, 1)
+theme_override_fonts/font = ExtResource("3_cjk_font")
+theme_override_font_sizes/font_size = 30
+text = "排行榜"
+
+[node name="BoardRow" type="HBoxContainer" parent="MenuLayer/Root/Panel/Content"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="TeamBoardButton" type="Button" parent="MenuLayer/Root/Panel/Content/BoardRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(180, 44)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.97, 0.95, 0.9, 1)
+theme_override_fonts/font = ExtResource("3_cjk_font")
+theme_override_font_sizes/font_size = 20
+theme_override_styles/normal = SubResource("StyleBox_button")
+theme_override_styles/hover = SubResource("StyleBox_button")
+theme_override_styles/pressed = SubResource("StyleBox_button")
+theme_override_styles/focus = SubResource("StyleBox_button")
+text = "队伍波次榜"
+
+[node name="KillsBoardButton" type="Button" parent="MenuLayer/Root/Panel/Content/BoardRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(180, 44)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.97, 0.95, 0.9, 1)
+theme_override_fonts/font = ExtResource("3_cjk_font")
+theme_override_font_sizes/font_size = 20
+theme_override_styles/normal = SubResource("StyleBox_button")
+theme_override_styles/hover = SubResource("StyleBox_button")
+theme_override_styles/pressed = SubResource("StyleBox_button")
+theme_override_styles/focus = SubResource("StyleBox_button")
+text = "个人击杀榜"
+
+[node name="StatusLabel" type="Label" parent="MenuLayer/Root/Panel/Content"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.86, 0.72, 0.44, 1)
+theme_override_fonts/font = ExtResource("3_cjk_font")
+theme_override_font_sizes/font_size = 18
+text = "正在读取…"
+autowrap_mode = 3
+
+[node name="EntriesLabel" type="RichTextLabel" parent="MenuLayer/Root/Panel/Content"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 260)
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_colors/default_color = Color(0.9, 0.9, 0.88, 1)
+theme_override_fonts/mono_font = ExtResource("3_cjk_font")
+theme_override_fonts/normal_font = ExtResource("3_cjk_font")
+theme_override_font_sizes/normal_font_size = 19
+bbcode_enabled = false
+scroll_active = true
+
+[node name="ActionRow" type="HBoxContainer" parent="MenuLayer/Root/Panel/Content"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="PreviousPageButton" type="Button" parent="MenuLayer/Root/Panel/Content/ActionRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(140, 46)
+layout_mode = 2
+disabled = true
+theme_override_colors/font_color = Color(0.97, 0.95, 0.9, 1)
+theme_override_fonts/font = ExtResource("3_cjk_font")
+theme_override_font_sizes/font_size = 20
+theme_override_styles/normal = SubResource("StyleBox_button")
+theme_override_styles/hover = SubResource("StyleBox_button")
+theme_override_styles/pressed = SubResource("StyleBox_button")
+theme_override_styles/focus = SubResource("StyleBox_button")
+theme_override_styles/disabled = SubResource("StyleBox_button")
+text = "上一页"
+
+[node name="NextPageButton" type="Button" parent="MenuLayer/Root/Panel/Content/ActionRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(140, 46)
+layout_mode = 2
+disabled = true
+theme_override_colors/font_color = Color(0.97, 0.95, 0.9, 1)
+theme_override_fonts/font = ExtResource("3_cjk_font")
+theme_override_font_sizes/font_size = 20
+theme_override_styles/normal = SubResource("StyleBox_button")
+theme_override_styles/hover = SubResource("StyleBox_button")
+theme_override_styles/pressed = SubResource("StyleBox_button")
+theme_override_styles/focus = SubResource("StyleBox_button")
+theme_override_styles/disabled = SubResource("StyleBox_button")
+text = "下一页"
+
+[node name="BackButton" type="Button" parent="MenuLayer/Root/Panel/Content/ActionRow"]
+custom_minimum_size = Vector2(180, 46)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.97, 0.95, 0.9, 1)
+theme_override_fonts/font = ExtResource("3_cjk_font")
+theme_override_font_sizes/font_size = 20
+theme_override_styles/normal = SubResource("StyleBox_button")
+theme_override_styles/hover = SubResource("StyleBox_button")
+theme_override_styles/pressed = SubResource("StyleBox_button")
+theme_override_styles/focus = SubResource("StyleBox_button")
+text = "返回主菜单"
+
+[connection signal="pressed" from="MenuLayer/Root/Panel/Content/BoardRow/TeamBoardButton" to="." method="_on_team_board_button_pressed"]
+[connection signal="pressed" from="MenuLayer/Root/Panel/Content/BoardRow/KillsBoardButton" to="." method="_on_kills_board_button_pressed"]
+[connection signal="pressed" from="MenuLayer/Root/Panel/Content/ActionRow/PreviousPageButton" to="." method="_on_previous_page_button_pressed"]
+[connection signal="pressed" from="MenuLayer/Root/Panel/Content/ActionRow/NextPageButton" to="." method="_on_next_page_button_pressed"]
+[connection signal="pressed" from="MenuLayer/Root/Panel/Content/ActionRow/BackButton" to="." method="_on_back_button_pressed"]

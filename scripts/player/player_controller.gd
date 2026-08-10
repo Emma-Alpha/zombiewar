@@ -69,6 +69,14 @@ var input_source
 var last_input_state = PlayerInputStateScript.new()
 var place_item_service
 var sim_request_sink := Callable()
+## 联机远端玩家的权威位置（Vector3 或 null）。
+## 非空时本机不再让这具身体自己走：它的位置由帧里的量化坐标决定，
+## 而输入仍然照常喂给装备与动画。位置若也交给 move_and_slide() 复算，
+## 各端会各算各的，而僵尸追的是帧里那一份，于是「他明明躲开了却还是被咬」。
+var network_position_target = null
+
+func set_network_position_target(target) -> void:
+	network_position_target = target
 
 func set_sim_request_sink(value: Callable) -> void:
 	sim_request_sink = value
@@ -235,6 +243,9 @@ func _physics_process(delta: float) -> void:
 	if equipment.get_current_definition() is RangedWeaponDefinition:
 		attack_direction = _actual_ranged_attack_direction()
 	equipment.set_use_input(trigger_pressed, trigger_just_pressed, attack_direction)
+	if network_position_target != null:
+		_follow_network_position(delta)
+		return
 	move_and_slide()
 	if knockback_active:
 		knockback_velocity = PlayerMotion.next_knockback_velocity(
@@ -244,6 +255,35 @@ func _physics_process(delta: float) -> void:
 		)
 		velocity.x = knockback_velocity.x
 		velocity.z = knockback_velocity.z
+	_update_animation(Vector2(velocity.x, velocity.z).length())
+
+## 远端玩家的位移：向权威位置收敛，而不是自己走。
+## 用平滑收敛而不是直接赋值，是因为帧以 20Hz 到达而渲染是 60Hz，
+## 直接赋值会让远端角色以每秒 20 次的频率瞬移。
+## 收敛速度按剩余距离给，差得越远追得越快；差到离谱（切后台回来、刚重连）
+## 就直接瞬移，慢慢挪过去只会让这具身体在半路上被僵尸围殴一路。
+const NETWORK_POSITION_SNAP_DISTANCE := 3.0
+const NETWORK_POSITION_FOLLOW_RATE := 14.0
+
+func _follow_network_position(delta: float) -> void:
+	var target: Vector3 = network_position_target
+	var previous := global_position
+	var offset := target - previous
+	offset.y = 0.0
+	if offset.length() > NETWORK_POSITION_SNAP_DISTANCE:
+		global_position = Vector3(target.x, previous.y, target.z)
+	else:
+		var weight := clampf(NETWORK_POSITION_FOLLOW_RATE * delta, 0.0, 1.0)
+		global_position = Vector3(
+			lerpf(previous.x, target.x, weight),
+			previous.y,
+			lerpf(previous.z, target.z, weight)
+		)
+	# 动画要的是「看上去走多快」，所以速度取实际位移而不是输入意图：
+	# 远端玩家撞墙停下时输入仍然是满的，按输入播就会原地跑步。
+	var travelled := global_position - previous
+	velocity.x = travelled.x / delta if delta > 0.000001 else 0.0
+	velocity.z = travelled.z / delta if delta > 0.000001 else 0.0
 	_update_animation(Vector2(velocity.x, velocity.z).length())
 
 func _bounds_are_active() -> bool:

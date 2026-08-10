@@ -64,6 +64,35 @@ The homepage and `index.wasm` responses must both include `Cache-Control: no-sto
 
 Open `https://zombiewar.devlocal.com` from a phone that resolves `*.devlocal.com` to this Mac. Use landscape orientation and verify joystick movement, jump, hold-to-fire, simultaneous touches, audio unlock after the first tap, and background/foreground recovery.
 
+### Online multiplayer backend
+
+The game client (Pages) and the online backend (Worker) are two independent
+deployments. The client reaches the backend cross-origin, so deploying one does
+not require redeploying the other.
+
+```bash
+cd server
+npm install
+npx wrangler d1 create zombiewar   # paste the printed id into server/wrangler.jsonc
+npm run db:remote                  # apply migrations
+npm run deploy                     # Worker + RoomDurableObject
+```
+
+Then point the client at the deployed Worker, either by editing
+`DEFAULT_BASE_URL` in `scripts/net/net_config.gd`, or at runtime from the
+in-game 联机大厅 「服务器」 field (stored in `user://net.cfg`), or via the
+`?server=` query parameter on the Web build.
+
+Verify the sync layer's invariants without a server:
+
+```bash
+/Applications/Godot.app/Contents/MacOS/Godot --headless --path . \
+  --script tools/validation/validate_online_frame_sync.gd
+```
+
+Full details -- frame-sync model, anti-cheat boundary, protocol-drift gates --
+are in `server/README.md`.
+
 ### Cloudflare Pages + private R2 deployment
 
 The production deployment keeps HTML, JavaScript, PCK, images, and audio on Pages. The exported `index.wasm` is uploaded to the private `zombiewar-assets` R2 bucket and streamed from the same `/index.wasm` URL by the Pages Worker.

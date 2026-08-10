@@ -4,9 +4,13 @@ const MenuFlow = preload("res://scripts/menu/menu_flow.gd")
 
 @export_file("*.tscn") var game_scene_path := "res://scenes/gameplay/DemoArena.tscn"
 @export_file("*.tscn") var local_lobby_scene_path := "res://scenes/menu/LocalMultiplayerLobby.tscn"
+@export_file("*.tscn") var online_lobby_scene_path := "res://scenes/menu/OnlineLobby.tscn"
+@export_file("*.tscn") var leaderboard_scene_path := "res://scenes/menu/LeaderboardPanel.tscn"
 
 @onready var single_player_button: Button = %SinglePlayerButton
 @onready var local_multiplayer_button: Button = %LocalMultiplayerButton
+@onready var online_multiplayer_button: Button = %OnlineMultiplayerButton
+@onready var leaderboard_button: Button = %LeaderboardButton
 @onready var quit_button: Button = %QuitButton
 @onready var exit_dialog: Control = %ExitDialog
 @onready var confirm_exit_button: Button = %ConfirmExitButton
@@ -37,10 +41,26 @@ func _on_local_multiplayer_button_pressed() -> void:
 	GameSession.clear()
 	_start_transition(local_lobby_scene_path)
 
+func _on_online_multiplayer_button_pressed() -> void:
+	if not flow.request_local():
+		return
+	GameSession.clear()
+	_start_transition(online_lobby_scene_path)
+
+## 排行榜是只读页面，不开局，所以它不走 MenuFlow 的 STARTING 状态：
+## 走了的话从排行榜返回主菜单后所有按钮都会卡在禁用状态。
+func _on_leaderboard_button_pressed() -> void:
+	if flow.state != MenuFlow.State.READY:
+		return
+	confirm_audio.play()
+	get_tree().change_scene_to_file(leaderboard_scene_path)
+
 func _start_transition(scene_path: String) -> void:
 	confirm_audio.play()
 	single_player_button.disabled = true
 	local_multiplayer_button.disabled = true
+	online_multiplayer_button.disabled = true
+	leaderboard_button.disabled = true
 	quit_button.disabled = true
 	var tween := create_tween()
 	tween.tween_property(fade_overlay, "color:a", 1.0, 0.32)

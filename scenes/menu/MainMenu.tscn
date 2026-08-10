@@ -181,7 +181,7 @@ unique_name_in_owner = true
 custom_minimum_size = Vector2(390, 66)
 layout_mode = 2
 focus_neighbor_top = NodePath("../SinglePlayerButton")
-focus_neighbor_bottom = NodePath("../QuitButton")
+focus_neighbor_bottom = NodePath("../OnlineMultiplayerButton")
 theme_override_colors/font_color = Color(0.97, 0.95, 0.9, 1)
 theme_override_colors/font_hover_color = Color(1, 1, 1, 1)
 theme_override_colors/font_focus_color = Color(1, 1, 1, 1)
@@ -195,11 +195,49 @@ theme_override_styles/disabled = SubResource("StyleBox_button_disabled")
 text = "本地多人"
 alignment = 0
 
-[node name="QuitButton" type="Button" parent="MenuLayer/MenuRoot/LeftColumn/Actions"]
+[node name="OnlineMultiplayerButton" type="Button" parent="MenuLayer/MenuRoot/LeftColumn/Actions"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(390, 66)
 layout_mode = 2
 focus_neighbor_top = NodePath("../LocalMultiplayerButton")
+focus_neighbor_bottom = NodePath("../LeaderboardButton")
+theme_override_colors/font_color = Color(0.97, 0.95, 0.9, 1)
+theme_override_colors/font_hover_color = Color(1, 1, 1, 1)
+theme_override_colors/font_focus_color = Color(1, 1, 1, 1)
+theme_override_fonts/font = ExtResource("6_cjk_font")
+theme_override_font_sizes/font_size = 26
+theme_override_styles/normal = SubResource("StyleBox_button_normal")
+theme_override_styles/hover = SubResource("StyleBox_button_hover")
+theme_override_styles/pressed = SubResource("StyleBox_button_hover")
+theme_override_styles/focus = SubResource("StyleBox_button_hover")
+theme_override_styles/disabled = SubResource("StyleBox_button_disabled")
+text = "联机多人"
+alignment = 0
+
+[node name="LeaderboardButton" type="Button" parent="MenuLayer/MenuRoot/LeftColumn/Actions"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(390, 66)
+layout_mode = 2
+focus_neighbor_top = NodePath("../OnlineMultiplayerButton")
+focus_neighbor_bottom = NodePath("../QuitButton")
+theme_override_colors/font_color = Color(0.97, 0.95, 0.9, 1)
+theme_override_colors/font_hover_color = Color(1, 1, 1, 1)
+theme_override_colors/font_focus_color = Color(1, 1, 1, 1)
+theme_override_fonts/font = ExtResource("6_cjk_font")
+theme_override_font_sizes/font_size = 26
+theme_override_styles/normal = SubResource("StyleBox_button_normal")
+theme_override_styles/hover = SubResource("StyleBox_button_hover")
+theme_override_styles/pressed = SubResource("StyleBox_button_hover")
+theme_override_styles/focus = SubResource("StyleBox_button_hover")
+theme_override_styles/disabled = SubResource("StyleBox_button_disabled")
+text = "排行榜"
+alignment = 0
+
+[node name="QuitButton" type="Button" parent="MenuLayer/MenuRoot/LeftColumn/Actions"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(390, 66)
+layout_mode = 2
+focus_neighbor_top = NodePath("../LeaderboardButton")
 theme_override_colors/font_color = Color(0.97, 0.95, 0.9, 1)
 theme_override_colors/font_hover_color = Color(1, 1, 1, 1)
 theme_override_colors/font_focus_color = Color(1, 1, 1, 1)
@@ -350,6 +388,12 @@ text = "确认退出"
 [connection signal="focus_entered" from="MenuLayer/MenuRoot/LeftColumn/Actions/LocalMultiplayerButton" to="." method="_on_action_focused"]
 [connection signal="mouse_entered" from="MenuLayer/MenuRoot/LeftColumn/Actions/LocalMultiplayerButton" to="." method="_on_action_focused"]
 [connection signal="pressed" from="MenuLayer/MenuRoot/LeftColumn/Actions/LocalMultiplayerButton" to="." method="_on_local_multiplayer_button_pressed"]
+[connection signal="focus_entered" from="MenuLayer/MenuRoot/LeftColumn/Actions/OnlineMultiplayerButton" to="." method="_on_action_focused"]
+[connection signal="mouse_entered" from="MenuLayer/MenuRoot/LeftColumn/Actions/OnlineMultiplayerButton" to="." method="_on_action_focused"]
+[connection signal="pressed" from="MenuLayer/MenuRoot/LeftColumn/Actions/OnlineMultiplayerButton" to="." method="_on_online_multiplayer_button_pressed"]
+[connection signal="focus_entered" from="MenuLayer/MenuRoot/LeftColumn/Actions/LeaderboardButton" to="." method="_on_action_focused"]
+[connection signal="mouse_entered" from="MenuLayer/MenuRoot/LeftColumn/Actions/LeaderboardButton" to="." method="_on_action_focused"]
+[connection signal="pressed" from="MenuLayer/MenuRoot/LeftColumn/Actions/LeaderboardButton" to="." method="_on_leaderboard_button_pressed"]
 [connection signal="focus_entered" from="MenuLayer/MenuRoot/LeftColumn/Actions/QuitButton" to="." method="_on_action_focused"]
 [connection signal="mouse_entered" from="MenuLayer/MenuRoot/LeftColumn/Actions/QuitButton" to="." method="_on_action_focused"]
 [connection signal="pressed" from="MenuLayer/MenuRoot/LeftColumn/Actions/QuitButton" to="." method="_on_quit_button_pressed"]
