@@ -48,6 +48,21 @@ respond to geometry-changed signals, but nothing in gameplay consumes their
 navigation meshes. Do not build new features on them. They will be deleted once
 the S3 synchronisation layer lands and confirms no other consumer exists.
 
+Simulation code calls `SimMath` for trigonometry, never `sin`, `cos`, `atan2`,
+or `Vector2.rotated()`. IEEE 754 does **not** require transcendental functions
+to be correctly rounded, so the platform libm behind those built-ins may differ
+in the last bit between a Web export's wasm, glibc on x86, and Bionic on ARM --
+and zombie facing and weapon spread both feed the frame hash. `sqrt`,
+`normalized()`, `length()`, and `distance_to()` are exempt and should stay as
+they are: the standard does require correct rounding for `sqrt` and the basic
+operations, so they are already identical everywhere. Note the simulation
+reaches past `scripts/sim/` -- `zombie_behavior_math.gd`, `explosion_math.gd`,
+`hit_response_math.gd`, `melee_attack_cycle.gd`, and the static half of
+`weapon_spread_state.gd` are all on the sim path and bound by the same rule.
+`tools/validation/validate_sim_math.gd` measures `SimMath` against the built-ins
+and greps the sim-reachable file list for banned calls; add new sim-reachable
+files to `SIM_REACHABLE_FILES` there.
+
 When changing zombie movement behaviour, verify pursuit, wandering, unreachable
 targets, blocked attack paths, and runtime blocker changes with
 `tools/validation/validate_flow_field.gd`,
@@ -65,6 +80,29 @@ The room Durable Object owns the tick counter and pumps one frame every 50 ms.
 A client advances its simulation by **exactly one tick per frame received** and
 stalls when the queue is empty. Never advance a tick the server has not sent:
 inventing a tick nobody else has is the definition of a desync.
+
+Commands are **merged** into the pending slot, never overwritten
+(`mergeCommand` in `server/src/lib/protocol.ts`). A client that stalled and
+caught up sends one command per frame it consumed, so several land between two
+pumps; taking only the last silently eats the shots the others carried. Held
+bits take the newest value, edge bits accumulate, events concatenate. The two
+bit classes are `STICKY_BITS` and `EDGE_BITS`, and `EDGE_BITS` must stay equal
+to the client's `ONE_SHOT_BITS`.
+
+A rejoining client is walked forward, never dropped in at the live tick. The
+room keeps `FRAME_HISTORY_LIMIT` (600 = 30 s) broadcast frames; `join` carries
+`resume_tick`, the last tick the client actually applied, and the room replays
+everything after it as `backfill` messages before the roster goes out. A gap
+older than the history is refused with close code 4007 rather than served
+partially -- landing a client on a tick it never simulated its way to is the
+desync the replay exists to prevent. Frames are remembered **as the bytes that
+were broadcast**: `pumpFrame` strips edges off the command objects a frame
+references immediately after sending it, so holding the object replays a frame
+that never went out. Two consequences for anything touching this path: the
+client's frame queue must stay at least `FRAME_HISTORY_LIMIT` deep or a full
+replay is clipped at enqueue time, and `DemoArena`'s catch-up loop must stay
+wall-clock budgeted or several hundred replayed ticks freeze the frame. Verify
+with `tools/validation/validate_online_reconnect_resume.gd`.
 
 Player position is an **input**, not an output. `SimWorld.set_player_snapshot()`
 already consumes quantised player coordinates, so every client feeds the
@@ -92,10 +130,39 @@ When changing anything in `scripts/net/` or `server/src/lib/protocol.ts`, bump
 `tools/validation/validate_online_frame_sync.gd`, which reads the TypeScript
 source directly and diffs every shared constant against the GDScript copy.
 
+Supply chest claiming lives in `SimWorld._resolve_chest_claims()`, not in
+`PickupChest`'s `ClaimArea`. A physics overlap is a presentation-layer event and
+the players' bodies are not in the same place on every client -- the local one
+runs ahead, remote ones are interpolated toward their networked position -- so
+overlap-driven claiming hands the same chest to different players on different
+frames. A chest is also blocker geometry, so its removal rebuilds the flow field;
+claiming it on different ticks made every client's zombies walk different paths.
+That is what "the two screens show different drops and different alive counts"
+actually was. Ties are broken by lowest slot index, never by comparing float
+distances. Register every chest that can be claimed with `SimWorld.spawn_chest()`
+and drive the reward off `tick_chest_events`.
+
 Known gap: runtime item placement (`PlaceItemService`) is driven per physics
 frame rather than per tick, so a placement made while moving can land on
 different cells across clients. It is detected by the frame-hash cross-check,
 not prevented. Route it through the frame channel before relying on it online.
+
+## UI Font Coverage
+
+`assets/fonts/NotoSansSC-UI.ttf` is a subset of Noto Sans SC. Its import sets
+`allow_system_fallback=true`, so a missing glyph silently falls back to a system
+CJK font on desktop and renders as tofu **only in the Web export** -- meaning
+this class of bug cannot reproduce on the machine that introduces it. The subset
+therefore covers GB2312 level 1 plus every character the project's strings use,
+not merely the characters in use at the moment it was generated: cutting it to
+"what is used today" is exactly how the previous 127-character subset shipped a
+main menu that read 「▯▯游戏」 in browsers.
+
+Run `tools/validation/validate_ui_font_coverage.gd` after adding user-facing
+text. If it reports missing glyphs, regenerate the subset from a full Noto Sans
+SC rather than adding the characters one at a time. Changing the `.ttf` requires
+a `--headless --editor --quit` pass before the new glyphs take effect; Godot
+otherwise keeps serving the cached `.godot/imported/*.fontdata`.
 
 ## Combat FX Render Warmup
 

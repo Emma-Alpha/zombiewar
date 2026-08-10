@@ -2,6 +2,7 @@ extends RefCounted
 class_name WeaponSpreadState
 
 const WeaponMath = preload("res://scripts/combat/weapon_math.gd")
+const SimMathScript = preload("res://scripts/sim/sim_math.gd")
 
 var base_spread_degrees: float
 var max_spread_degrees: float
@@ -79,7 +80,11 @@ static func increased_degrees(
 	return minf(current_degrees + maxf(increase_degrees, 0.0), maximum_degrees)
 
 ## XZ 平面上的散布。Vector3.rotated(Vector3.UP, angle) 与 Vector2.rotated(-angle)
-## 在 (x, z) -> (x, y) 映射下等价，这里保持与实例版本逐位一致的旋转方向。
+## 在 (x, z) -> (x, y) 映射下等价，这里保持与实例版本相同的旋转方向。
+##
+## 旋转走 SimMath 而不是内置的 Vector2.rotated()：这个方向决定子弹打中谁，
+## 而内置版本底下是平台 libm 的 sin/cos。上面那个实例版本留着内置的——
+## 它只服务于本机表现，不进模拟层，因此两者不再逐位相同，也不必相同。
 static func spread_direction(
 	base_direction: Vector2,
 	degrees: float,
@@ -88,4 +93,4 @@ static func spread_direction(
 	if base_direction.length_squared() <= 0.000001:
 		return Vector2(0.0, -1.0)
 	var angle := deg_to_rad(degrees * clampf(normalized_offset, -1.0, 1.0))
-	return base_direction.normalized().rotated(-angle)
+	return SimMathScript.rotate(base_direction.normalized(), -angle)

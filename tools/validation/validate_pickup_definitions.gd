@@ -181,8 +181,9 @@ func _test_chest_claim_signal_lifecycle(
 	claim_area.tree_exiting.connect(
 		func() -> void: monitoring_disabled_on_exit[0] = not claim_area.monitoring
 	)
-	chest.claim_area.body_entered.emit(player)
-	chest.claim_area.body_entered.emit(player)
+	# 连调两次：第二次必须是空操作（claim_locked），否则一个箱子能被领两回。
+	chest.claim_by(player)
+	chest.claim_by(player)
 	_expect(
 		player.equipment_calls == [{
 			"item_id": &"smg",

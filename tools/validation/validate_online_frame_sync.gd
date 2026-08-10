@@ -100,6 +100,9 @@ func _check_protocol_constants() -> Array[String]:
 		"EVENT_SPREAD_RESET": LobbyProtocolScript.EVENT_SPREAD_RESET,
 		"CLOSE_PROTOCOL_MISMATCH": LobbyProtocolScript.CLOSE_PROTOCOL_MISMATCH,
 		"CLOSE_ROOM_FULL": LobbyProtocolScript.CLOSE_ROOM_FULL,
+		"CLOSE_RECONNECTED_ELSEWHERE": LobbyProtocolScript.CLOSE_RECONNECTED_ELSEWHERE,
+		"CLOSE_CANNOT_RESUME": LobbyProtocolScript.CLOSE_CANNOT_RESUME,
+		"FRAME_HISTORY_LIMIT": LobbyProtocolScript.FRAME_HISTORY_LIMIT,
 	}
 	for name in expected.keys():
 		var server_value = _read_ts_constant(source, String(name))

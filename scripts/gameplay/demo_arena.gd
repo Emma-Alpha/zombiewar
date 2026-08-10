@@ -56,6 +56,8 @@ var zombie_renderer: ZombieRenderer
 var weapon_profile_indices: Dictionary = {}
 ## 模拟层油桶 id -> 表现节点。只做按 id 的键值查找，不遍历它驱动任何判定。
 var barrel_views: Dictionary = {}
+## 模拟层补给箱 id -> 表现节点，同上。
+var chest_views: Dictionary = {}
 var wave_number := 0
 var team_defeated := false
 var restart_pending := false
@@ -72,6 +74,10 @@ const ONLINE_AUTO_WAVE_TICKS := 30
 ## 每隔这么多 tick 附一次帧哈希给服务端对拍。每 tick 都发是浪费，
 ## 隔太久则不同步会在被发现前先积累出一整场错误的战斗。
 const ONLINE_HASH_INTERVAL_TICKS := 20
+
+## 单个物理帧最多花在追帧上的墙钟毫秒数。见 _advance_online_ticks()：
+## 重连补帧可能一次送来几百帧，没有这个预算就是一次几秒的冻结。
+const CATCHUP_BUDGET_MSEC := 8
 
 var online_mode := false
 var online_slot := -1
@@ -195,15 +201,23 @@ func _advance_online_ticks(delta: float) -> void:
 		online_accumulator -= SimClockScript.TICK_SECONDS
 		spent += 1
 		_apply_online_frame(frame)
-	# 落后太多（切后台、长卡顿）时额外追帧，不受本帧墙钟预算限制：
-	# 队列只会越积越深，靠正常节奏永远追不上。
+	# 落后太多（切后台、长卡顿、重连补帧）时额外追帧：按正常节奏一帧一 tick
+	# 永远追不上，因为帧还在以同样的速度到来。
+	#
+	# 但也不能一口气追完。重连时房间会把断线期间的整段帧一次补齐，那可能是
+	# 几百帧；几百个 tick 挤进一个物理帧会把画面冻住好几秒，在 Web 上足够
+	# 触发浏览器的无响应提示。分摊到多个物理帧上仍然一定追得上——回放一个
+	# tick 远快于 50 毫秒，只要每帧多吐几个就在净收敛。
 	var catchup: int = room.catchup_frames()
+	var deadline := Time.get_ticks_msec() + CATCHUP_BUDGET_MSEC
 	while catchup > 0:
 		var frame = room.pop_frame()
 		if frame == null:
 			break
 		_apply_online_frame(frame)
 		catchup -= 1
+		if Time.get_ticks_msec() >= deadline:
+			break
 
 func _apply_online_frame(frame: Dictionary) -> void:
 	var slot_commands = frame.get("s", [])
@@ -421,12 +435,19 @@ func get_weapon_profile_index(weapon_id: StringName) -> int:
 
 func _on_sim_request(request: Dictionary, slot: int) -> void:
 	var kind: StringName = request["kind"]
-	# 联机下本机的请求不直接进模拟层：它要先发给服务端，等随帧回来再由
-	# _queue_online_event() 统一应用。直接进模拟层就意味着本机比别人早一个
-	# RTT 开枪，而那一枪杀掉的僵尸此后在各端的位置全部不同。
-	# 远端座位的请求本来就只从帧里来，不会走到这里。
-	if online_mode and slot == online_slot:
-		_buffer_local_sim_request(request)
+	# 联机下**没有任何座位**可以从这里直接进模拟层。
+	#
+	# 本机座位：先缓冲、随命令上行，等它随帧回来再由 _queue_online_event()
+	# 统一应用。直接进模拟层就意味着本机比别人早一个 RTT 开枪。
+	#
+	# 远端座位：它的身体也在本机跑着，输入由 NetworkInputSource 喂，于是它的
+	# 武器同样会在本机开火并抬起请求——而同一枪的效果已经随帧到过一次了。
+	# 两条路都放行，远端玩家的每一枪就会在别人的客户端上打两遍：僵尸掉血翻倍、
+	# 死得更快，而在开枪者自己的客户端上只打一遍。这正是「两边存活数对不上」。
+	# 所以这里直接丢弃：远端武器保留枪口火焰与音效（纯表现），判定只认帧。
+	if online_mode:
+		if slot == online_slot:
+			_buffer_local_sim_request(request)
 		return
 	if kind == &"shot":
 		var profile_index := get_weapon_profile_index(request["weapon_id"])
@@ -658,6 +679,35 @@ func _on_item_removed(item: Node3D, world_aabb: AABB) -> void:
 		return
 	_apply_blocker_bounds(world_aabb, false)
 
+## 把一个补给箱注册成模拟层实体。注册顺序即 id 分配顺序，而各端的注册顺序
+## 由同一个场景与同一串模拟层击杀事件决定，因此 id 天然一致。
+func _register_chest(pickup: PickupChest) -> void:
+	if pickup == null or pickup.get_sim_chest_id() != 0:
+		return
+	var origin := pickup.global_position
+	var chest_id_value := sim_world.spawn_chest(
+		Vector2(origin.x, origin.z), pickup.get_claim_radius()
+	)
+	pickup.bind_sim_chest(chest_id_value)
+	chest_views[chest_id_value] = pickup
+	# 刻意**不**在 tree_exiting 上把实体删掉。节点的释放时机是帧驱动的，
+	# 不对齐 tick：各端在不同的 tick 上改动模拟层数组，本身就是一次分叉，
+	# 而它换来的只是省下几十字节。已领取的箱子留在数组里保持 CLAIMED，
+	# 与爆炸桶保留 DESTROYED 是同一条规矩。
+
+## 领取已经由模拟层判完了，这里只兑现奖励并演出。
+func _on_sim_chest_event(event: Dictionary) -> void:
+	if event["kind"] != &"chest_claimed":
+		return
+	var chest_id_value := int(event["chest_id"])
+	var view = chest_views.get(chest_id_value, null)
+	chest_views.erase(chest_id_value)
+	if view == null or not is_instance_valid(view):
+		return
+	# 领取已成定局，表现层没有否决权：能不能兑现取决于各端并不同步的弹药状态，
+	# 让它回写模拟层就是把分叉重新引进来。
+	(view as PickupChest).claim_by(_player_for_slot(int(event["slot"])))
+
 func _on_pickup_blocker_changed(world_aabb: AABB, blocked: bool) -> void:
 	_apply_blocker_bounds(world_aabb, blocked)
 
@@ -695,6 +745,8 @@ func _consume_sim_events() -> void:
 		_on_sim_shot_event(event)
 	for event in sim_world.tick_barrel_events:
 		_on_sim_barrel_event(event)
+	for event in sim_world.tick_chest_events:
+		_on_sim_chest_event(event)
 	for event in sim_world.tick_hit_events:
 		_on_sim_hit_event(event)
 	for event in sim_world.tick_player_damage_events:
@@ -737,12 +789,15 @@ func _try_random_pickup_drop(world_position: Vector3) -> void:
 	if drops == null:
 		return
 	var spawner := drops.try_spawn_drop(world_position)
-	if spawner != null and not spawner.blocker_changed.is_connected(
-		_on_pickup_blocker_changed
-	):
-		# 掉落生成的拾取箱同样是阻挡几何，必须接上标脏这条线，
-		# 否则箱子被捡走后那一格会永远堵着。
+	if spawner == null:
+		return
+	# 掉落生成的拾取箱同样是阻挡几何，必须接上标脏这条线，
+	# 否则箱子被捡走后那一格会永远堵着；也同样要注册成模拟层实体，
+	# 否则它的领取会退回表现层判定，各端就又分叉了。
+	if not spawner.blocker_changed.is_connected(_on_pickup_blocker_changed):
 		spawner.blocker_changed.connect(_on_pickup_blocker_changed)
+	if not spawner.pickup_spawned.is_connected(_register_chest):
+		spawner.pickup_spawned.connect(_register_chest)
 
 func _on_sim_player_damage_event(event: Dictionary) -> void:
 	var view := zombie_renderer.get_near_view(int(event["zombie_id"]))
@@ -901,6 +956,8 @@ func _wire_dependencies() -> void:
 				)
 			if not spawner.blocker_changed.is_connected(_on_pickup_blocker_changed):
 				spawner.blocker_changed.connect(_on_pickup_blocker_changed)
+			if not spawner.pickup_spawned.is_connected(_register_chest):
+				spawner.pickup_spawned.connect(_register_chest)
 	var random_pickup_drops := get_node_or_null(
 		"World/Props/RandomPickupDrops"
 	) as RandomPickupDropManager
