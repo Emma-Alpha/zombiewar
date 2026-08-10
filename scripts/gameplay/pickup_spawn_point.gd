@@ -5,6 +5,9 @@ signal navigation_geometry_changed
 ## 拾取箱本身是静态阻挡（place_item_obstacle 组、collision_layer = 1），
 ## 出现与消失都必须标脏对应 cell。
 signal blocker_changed(world_aabb: AABB, blocked: bool)
+## 箱子落位后广播，供竞技场把它注册成模拟层实体。
+## 领取判定住在模拟层，节点自己不再判（见 PickupChest）。
+signal pickup_spawned(pickup: PickupChest)
 
 const PICKUP_SCENE := preload("res://scenes/gameplay/PickupChest.tscn")
 
@@ -46,6 +49,8 @@ func _spawn_pickup() -> void:
 	navigation_geometry_changed.emit()
 	current_pickup_bounds = PlaceItemGrid.collision_object_world_aabb(current_pickup)
 	blocker_changed.emit(current_pickup_bounds, true)
+	# 必须排在 transform 落位之后：注册方要按世界坐标建模拟层实体。
+	pickup_spawned.emit(current_pickup)
 
 func _on_pickup_collected(pickup: PickupChest) -> void:
 	if pickup == current_pickup:

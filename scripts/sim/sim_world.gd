@@ -8,6 +8,7 @@ const FlowFieldGridScript = preload("res://scripts/sim/flow_field_grid.gd")
 const FlowFieldScript = preload("res://scripts/sim/flow_field.gd")
 const SimCollisionScript = preload("res://scripts/sim/sim_collision.gd")
 const ZombieBehaviorMathScript = preload("res://scripts/combat/zombie_behavior_math.gd")
+const SimMathScript = preload("res://scripts/sim/sim_math.gd")
 const MeleeAttackCycleScript = preload("res://scripts/combat/melee_attack_cycle.gd")
 const HitResponseMathScript = preload("res://scripts/combat/hit_response_math.gd")
 const WeaponSpreadStateScript = preload(
@@ -154,6 +155,25 @@ var tick_spawn_events := PackedInt32Array()
 var tick_player_damage_events: Array = []
 var tick_shot_events: Array = []
 var tick_barrel_events: Array = []
+var tick_chest_events: Array = []
+
+## 补给箱的领取判定住在模拟层，理由与爆炸桶完全相同：它改变对局状态。
+##
+## 基线把领取交给 ClaimArea 的 body_entered——一个**表现层的物理重叠**。
+## 联机下这必然分叉：本机玩家的身体跑在前面，远端玩家的身体是插值追上来的，
+## 于是同一个箱子在各端被不同的人、在不同的帧领走。更糟的是箱子本身是阻挡
+## 几何，它消失的时刻不同，各端的流场就在不同的 tick 上重算，僵尸从此分道扬镳。
+## 那正是「两边刷出来的道具不一样、存活数也不一样」的成因。
+const CHEST_STATE_ACTIVE := 0
+const CHEST_STATE_CLAIMED := 1
+## 与 scenes/gameplay/PickupChest.tscn 里 ClaimArea 的圆柱半径一致。
+## 改了那边就必须改这里，否则领取手感与判定对不上。
+const CHEST_CLAIM_RADIUS := 1.15
+
+var chest_id := PackedInt32Array()
+var chest_position := PackedVector2Array()
+var chest_radius := PackedFloat32Array()
+var chest_state := PackedByteArray()
 
 # ---- 武器档案与逐槽位散布状态 ----
 var weapon_profiles: Array = []
@@ -224,6 +244,10 @@ func reset(room_seed: int) -> void:
 	barrel_edge_damage = PackedFloat32Array()
 	barrel_blocker_min = PackedVector2Array()
 	barrel_blocker_max = PackedVector2Array()
+	chest_id = PackedInt32Array()
+	chest_position = PackedVector2Array()
+	chest_radius = PackedFloat32Array()
+	chest_state = PackedByteArray()
 	player_position_quantized.fill(0)
 	player_alive.fill(0)
 	player_present.fill(0)
@@ -347,6 +371,71 @@ func spawn_barrel(
 	barrel_blocker_max.append(blocker_max_xz)
 	set_barrel_blocker_world_rect(blocker_min_xz, blocker_max_xz, true)
 	return new_id
+
+## 注册一个补给箱。id 由与僵尸、油桶共用的实体计数器分配，所以各端只要
+## 按同样的顺序注册，就拿到同样的 id。
+func spawn_chest(position_xz: Vector2, claim_radius: float = CHEST_CLAIM_RADIUS) -> int:
+	var new_id := next_entity_id
+	next_entity_id += 1
+	chest_id.append(new_id)
+	chest_position.append(position_xz)
+	chest_radius.append(maxf(claim_radius, 0.0))
+	chest_state.append(CHEST_STATE_ACTIVE)
+	return new_id
+
+## 刻意**没有** release_chest()。
+##
+## 曾经有过：表现层兑现奖励失败（弹药已满）时把箱子放回地上，好让玩家不至于
+## 白白吃掉一箱补给。它复现了它本该修掉的那个 bug——「能不能收下」取决于
+## 玩家当前的弹药与存活，而这两个量在各端本来就差着一个 RTT：开火的人自己的
+## 客户端立刻扣弹，别人的客户端要等帧到了才扣。于是同一个箱子在一端被消耗、
+## 在另一端被放回，chest_state 分叉，而箱子是阻挡几何，流场跟着分叉，
+## 最后表现为「他捡走了我这边还看得见」和「两边血量对不上」。
+##
+## 规矩因此是硬的：**表现层永远不写模拟层的箱子状态**。模拟层判归谁就是谁的，
+## 兑现不了就浪费掉。要把「满弹不浪费」找回来，唯一正确的做法是把
+## 「这个座位还收不收得下」做成随帧上行的输入，让各端读到同一个值。
+
+func get_chest_count() -> int:
+	return chest_id.size()
+
+func index_of_chest(chest_id_value: int) -> int:
+	for index in range(chest_id.size()):
+		if chest_id[index] == chest_id_value:
+			return index
+	return -1
+
+func get_chest_state(index: int) -> int:
+	if index < 0 or index >= chest_state.size():
+		return CHEST_STATE_CLAIMED
+	return chest_state[index]
+
+## 领取判定：箱子按注册顺序、玩家按槽位升序扫描，第一个够得着的活人拿走。
+##
+## 「按槽位升序」是刻意的确定性平局规则。两个玩家同时踩上同一个箱子在
+## 现实里会发生，而只要各端都从槽位 0 数起，谁拿到就在所有端上是同一个答案。
+## 换成「离得最近的拿」也可以，但那要比浮点距离，恰恰是最容易在各端算出
+## 不同结果的东西。
+func _resolve_chest_claims() -> void:
+	for index in range(chest_id.size()):
+		if chest_state[index] != CHEST_STATE_ACTIVE:
+			continue
+		var claim_range := chest_radius[index] + PLAYER_RADIUS
+		var claim_range_squared := claim_range * claim_range
+		for slot in range(MAX_PLAYER_SLOTS):
+			if player_alive[slot] == 0 or player_present[slot] == 0:
+				continue
+			var offset := get_player_position(slot) - chest_position[index]
+			if offset.length_squared() > claim_range_squared:
+				continue
+			chest_state[index] = CHEST_STATE_CLAIMED
+			tick_chest_events.append({
+				"kind": &"chest_claimed",
+				"chest_id": chest_id[index],
+				"slot": slot,
+				"position": chest_position[index],
+			})
+			break
 
 func get_barrel_count() -> int:
 	return barrel_id.size()
@@ -723,6 +812,7 @@ func step_tick() -> void:
 	_clear_tick_events()
 	_apply_pending_spawn_waves()
 	_recover_spread()
+	_resolve_chest_claims()
 	_update_barrel_fuses()
 	_resolve_pending_events()
 	_update_flow_field()
@@ -738,6 +828,7 @@ func _clear_tick_events() -> void:
 	tick_player_damage_events = []
 	tick_shot_events = []
 	tick_barrel_events = []
+	tick_chest_events = []
 
 func _apply_pending_spawn_waves() -> void:
 	pending_spawn_capacity = 0
@@ -785,11 +876,10 @@ func _sample_spawn_position(
 	var fallback := center
 	for _attempt in range(16):
 		var angle := rng.next_range(spawn_stream, 0.0, TAU)
+		# sqrt 保留内置的：IEEE 754 要求它正确舍入，跨平台本来就逐位相同。
+		# 三角函数不是，见 SimMath。
 		var sample_radius := sqrt(rng.next_unit_float(spawn_stream)) * radius
-		var candidate := center + Vector2(
-			cos(angle) * sample_radius,
-			sin(angle) * sample_radius
-		)
+		var candidate := center + SimMathScript.direction_from_angle(angle) * sample_radius
 		fallback = candidate
 		if _has_spawn_clearance(candidate, minimum_spacing, occupied):
 			return candidate

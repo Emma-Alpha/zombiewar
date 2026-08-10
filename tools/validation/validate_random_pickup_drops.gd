@@ -26,7 +26,7 @@ func _run() -> void:
 	root.add_child(camera)
 	await _test_zombie_emits_one_death_position(failures)
 	await _test_one_shot_spawn_point_reclaims_after_success(failures)
-	await _test_one_shot_spawn_point_survives_failed_claim(failures)
+	await _test_unusable_reward_is_still_consumed(failures)
 	await _test_random_drop_manager_probability_and_spawn_contract(failures)
 	await _test_demo_routes_zombie_death_to_drop_manager(failures)
 	camera.queue_free()
@@ -102,7 +102,9 @@ func _test_one_shot_spawn_point_reclaims_after_success(
 	await process_frame
 	_expect(spawner.current_pickup != null, "one-shot spawner must create its pickup", failures)
 	if spawner.current_pickup != null:
-		spawner.current_pickup.claim_area.body_entered.emit(player)
+		# 领取判定已移入模拟层；这里直接调竞技场在收到 chest_claimed 事件后
+		# 调的那个入口，而不是再去打已经关掉的 ClaimArea。
+		spawner.current_pickup.claim_by(player)
 	await process_frame
 	await process_frame
 	_expect(
@@ -278,7 +280,17 @@ func _test_demo_routes_zombie_death_to_drop_manager(
 	arena.queue_free()
 	await process_frame
 
-func _test_one_shot_spawn_point_survives_failed_claim(
+## 兑现不了的补给**照样**被消耗掉——这是刻意的取舍，不是遗漏。
+##
+## 基线在兑现失败时把箱子留在地上（满弹走过不浪费）。那个判断读的是玩家当前
+## 弹药与存活，而这两个量在联机各端差着一个 RTT：开火的人自己那端立刻扣弹，
+## 别人那端要等帧到了才扣。于是同一个箱子一端消耗、一端留下，chest_state 分叉；
+## 箱子又是阻挡几何，流场跟着分叉，最终就是「他捡走了我这边还看得见」和
+## 「两边血量对不上」。
+##
+## 要把这份体贴找回来，唯一正确的做法是把「这个座位还收不收得下」做成随帧
+## 上行的输入，让各端读到同一个值——而不是让表现层回写模拟层。
+func _test_unusable_reward_is_still_consumed(
 	failures: Array[String]
 ) -> void:
 	var spawner = SpawnPointScene.instantiate()
@@ -297,11 +309,13 @@ func _test_one_shot_spawn_point_survives_failed_claim(
 	var pickup = spawner.current_pickup
 	_expect(pickup != null, "failed-claim fixture must create its pickup", failures)
 	if pickup != null:
-		pickup.claim_area.body_entered.emit(player)
+		# 玩家没有冲锋枪，这份弹药发不出去。
+		pickup.claim_by(player)
+	await process_frame
 	await process_frame
 	_expect(
-		is_instance_valid(spawner) and is_instance_valid(spawner.current_pickup),
-		"failed pickup reward must keep the one-shot drop available",
+		not is_instance_valid(pickup),
+		"an unusable reward must still consume the chest, so every client agrees",
 		failures
 	)
 	if is_instance_valid(spawner):

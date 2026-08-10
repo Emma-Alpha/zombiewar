@@ -1,6 +1,10 @@
 extends RefCounted
 class_name ZombieBehaviorMath
 
+## 本文件的多数函数由 SimWorld 直接调用，因此属于模拟层：这里出现的每一个
+## 数学调用都必须跨平台逐位一致，三角函数一律走 SimMath。
+const SimMathScript = preload("res://scripts/sim/sim_math.gd")
+
 enum State {
 	WANDER,
 	AWARE_APPROACH,
@@ -33,7 +37,10 @@ static func wander_point(
 	wander_radius: float
 ) -> Vector3:
 	var radius := maxf(wander_radius, 0.0) * clampf(distance_ratio, 0.0, 1.0)
-	return home_position + Vector3(cos(angle_radians), 0.0, sin(angle_radians)) * radius
+	# 走 SimMath 而不是内置三角函数：游荡点进模拟层，平台 libm 的最后一位
+	# 之差在这里就是各端的僵尸走向不同的地方。
+	var direction := SimMathScript.direction_from_angle(angle_radians)
+	return home_position + Vector3(direction.x, 0.0, direction.y) * radius
 
 static func arrive_velocity(
 	from_position: Vector3,
@@ -85,5 +92,7 @@ static func facing_yaw(direction: Vector3, current_yaw: float) -> float:
 	var flat_direction := Vector3(direction.x, 0.0, direction.z)
 	if flat_direction.length_squared() <= 0.0001:
 		return current_yaw
+	# normalized() 底下是 sqrt 与除法，两者标准都要求正确舍入，保持内置即可；
+	# atan2 底下是平台 libm，而这个 yaw 会进哈希，必须换成确定性实现。
 	flat_direction = flat_direction.normalized()
-	return atan2(flat_direction.x, flat_direction.z)
+	return SimMathScript.arc_tangent2(flat_direction.x, flat_direction.z)

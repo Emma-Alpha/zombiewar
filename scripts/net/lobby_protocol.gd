@@ -7,7 +7,7 @@ class_name LobbyProtocol
 ##
 ## 这条规则的价值不在于兼容，恰恰在于**拒绝兼容**：把「两个仓库悄悄漂移」
 ## 从一个会在半年后以诡异同步 bug 现身的静默缺陷，变成握手当场的一次响亮失败。
-const PROTOCOL_VERSION := 2
+const PROTOCOL_VERSION := 3
 
 ## 大厅与控制消息号段。
 const OPCODE_LOBBY_MIN := 0x00
@@ -23,10 +23,18 @@ const CLOSE_BAD_MESSAGE := 4003
 const CLOSE_KICKED := 4004
 const CLOSE_ROOM_CLOSED := 4005
 const CLOSE_RECONNECTED_ELSEWHERE := 4006
+## 掉线太久，房间的帧历史已经覆盖不到本机停下的那个 tick。
+## 补不全就不放进来：补一半等于把本机丢到一个它从没模拟过的 tick 上，
+## 而那正是重连想避免的不同步本身。
+const CLOSE_CANNOT_RESUME := 4007
 
 ## 模拟节拍。必须等于 1 / SimClock.TICK_SECONDS：服务端按这个频率泵帧，
 ## 客户端一帧一 tick，绝不自行推进服务端没发过的 tick。
 const TICK_HZ := 20
+
+## 房间为重连保留的帧数（30 秒）。客户端的帧队列上限不能小于它，
+## 否则一次完整回放会在入队时就被自己丢掉几帧。
+const FRAME_HISTORY_LIMIT := 600
 
 ## 一切跨线并进入模拟层的浮点的定点标度。
 ## 它刻意等于 SimWorld.POSITION_QUANTIZATION：模拟层本来就把玩家位置

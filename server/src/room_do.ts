@@ -1,19 +1,22 @@
 import {
-  BIT_ALIVE,
   BIT_PRESENT,
-  BIT_USE_PRESSED,
   CLOSE_BAD_MESSAGE,
+  CLOSE_CANNOT_RESUME,
   CLOSE_PROTOCOL_MISMATCH,
+  CLOSE_RECONNECTED_ELSEWHERE,
   CLOSE_ROOM_CLOSED,
   CLOSE_ROOM_FULL,
   PROTOCOL_VERSION,
+  STICKY_BITS,
   TICK_MS,
+  mergeCommand,
   parseCommand,
   type Frame,
   type PlayerCommand,
   type RoomState,
   type RosterEntry,
 } from './lib/protocol.js';
+import { FrameHistory } from './lib/frame_history.js';
 import { submitMatchResult, type MatchReport } from './lib/leaderboard.js';
 import { resolveSession } from './lib/sessions.js';
 import { CURRENT_SEASON, MAX_PLAYERS_PER_ROOM, type Env } from './types.js';
@@ -72,6 +75,10 @@ export class RoomDurableObject implements DurableObject {
   private resultTimer: ReturnType<typeof setTimeout> | null = null;
   /** slot -> last reported frame hash, for desync detection. */
   private hashes = new Map<number, string>();
+  /** Serialises `onJoin` so seats are handed out in the order clients arrived. */
+  private joinQueue: Promise<void> = Promise.resolve();
+  /** Broadcast frames kept so a rejoining client can replay the gap it missed. */
+  private readonly history = new FrameHistory();
 
   constructor(state: DurableObjectState, env: Env) {
     this.state = state;
@@ -174,7 +181,17 @@ export class RoomDurableObject implements DurableObject {
     }
 
     if (type === 'join') {
-      await this.onJoin(socket, message);
+      // Serialised, because onJoin awaits a D1 lookup *before* it picks a seat.
+      // Two joins in flight therefore race on that await, and the slower query
+      // loses the lower slot no matter who connected first -- observed live as
+      // the second player becoming host roughly half the time. Chaining keeps
+      // seats in arrival order without moving identity resolution.
+      this.joinQueue = this.joinQueue
+        .then(() => this.onJoin(socket, message))
+        .catch((error: unknown) => {
+          console.error(`join failed room=${this.code}: ${String(error)}`);
+        });
+      await this.joinQueue;
       return;
     }
 
@@ -233,6 +250,15 @@ export class RoomDurableObject implements DurableObject {
         ? message['nickname'].trim()
         : session?.nickname) || '玩家';
 
+    // The tick this client has already simulated its way to. -1 from a client
+    // with no simulation yet, which during a match means it needs the whole
+    // history and will only be admitted if the history still reaches tick 0.
+    const resumeTick =
+      typeof message['resume_tick'] === 'number' && Number.isInteger(message['resume_tick'])
+        ? (message['resume_tick'] as number)
+        : -1;
+    const resumeFrom = resumeTick + 1;
+
     // Reconnect: a seat already held by this player_id is reclaimed rather than
     // duplicated. This is what makes a dropped phone able to rejoin its own
     // slot mid-match instead of watching its body stand there until the end.
@@ -249,8 +275,18 @@ export class RoomDurableObject implements DurableObject {
       }
       this.seats[slot] = { playerId, nickname, ready: false, socket, lastSeenAt: Date.now() };
     } else {
+      // Decided before the seat changes hands: a rejoin that cannot be replayed
+      // must leave the room exactly as it found it, so the player can try again
+      // rather than lose the seat to a half-finished handover.
+      if (this.roomState === 'playing' && !this.history.covers(resumeFrom)) {
+        socket.close(
+          CLOSE_CANNOT_RESUME,
+          `cannot replay from tick ${resumeFrom}; history starts at ${this.history.oldestTick}`,
+        );
+        return;
+      }
       const seat = this.seats[slot]!;
-      seat.socket?.close(CLOSE_KICKED_BY_RECONNECT, 'reconnected elsewhere');
+      seat.socket?.close(CLOSE_RECONNECTED_ELSEWHERE, 'reconnected elsewhere');
       seat.socket = socket;
       seat.nickname = nickname;
       seat.lastSeenAt = Date.now();
@@ -270,6 +306,13 @@ export class RoomDurableObject implements DurableObject {
       seed: this.seed,
       tick: this.tick,
     });
+    // Replay the gap before the roster goes out, so the frames the client needs
+    // are already queued behind the welcome it just acted on.
+    if (this.roomState === 'playing') {
+      for (const chunk of this.history.chunksFrom(resumeFrom)) {
+        this.sendEncoded(socket, chunk);
+      }
+    }
     this.broadcastRoster();
     this.ensureHeartbeat();
     void this.publishDirectory();
@@ -279,7 +322,10 @@ export class RoomDurableObject implements DurableObject {
     if (this.roomState !== 'playing') return;
     const command = parseCommand(message['c']);
     if (command === null) return;
-    this.latest[slot] = command;
+    // Merged, not overwritten: several commands landing in one pump window is
+    // the normal shape of a client that stalled and caught up, and the ones
+    // that are not the last still carry shots that were really fired.
+    this.latest[slot] = mergeCommand(this.latest[slot] ?? null, command);
     if (command.w === true) this.waveRequested = true;
     if (command.h !== undefined) this.checkHash(slot, command.h, Number(message['ht'] ?? -1));
   }
@@ -378,6 +424,8 @@ export class RoomDurableObject implements DurableObject {
     this.waveRequested = false;
     this.reports.clear();
     this.hashes.clear();
+    // Last match's frames would replay into this one's tick numbering.
+    this.history.clear();
 
     this.broadcast({
       type: 'start',
@@ -421,7 +469,12 @@ export class RoomDurableObject implements DurableObject {
     }
     const frame: Frame = { type: 'f', t: this.tick, s: this.latest.slice() };
     if (this.waveRequested) frame.w = true;
-    this.broadcast(frame);
+    // Encoded once and remembered as the same bytes that went out: a replayed
+    // frame must be the frame, not a re-serialisation of state that has since
+    // moved on.
+    const encoded = JSON.stringify(frame);
+    this.broadcastEncoded(encoded);
+    this.history.push(this.tick, encoded);
 
     this.tick += 1;
     this.waveRequested = false;
@@ -432,7 +485,7 @@ export class RoomDurableObject implements DurableObject {
     for (let slot = 0; slot < this.latest.length; slot += 1) {
       const command = this.latest[slot];
       if (command == null) continue;
-      command.b &= BIT_USE_PRESSED | BIT_ALIVE | BIT_PRESENT;
+      command.b &= STICKY_BITS;
       delete command.e;
       delete command.w;
       delete command.h;
@@ -598,15 +651,22 @@ export class RoomDurableObject implements DurableObject {
   }
 
   private send(socket: WebSocket, payload: unknown): void {
+    this.sendEncoded(socket, JSON.stringify(payload));
+  }
+
+  private sendEncoded(socket: WebSocket, encoded: string): void {
     try {
-      socket.send(JSON.stringify(payload));
+      socket.send(encoded);
     } catch {
       this.onDisconnect(socket);
     }
   }
 
   private broadcast(payload: unknown): void {
-    const encoded = JSON.stringify(payload);
+    this.broadcastEncoded(JSON.stringify(payload));
+  }
+
+  private broadcastEncoded(encoded: string): void {
     for (const socket of [...this.sockets.keys()]) {
       try {
         socket.send(encoded);
@@ -616,6 +676,3 @@ export class RoomDurableObject implements DurableObject {
     }
   }
 }
-
-/** Close code for the old socket when the same player_id reconnects. */
-const CLOSE_KICKED_BY_RECONNECT = 4006;
