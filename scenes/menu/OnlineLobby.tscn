@@ -135,7 +135,7 @@ layout_mode = 2
 size_flags_horizontal = 3
 theme_override_fonts/font = ExtResource("3_cjk_font")
 theme_override_font_sizes/font_size = 16
-placeholder_text = "https://zombiewar-server.workers.dev"
+placeholder_text = "https://zombiewar-api.lumentechnologies.stream"
 
 [node name="ApplyServerButton" type="Button" parent="MenuLayer/Root/Panel/Content/ServerRow"]
 custom_minimum_size = Vector2(120, 40)

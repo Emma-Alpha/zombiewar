@@ -12,7 +12,10 @@ class_name NetConfig
 ##
 ## Web 导出下还有第 4 层：URL 查询参数 `?server=`。浏览器里没有 `user://`
 ## 可编辑，而联调时最需要的恰恰是「同一份构建指向另一台服务器」。
-const DEFAULT_BASE_URL := "https://zombiewar-server.workers.dev"
+## 刻意不用 *.workers.dev：那个域在国内网络被 DNS 污染，解析出的地址根本不在
+## Cloudflare 段内、直接超时，而同一条链路上的 pages.dev 与 cloudflare.com 都正常。
+## 自定义域拿到的是真正的 Cloudflare anycast 地址，玩家才连得上。
+const DEFAULT_BASE_URL := "https://zombiewar-api.lumentechnologies.stream"
 const SETTING_KEY := "zombiewar/net/server_base_url"
 const OVERRIDE_PATH := "user://net.cfg"
 
