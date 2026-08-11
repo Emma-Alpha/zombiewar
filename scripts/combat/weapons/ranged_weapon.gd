@@ -195,6 +195,13 @@ func _sync_to_visual_anchor() -> void:
 func _sync_muzzle_to_capsule() -> Vector3:
 	var origin := get_ray_origin()
 	muzzle.global_position = origin
+	# 朝向取自外观模型并压平到水平，与模拟层弹道（flat_direction）保持一致。
+	# 不能用 WeaponCollision 的朝向：收枪/举枪时外观模型绕 Y 偏航、而胶囊绕 X
+	# 俯仰（见 WeaponClearanceController._commit_pose），两者不在同一旋转平面，
+	# 若火光跟着胶囊就会出现「枪口斜向上、火光却仍照水平轴」的脱节。
+	if visual_anchor != null and is_instance_valid(visual_anchor):
+		var flat := WeaponMath.flat_direction(-visual_anchor.global_basis.z)
+		muzzle.global_basis = Basis.looking_at(flat, Vector3.UP)
 	return origin
 
 func _prewarm_tracers() -> void:

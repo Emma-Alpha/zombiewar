@@ -1,6 +1,7 @@
-[gd_scene load_steps=4 format=3]
+[gd_scene load_steps=5 format=3]
 
 [ext_resource type="Script" path="res://scripts/ui/mobile_controls.gd" id="1_controls"]
+[ext_resource type="Script" path="res://scripts/ui/virtual_joystick.gd" id="2_joystick"]
 [ext_resource type="Script" path="res://scripts/ui/mobile_action_button.gd" id="3_button"]
 [ext_resource type="FontFile" path="res://assets/fonts/NotoSansSC-UI.ttf" id="4_cjk_font"]
 
@@ -17,7 +18,7 @@ grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
 
-[node name="VirtualJoystick" type="VirtualJoystick" parent="Layout"]
+[node name="VirtualJoystick" type="Control" parent="Layout"]
 custom_minimum_size = Vector2(252, 252)
 layout_mode = 1
 anchors_preset = 2
@@ -28,6 +29,7 @@ offset_top = -292.0
 offset_right = 292.0
 offset_bottom = -40.0
 grow_vertical = 0
+script = ExtResource("2_joystick")
 joystick_mode = 0
 joystick_size = 204.0
 tip_size = 88.0

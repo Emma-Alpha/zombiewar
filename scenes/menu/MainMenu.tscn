@@ -135,7 +135,7 @@ layout_mode = 1
 anchor_left = 0.07
 anchor_top = 0.17
 anchor_right = 0.43
-anchor_bottom = 0.82
+anchor_bottom = 0.88
 theme_override_constants/separation = 11
 
 [node name="Eyebrow" type="Label" parent="MenuLayer/MenuRoot/LeftColumn"]
@@ -151,7 +151,7 @@ unique_name_in_owner = true
 layout_mode = 2
 theme_override_colors/font_color = Color(0.97, 0.95, 0.9, 1)
 theme_override_constants/line_spacing = -14
-theme_override_font_sizes/font_size = 96
+theme_override_font_sizes/font_size = 92
 theme_override_fonts/font_variation = {"wght": 820, "wdth": 78}
 theme_override_fonts/font_spacing_glyph = -3
 text = "ZOMBIE\nWAR"
@@ -173,13 +173,19 @@ theme_override_fonts/font = ExtResource("6_cjk_font")
 theme_override_font_sizes/font_size = 19
 text = "冲出尸潮，活到最后。"
 
+[node name="Spacer" type="Control" parent="MenuLayer/MenuRoot/LeftColumn"]
+custom_minimum_size = Vector2(0, 8)
+layout_mode = 2
+size_flags_vertical = 3
+mouse_filter = 2
+
 [node name="Actions" type="VBoxContainer" parent="MenuLayer/MenuRoot/LeftColumn"]
 layout_mode = 2
-theme_override_constants/separation = 14
+theme_override_constants/separation = 12
 
 [node name="SinglePlayerButton" type="Button" parent="MenuLayer/MenuRoot/LeftColumn/Actions"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(390, 70)
+custom_minimum_size = Vector2(390, 64)
 layout_mode = 2
 focus_neighbor_bottom = NodePath("../LocalMultiplayerButton")
 theme_override_colors/font_color = Color(1, 0.98, 0.96, 1)
@@ -197,7 +203,7 @@ alignment = 0
 
 [node name="LocalMultiplayerButton" type="Button" parent="MenuLayer/MenuRoot/LeftColumn/Actions"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(390, 66)
+custom_minimum_size = Vector2(390, 64)
 layout_mode = 2
 focus_neighbor_top = NodePath("../SinglePlayerButton")
 focus_neighbor_bottom = NodePath("../OnlineMultiplayerButton")
@@ -216,7 +222,7 @@ alignment = 0
 
 [node name="OnlineMultiplayerButton" type="Button" parent="MenuLayer/MenuRoot/LeftColumn/Actions"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(390, 66)
+custom_minimum_size = Vector2(390, 64)
 layout_mode = 2
 focus_neighbor_top = NodePath("../LocalMultiplayerButton")
 focus_neighbor_bottom = NodePath("../LeaderboardButton")
@@ -235,7 +241,7 @@ alignment = 0
 
 [node name="LeaderboardButton" type="Button" parent="MenuLayer/MenuRoot/LeftColumn/Actions"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(390, 66)
+custom_minimum_size = Vector2(390, 64)
 layout_mode = 2
 focus_neighbor_top = NodePath("../OnlineMultiplayerButton")
 focus_neighbor_bottom = NodePath("../QuitButton")
@@ -254,7 +260,7 @@ alignment = 0
 
 [node name="QuitButton" type="Button" parent="MenuLayer/MenuRoot/LeftColumn/Actions"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(390, 66)
+custom_minimum_size = Vector2(390, 64)
 layout_mode = 2
 focus_neighbor_top = NodePath("../LeaderboardButton")
 theme_override_colors/font_color = Color(0.97, 0.95, 0.9, 1)

@@ -5,6 +5,8 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 GODOT_BIN="${GODOT_BIN:-/Applications/Godot.app/Contents/MacOS/Godot}"
 PAGES_PROJECT="${CLOUDFLARE_PAGES_PROJECT:-zombiewar}"
 DEPLOY_BRANCH="${CLOUDFLARE_BRANCH:-main}"
+# Exported so the inline node helpers below can read them via process.env.
+export PAGES_PROJECT DEPLOY_BRANCH
 WEB_DIR="$ROOT_DIR/build/web"
 PAGES_DIR="$ROOT_DIR/build/cloudflare-pages"
 WRANGLER_CONFIG="$ROOT_DIR/wrangler.jsonc"
@@ -142,25 +144,44 @@ if ! npx --yes wrangler r2 bucket info "$R2_BUCKET" --json >/dev/null 2>&1; then
 	npx --yes wrangler r2 bucket create "$R2_BUCKET"
 fi
 
-# The engine wasm is ~36 MB and Pages assets are served with automatic Brotli,
-# but this object is served by our Worker straight from R2, which bypasses that
-# compression. Pre-compress a Brotli sibling and upload both; the Worker picks
-# the `.br` object whenever the client advertises `Accept-Encoding: br`, cutting
-# the wire size to ~7 MB. The raw object stays for clients without Brotli.
-WASM_BR_PATH="${WASM_PATH}.br"
-node "$ROOT_DIR/tools/cloudflare/compress_brotli.js" "$WASM_PATH" "$WASM_BR_PATH"
+# The engine wasm is ~36 MB. We deliberately serve it UNCOMPRESSED: Cloudflare
+# Pages' edge compression (Brotli and gzip alike) corrupts this large R2-backed
+# binary response, so the Worker marks it application/octet-stream and the edge
+# passes it through untouched. The wire cost is the full ~36 MB, but correctness
+# comes first; revisit compression if Cloudflare fixes the edge path.
+
+# `r2 object put` required --remote under wrangler 3 (otherwise it targets a
+# local emulated bucket); wrangler 4 removed the flag and always goes remote.
+R2_REMOTE_FLAG=()
+if npx --yes wrangler r2 object put --help 2>&1 | grep -q -- "--remote"; then
+	R2_REMOTE_FLAG=(--remote)
+fi
 
 npx --yes wrangler r2 object put "$R2_BUCKET/$WASM_KEY" \
 	--file "$WASM_PATH" \
 	--content-type application/wasm \
-	--remote
+	"${R2_REMOTE_FLAG[@]}"
 
-npx --yes wrangler r2 object put "$R2_BUCKET/$WASM_KEY.br" \
-	--file "$WASM_BR_PATH" \
-	--content-type application/wasm \
-	--remote
-
-PRODUCTION_URL="https://${PAGES_PROJECT}.pages.dev"
+# The production alias follows the project's actual pages.dev host, which may
+# carry a `-<hash>` suffix when the bare subdomain was taken. Resolve it from the
+# project rather than assuming `<project>.pages.dev`.
+PRODUCTION_URL="$(
+	npx --yes wrangler pages project list 2>/dev/null \
+		| node -e '
+			let out = "";
+			process.stdin.setEncoding("utf8");
+			process.stdin.on("data", (c) => { out += c; });
+			process.stdin.on("end", () => {
+				const project = process.env.PAGES_PROJECT.toLowerCase();
+				const re = new RegExp(`(${project}(?:-[a-z0-9]+)?\\.pages\\.dev)`, "i");
+				const m = out.match(re);
+				process.stdout.write(m ? `https://${m[1].toLowerCase()}` : "");
+			});
+		'
+)"
+if [[ -z "$PRODUCTION_URL" ]]; then
+	PRODUCTION_URL="https://${PAGES_PROJECT}.pages.dev"
+fi
 DEPLOY_OUTPUT="$(
 	npx --yes wrangler pages deploy "$PAGES_DIR" \
 		--project-name "$PAGES_PROJECT" \
@@ -187,11 +208,16 @@ if ! DEPLOYMENT_URL="$(
 				const deploymentUrl = new URL(resultUrls[0]);
 				const project = process.env.PAGES_PROJECT.toLowerCase();
 				const branch = process.env.DEPLOY_BRANCH.toLowerCase();
-				const suffix = `.${project}.pages.dev`;
 				const hostname = deploymentUrl.hostname;
-				const deploymentLabel = hostname.endsWith(suffix)
-					? hostname.slice(0, -suffix.length)
-					: "";
+				// Cloudflare gives a project either `<project>.pages.dev` or, when that
+				// subdomain is taken, `<project>-<hash>.pages.dev`. A deployment URL is
+				// `<label>.<project-host>.pages.dev`, so accept any host whose pages.dev
+				// subdomain starts with the project name.
+				const hostPattern = new RegExp(
+					`^([a-z0-9-]+)\\.${project.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?:-[a-z0-9]+)?\\.pages\\.dev$`,
+				);
+				const match = hostname.match(hostPattern);
+				const deploymentLabel = match?.[1] ?? "";
 				if (
 					deploymentUrl.protocol !== "https:"
 					|| deploymentUrl.username !== ""
@@ -200,7 +226,7 @@ if ! DEPLOYMENT_URL="$(
 					|| deploymentUrl.pathname !== "/"
 					|| deploymentUrl.search !== ""
 					|| deploymentUrl.hash !== ""
-					|| !/^[a-z0-9-]+$/.test(deploymentLabel)
+					|| deploymentLabel === ""
 					|| deploymentLabel === branch
 				) {
 					throw new Error("deployment URL is not a deployment-specific URL for the current project");
@@ -259,8 +285,16 @@ validate_wasm_headers() {
 	local headers_path="$1"
 	local description="$2"
 	validate_common_headers "$headers_path" "$description" "$WASM_CACHE_CONTROL" || return 1
-	if ! header_matches "$headers_path" "Content-Type" "application/wasm"; then
+	# octet-stream, not application/wasm: see the Worker for why the payload must
+	# stay incompressible at the Pages edge.
+	if ! header_matches "$headers_path" "Content-Type" "application/octet-stream"; then
 		echo "$description has an invalid Content-Type header" >&2
+		return 1
+	fi
+	# The edge must not compress this response; any Content-Encoding means the
+	# corruption we are avoiding has crept back in.
+	if tr -d '\r' < "$headers_path" | grep -Eiq '^Content-Encoding:'; then
+		echo "$description unexpectedly carried a Content-Encoding (edge compression)" >&2
 		return 1
 	fi
 }
@@ -282,6 +316,8 @@ verify_deployment_once() {
 	fi
 	validate_wasm_headers "$wasm_head_headers" "$base_url/index.wasm HEAD" || return 1
 
+	# Offer every encoding; the correct behaviour is that the edge serves the raw,
+	# unencoded wasm either way, so a plain GET is enough to validate integrity.
 	if ! curl --fail --silent --show-error \
 		--dump-header "$wasm_get_headers" \
 		--output "$downloaded_wasm" \
@@ -294,34 +330,6 @@ verify_deployment_once() {
 	downloaded_hash="$(shasum -a 256 "$downloaded_wasm" | awk '{print $1}')"
 	if [[ "$downloaded_hash" != "$WASM_HASH" ]]; then
 		echo "$base_url/index.wasm SHA-256 mismatch: expected $WASM_HASH, got $downloaded_hash" >&2
-		return 1
-	fi
-
-	# The whole point of the `.br` sibling is that Brotli-capable clients get the
-	# ~7 MB object instead of the 36 MB raw one. Assert the Worker actually honors
-	# `Accept-Encoding: br`, and that what it sends decodes back to the same wasm.
-	local wasm_br_headers="$VERIFY_DIR/wasm-br.headers"
-	local downloaded_br="$VERIFY_DIR/index.wasm.br"
-	if ! curl --fail --silent --show-error \
-		--header "Accept-Encoding: br" \
-		--dump-header "$wasm_br_headers" \
-		--output "$downloaded_br" \
-		"$base_url/index.wasm"; then
-		return 1
-	fi
-	validate_wasm_headers "$wasm_br_headers" "$base_url/index.wasm Brotli GET" || return 1
-	if ! header_matches "$wasm_br_headers" "Content-Encoding" "br"; then
-		echo "$base_url/index.wasm did not serve Brotli to a Brotli-capable client" >&2
-		return 1
-	fi
-	local decoded_br_hash
-	decoded_br_hash="$(node -e '
-		const fs = require("node:fs"), z = require("node:zlib"), crypto = require("node:crypto");
-		const decoded = z.brotliDecompressSync(fs.readFileSync(process.argv[1]));
-		process.stdout.write(crypto.createHash("sha256").update(decoded).digest("hex"));
-	' "$downloaded_br")"
-	if [[ "$decoded_br_hash" != "$WASM_HASH" ]]; then
-		echo "$base_url/index.wasm Brotli payload decoded to a different wasm" >&2
 		return 1
 	fi
 }

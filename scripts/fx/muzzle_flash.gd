@@ -11,7 +11,9 @@ func _ready() -> void:
 
 func flash() -> void:
 	remaining = lifetime
-	rotation.z = randf_range(-PI, PI)
+	# 不再随机 rotation.z：基座朝向由武器用 looking_at 设定，而欧拉转换会把
+	# 精确 180° 的 yaw 折叠成 rotation.z = π，反而把火光翻转。面内随机化对
+	# billboard 锁定的贴图也无意义，故移除。
 	scale = Vector3.ONE * randf_range(0.85, 1.15)
 	visible = true
 	set_process(true)

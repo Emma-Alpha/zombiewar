@@ -3,6 +3,13 @@ class_name MobileControls
 
 const MobileTouchscreen = preload("res://scripts/ui/mobile_touchscreen.gd")
 const TouchInputSourceScript = preload("res://scripts/input/touch_input_source.gd")
+## 不依赖全局类名 VirtualJoystick：该脚本曾是未追踪的孤儿文件，
+## 在导出/headless 下全局类注册表拿不到它（Cannot get class），导致
+## 场景里 joystick 节点变 placeholder、cancel_all_input() 崩在 Nil 上，
+## 卡死「正在准备战斗」。改为 preload 直接拿脚本，与其它脚本同款写法。
+const VirtualJoystickScript = preload("res://scripts/ui/virtual_joystick.gd")
+## 对应 virtual_joystick.gd 里的 JOYSTICK_FIXED（匿名枚举首项）。
+const JOYSTICK_MODE_FIXED := 0
 const JOYSTICK_VIEWPORT_HEIGHT_RATIO := 0.45
 const BASE_JOYSTICK_CONTROL_SIZE := 252.0
 const BASE_JOYSTICK_SIZE := 204.0
@@ -24,7 +31,7 @@ const TOUCH_MOVE_ACTIONS: Array[StringName] = [
 @export var force_visible := false
 @export_node_path("CanvasItem") var desktop_help_path: NodePath
 
-@onready var virtual_joystick: VirtualJoystick = $Layout/VirtualJoystick
+@onready var virtual_joystick: VirtualJoystickScript = $Layout/VirtualJoystick
 @onready var previous_button: MobileActionButton = $Layout/PreviousButton
 @onready var next_button: MobileActionButton = $Layout/NextButton
 @onready var use_button: MobileActionButton = $Layout/UseButton
@@ -199,7 +206,7 @@ func _on_visibility_changed() -> void:
 
 func _is_joystick_touch_start(position: Vector2) -> bool:
 	var touch_rect := virtual_joystick.get_global_rect()
-	if virtual_joystick.joystick_mode == VirtualJoystick.JOYSTICK_FIXED:
+	if virtual_joystick.joystick_mode == JOYSTICK_MODE_FIXED:
 		touch_rect = Rect2(
 			touch_rect.get_center() - Vector2.ONE * virtual_joystick.joystick_size * 0.5,
 			Vector2.ONE * virtual_joystick.joystick_size

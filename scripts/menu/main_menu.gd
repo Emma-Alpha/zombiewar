@@ -30,6 +30,18 @@ var flow := MenuFlow.new()
 func _ready() -> void:
 	single_player_button.grab_focus()
 	_play_boot_sequence()
+	_fit_left_column()
+	get_viewport().size_changed.connect(_fit_left_column)
+
+## 左列按可用高度整体缩放：视口越矮，列按比例收小，标题、按钮、间距一起缩，
+## 任何窗口高度下都不会把按钮顶到页脚上。1.0 为设计尺寸，只缩不放。
+func _fit_left_column() -> void:
+	var col := $MenuLayer/MenuRoot/LeftColumn as VBoxContainer
+	var viewport_height := get_viewport().get_visible_rect().size.y
+	var natural := col.get_combined_minimum_size().y
+	var available := (0.88 - 0.17) * viewport_height
+	var scale_factor: float = clampf(available / maxf(natural, 1.0), 0.55, 1.0)
+	col.scale = Vector2(scale_factor, scale_factor)
 
 ## The menu opens like a boot sequence: each element wipes in from the left,
 ## staggered, so the composition assembles instead of just appearing.

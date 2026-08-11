@@ -7,3 +7,8 @@
 .superpowers/
 .worktrees/
 node_modules/
+
+# Local secrets (Cloudflare API tokens, etc.) — never commit these
+.env
+.env.local
+.env.*.local
