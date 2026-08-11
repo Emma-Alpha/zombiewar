@@ -1303,7 +1303,7 @@ func _update_ping_hud(delta: float) -> void:
 		label.visible = false
 		return
 	var net := get_node_or_null("/root/NetSession")
-	var rtt := net.latency_display_ms() if net != null else -1
+	var rtt: int = net.latency_display_ms() if net != null else -1
 	if rtt < 0:
 		label.visible = false
 		return
