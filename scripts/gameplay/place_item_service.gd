@@ -1,7 +1,6 @@
 extends Node
 class_name PlaceItemService
 
-signal placement_geometry_changed
 signal placement_rejected(reason: StringName)
 ## 运行时放置的物件是新的阻挡几何，必须标脏对应 cell；
 ## 若它是爆炸桶，还要注册成模拟层实体（见 DemoArena._on_item_placed()）。
@@ -50,7 +49,6 @@ func request_place_item(
 		return _reject(&"reserved_cell")
 	tracked_items[item.get_instance_id()] = item
 	item.tree_exiting.connect(_on_item_tree_exiting.bind(item), CONNECT_ONE_SHOT)
-	placement_geometry_changed.emit()
 	# 必须在 item.global_position 落位之后再发：注册方要按它读世界坐标。
 	item_placed.emit(item)
 	return true
@@ -69,6 +67,4 @@ func _on_item_tree_exiting(item: Node3D) -> void:
 	var grid := get_node_or_null(grid_path) as PlaceItemGrid
 	if grid != null:
 		grid.release_owner(item)
-	if is_inside_tree():
-		placement_geometry_changed.emit()
 	item_removed.emit(item, bounds)

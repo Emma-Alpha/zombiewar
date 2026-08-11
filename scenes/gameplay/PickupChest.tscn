@@ -29,7 +29,7 @@ material = SubResource("StandardMaterial3D_marker")
 radius = 0.11
 height = 0.22
 
-[node name="PickupChest" type="StaticBody3D" groups=["navigation_source", "place_item_obstacle"]]
+[node name="PickupChest" type="StaticBody3D" groups=["place_item_obstacle"]]
 collision_layer = 1
 collision_mask = 0
 script = ExtResource("1_pickup")

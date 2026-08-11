@@ -1,7 +1,6 @@
 extends Node3D
 class_name PickupSpawnPoint
 
-signal navigation_geometry_changed
 ## 拾取箱本身是静态阻挡（place_item_obstacle 组、collision_layer = 1），
 ## 出现与消失都必须标脏对应 cell。
 signal blocker_changed(world_aabb: AABB, blocked: bool)
@@ -46,7 +45,6 @@ func _spawn_pickup() -> void:
 		_on_pickup_tree_exited.bind(current_pickup_id),
 		CONNECT_ONE_SHOT
 	)
-	navigation_geometry_changed.emit()
 	current_pickup_bounds = PlaceItemGrid.collision_object_world_aabb(current_pickup)
 	blocker_changed.emit(current_pickup_bounds, true)
 	# 必须排在 transform 落位之后：注册方要按世界坐标建模拟层实体。
@@ -62,7 +60,6 @@ func _on_pickup_tree_exited(pickup_id: int) -> void:
 		return
 	current_pickup = null
 	current_pickup_id = 0
-	navigation_geometry_changed.emit()
 	# 清阻挡必须排在 remove_after_collection 的提前返回**之前**：
 	# 一次性拾取点在这里 queue_free() 自己，若先返回就再没有人来清这块格，
 	# 箱子早就没了而僵尸还在绕着它走。

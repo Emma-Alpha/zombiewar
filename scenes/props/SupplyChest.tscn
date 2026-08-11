@@ -5,7 +5,7 @@
 [sub_resource type="BoxShape3D" id="BoxShape3D_supply_chest"]
 size = Vector3(0.64, 0.41, 0.48)
 
-[node name="SupplyChest" type="StaticBody3D" groups=["navigation_source", "place_item_obstacle"]]
+[node name="SupplyChest" type="StaticBody3D" groups=["place_item_obstacle"]]
 collision_layer = 1
 collision_mask = 0
 

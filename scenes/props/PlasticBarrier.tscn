@@ -5,7 +5,7 @@
 [sub_resource type="BoxShape3D" id="BoxShape3D_plastic_barrier"]
 size = Vector3(1.04, 0.6, 0.34)
 
-[node name="PlasticBarrier" type="StaticBody3D" groups=["navigation_source", "place_item_obstacle"]]
+[node name="PlasticBarrier" type="StaticBody3D" groups=["place_item_obstacle"]]
 collision_layer = 1
 collision_mask = 0
 

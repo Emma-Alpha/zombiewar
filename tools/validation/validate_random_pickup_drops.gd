@@ -93,9 +93,10 @@ func _test_one_shot_spawn_point_reclaims_after_success(
 	spawner.respawn_enabled = false
 	spawner.remove_after_collection = true
 	player.position = Vector3(100.0, 0.0, 100.0)
-	var navigation_changes := [0]
-	spawner.navigation_geometry_changed.connect(
-		func() -> void: navigation_changes[0] += 1
+	var blocker_states: Array[bool] = []
+	spawner.blocker_changed.connect(
+		func(_world_aabb: AABB, blocked: bool) -> void:
+			blocker_states.append(blocked)
 	)
 	root.add_child(player)
 	root.add_child(spawner)
@@ -113,8 +114,8 @@ func _test_one_shot_spawn_point_reclaims_after_success(
 		failures
 	)
 	_expect(
-		navigation_changes[0] == 2,
-		"one-shot pickup must notify navigation on insertion and removal",
+		blocker_states == [true, false],
+		"one-shot pickup must publish blocker insertion then removal",
 		failures
 	)
 	if is_instance_valid(spawner):

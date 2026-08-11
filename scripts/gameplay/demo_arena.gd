@@ -571,17 +571,6 @@ func mark_blocker(obstacle: CollisionObject3D, blocked: bool) -> void:
 		blocked
 	)
 
-func _wire_explosive_barrel(barrel: Node) -> void:
-	var explosive := barrel as ExplosiveBarrel
-	if explosive == null:
-		return
-	if not explosive.navigation_geometry_changed.is_connected(
-		_on_runtime_navigation_geometry_changed
-	):
-		explosive.navigation_geometry_changed.connect(
-			_on_runtime_navigation_geometry_changed
-		)
-
 ## 场景自带的爆炸桶按 ExplosiveBarrels 的子节点顺序注册，顺序即 id 分配顺序，
 ## 各端读同一个 .tscn，因此顺序天然一致。
 ## 必须在 sim_world.reset() 之后调用：reset() 会把实体 id 计数器归 1 并清空油桶数组。
@@ -926,54 +915,16 @@ func _release_startup_actions() -> void:
 		Input.action_release(action)
 
 func _wire_dependencies() -> void:
-	var navigation_manager := get_node_or_null(
-		"World/Navigation"
-	) as NavigationWorldManager
-	if (
-		navigation_manager != null and
-		not navigation_manager.chunk_bake_failed.is_connected(
-			_on_navigation_chunk_bake_failed
-		)
-	):
-		navigation_manager.chunk_bake_failed.connect(
-			_on_navigation_chunk_bake_failed
-		)
-	var barrels_root := get_node_or_null(
-		"World/Props/HazardZone/ExplosiveBarrels"
-	)
-	if barrels_root != null:
-		for barrel in barrels_root.get_children():
-			_wire_explosive_barrel(barrel)
-		if not barrels_root.child_entered_tree.is_connected(_wire_explosive_barrel):
-			barrels_root.child_entered_tree.connect(_wire_explosive_barrel)
 	var pickup_spawners := get_node_or_null("World/Props/PickupSpawners")
 	if pickup_spawners != null:
 		for child in pickup_spawners.get_children():
 			var spawner := child as PickupSpawnPoint
 			if spawner == null:
 				continue
-			if not spawner.navigation_geometry_changed.is_connected(
-				_on_runtime_navigation_geometry_changed
-			):
-				spawner.navigation_geometry_changed.connect(
-					_on_runtime_navigation_geometry_changed
-				)
 			if not spawner.blocker_changed.is_connected(_on_pickup_blocker_changed):
 				spawner.blocker_changed.connect(_on_pickup_blocker_changed)
 			if not spawner.pickup_spawned.is_connected(_register_chest):
 				spawner.pickup_spawned.connect(_register_chest)
-	var random_pickup_drops := get_node_or_null(
-		"World/Props/RandomPickupDrops"
-	) as RandomPickupDropManager
-	if (
-		random_pickup_drops != null and
-		not random_pickup_drops.navigation_geometry_changed.is_connected(
-			_on_runtime_navigation_geometry_changed
-		)
-	):
-		random_pickup_drops.navigation_geometry_changed.connect(
-			_on_runtime_navigation_geometry_changed
-		)
 	var spawn_button := get_node_or_null("HUD/SpawnWaveButton") as Button
 	if spawn_button != null and not spawn_button.pressed.is_connected(request_spawn_wave):
 		spawn_button.pressed.connect(request_spawn_wave)
@@ -986,12 +937,6 @@ func _wire_dependencies() -> void:
 		single_player_input.set_touch_source(mobile_controls.get_input_source())
 	var place_item_service = get_node_or_null("PlaceItemService")
 	if place_item_service != null:
-		if not place_item_service.placement_geometry_changed.is_connected(
-			_on_runtime_navigation_geometry_changed
-		):
-			place_item_service.placement_geometry_changed.connect(
-				_on_runtime_navigation_geometry_changed
-			)
 		if not place_item_service.item_placed.is_connected(_on_item_placed):
 			place_item_service.item_placed.connect(_on_item_placed)
 		if not place_item_service.item_removed.is_connected(_on_item_removed):
@@ -1109,21 +1054,6 @@ func _handle_player_spawn_failure() -> void:
 		elif session.mode == GameSessionScript.Mode.ONLINE_MULTIPLAYER:
 			destination = "res://scenes/menu/OnlineLobby.tscn"
 	get_tree().change_scene_to_file.call_deferred(destination)
-
-func _on_navigation_chunk_bake_failed(
-	chunk_id: StringName,
-	_generation: int,
-	message: String
-) -> void:
-	push_warning("Navigation chunk %s failed: %s" % [chunk_id, message])
-	_show_wave_status("NAVIGATION FAILED: %s" % chunk_id)
-
-func _on_runtime_navigation_geometry_changed() -> void:
-	var navigation_manager := get_node_or_null(
-		"World/Navigation"
-	) as NavigationWorldManager
-	if navigation_manager != null:
-		navigation_manager.mark_chunk_dirty(&"demo_arena")
 
 ## 镜头后坐力是纯表现，命中确认改由模拟层的射击事件驱动。
 func _on_player_attack(

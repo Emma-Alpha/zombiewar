@@ -8,7 +8,7 @@
 radius = 0.44
 height = 1.44
 
-[node name="ExplosiveBarrel" type="StaticBody3D" groups=["navigation_source", "place_item_obstacle"]]
+[node name="ExplosiveBarrel" type="StaticBody3D" groups=["place_item_obstacle"]]
 collision_layer = 1
 collision_mask = 0
 script = ExtResource("1_barrel")

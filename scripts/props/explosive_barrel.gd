@@ -14,13 +14,11 @@ class_name ExplosiveBarrel
 ##   1. 把自己的导出参数交给装配方注册进模拟层（DemoArena._register_barrel()）；
 ##   2. 收到模拟层的「受损」事件时切换外观；
 ##   3. 收到模拟层的「引爆」事件时播特效，并对**玩家**结算爆炸伤害；
-##   4. 离场时广播导航几何变化。
+##   4. 引爆表现完成后释放节点。
 ## 它不得再持有任何参与判定的状态，也不得自行决定何时爆炸。
 const ExplosionResolver = preload("res://scripts/combat/explosion_resolver.gd")
 const BARREL_EXPLOSION_SCENE := preload("res://scenes/fx/BarrelExplosion.tscn")
 const AIM_POINT_HEIGHT := 0.72
-
-signal navigation_geometry_changed
 
 @export_range(1, 10, 1) var firearm_hits_to_explode := 3
 @export_range(1, 9, 1) var firearm_hits_to_damage := 2
@@ -88,8 +86,6 @@ func play_explosion(origin: Vector3) -> void:
 			explosion_target_mask,
 			explosion_obstacle_mask
 		)
-	remove_from_group(&"navigation_source")
-	navigation_geometry_changed.emit()
 	queue_free()
 
 func _spawn_explosion_fx(origin: Vector3) -> void:

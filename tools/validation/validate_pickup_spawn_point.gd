@@ -101,9 +101,13 @@ func _test_spawn_and_respawn_lifecycle(failures: Array[String]) -> void:
 	spawner.pickup_definition = pickup_definition
 	spawner.respawn_enabled = true
 	spawner.respawn_delay_seconds = 60.0
-	var geometry_changes := [0]
-	spawner.navigation_geometry_changed.connect(
-		func() -> void: geometry_changes[0] += 1
+	var blocker_events: Array[Dictionary] = []
+	spawner.blocker_changed.connect(
+		func(world_aabb: AABB, blocked: bool) -> void:
+			blocker_events.append({
+				"world_aabb": world_aabb,
+				"blocked": blocked,
+			})
 	)
 	root.add_child(spawner)
 	_expect(
@@ -122,9 +126,14 @@ func _test_spawn_and_respawn_lifecycle(failures: Array[String]) -> void:
 		"spawned PickupChest must be configured with the injected Definition",
 		failures
 	)
+	var initial_bounds := AABB()
+	if not blocker_events.is_empty():
+		initial_bounds = blocker_events[0]["world_aabb"]
 	_expect(
-		geometry_changes[0] == 1,
-		"initial pickup insertion must emit one navigation geometry change",
+		blocker_events.size() == 1
+		and bool(blocker_events[0]["blocked"])
+		and initial_bounds.size != Vector3.ZERO,
+		"initial pickup insertion must publish one non-empty blocker rect",
 		failures
 	)
 	if spawner.current_pickup == null:
@@ -135,15 +144,15 @@ func _test_spawn_and_respawn_lifecycle(failures: Array[String]) -> void:
 	var first_pickup = spawner.current_pickup
 	first_pickup.collected.emit(first_pickup)
 	_expect(
-		geometry_changes[0] == 1,
-		"successful collection must not notify navigation before geometry exits",
+		blocker_events.size() == 1,
+		"collection must not clear the blocker before the pickup exits",
 		failures
 	)
 	first_pickup.queue_free()
 	await process_frame
 	_expect(
-		geometry_changes[0] == 2,
-		"pickup tree exit must notify navigation after geometry is removed",
+		blocker_events.size() == 2 and not bool(blocker_events[1]["blocked"]),
+		"pickup tree exit must clear its blocker rect",
 		failures
 	)
 	_expect(
@@ -165,16 +174,16 @@ func _test_spawn_and_respawn_lifecycle(failures: Array[String]) -> void:
 		failures
 	)
 	_expect(
-		geometry_changes[0] == 3,
-		"replacement pickup insertion must notify navigation",
+		blocker_events.size() == 3 and bool(blocker_events[2]["blocked"]),
+		"replacement pickup insertion must publish its blocker rect",
 		failures
 	)
 	if spawner.current_pickup != null:
 		spawner.current_pickup.queue_free()
 	await process_frame
 	_expect(
-		geometry_changes[0] == 4,
-		"external pickup removal must still notify navigation",
+		blocker_events.size() == 4 and not bool(blocker_events[3]["blocked"]),
+		"external pickup removal must clear its blocker rect",
 		failures
 	)
 	_expect(
@@ -206,10 +215,7 @@ func _test_demo_pickup_spawner_wiring(failures: Array[String]) -> void:
 			"DemoArena must configure exactly three pickup spawners",
 			failures
 		)
-		var runtime_navigation_callback := Callable(
-			arena,
-			"_on_runtime_navigation_geometry_changed"
-		)
+		var blocker_callback := Callable(arena, "_on_pickup_blocker_changed")
 		for spawner_name: String in expected:
 			var spawner = spawners_root.get_node_or_null(spawner_name)
 			_expect(spawner != null, "DemoArena pickup spawner %s must exist" % spawner_name, failures)
@@ -245,10 +251,8 @@ func _test_demo_pickup_spawner_wiring(failures: Array[String]) -> void:
 				failures
 			)
 			_expect(
-				spawner.navigation_geometry_changed.is_connected(
-					runtime_navigation_callback
-				),
-				"%s must notify DemoArena runtime navigation" % spawner_name,
+				spawner.blocker_changed.is_connected(blocker_callback),
+				"%s must notify DemoArena flow-field blocker updates" % spawner_name,
 				failures
 			)
 	var decorative_chests := arena.get_node_or_null(

@@ -19,11 +19,10 @@ Use GDScript with tabs for indentation and follow the existing Godot style. Name
 Zombie pathfinding uses the deterministic flow field in `scripts/sim/`
 (`FlowFieldGrid` + `FlowField`): an XZ integer grid with multi-source BFS over
 integer costs, rebuilt synchronously whenever a player crosses a cell boundary
-or the blocker set is marked dirty. Runtime navigation baking does not
-participate in the simulation layer, and no simulation code may call
-`NavigationAgent3D`, `NavigationServer3D`, or any asynchronous bake: the
-completion time of an async bake is itself nondeterministic and would break
-lockstep replay.
+or the blocker set is marked dirty. Godot's built-in navigation agents,
+navigation server, navigation regions, and runtime baking are not part of the
+gameplay architecture. Do not restore them or introduce asynchronous navigation
+work: completion timing is nondeterministic and would break lockstep replay.
 
 Any system that adds, removes, moves, enables, or disables collision geometry
 that blocks movement must mark the affected flow field cells dirty after the
@@ -41,12 +40,6 @@ presentation node plus the player damage source, driven by
 `SimWorld.tick_barrel_events`. Never give a barrel node its own timer, its own
 hit counter, or its own physics ray: wall-clock fuses land on different ticks on
 different clients and desync every zombie the blast kills.
-
-`NavigationWorldManager`, `NavigationChunk3D`, and `NavigationBakeState` are
-**retired but retained**. They are still instantiated by `DemoArena` and still
-respond to geometry-changed signals, but nothing in gameplay consumes their
-navigation meshes. Do not build new features on them. They will be deleted once
-the S3 synchronisation layer lands and confirms no other consumer exists.
 
 Simulation code calls `SimMath` for trigonometry, never `sin`, `cos`, `atan2`,
 or `Vector2.rotated()`. IEEE 754 does **not** require transcendental functions

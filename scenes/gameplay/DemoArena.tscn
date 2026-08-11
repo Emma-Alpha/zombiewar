@@ -1,4 +1,4 @@
-[gd_scene load_steps=59 format=3]
+[gd_scene load_steps=57 format=3]
 
 [ext_resource type="Script" path="res://scripts/gameplay/demo_arena.gd" id="1_arena"]
 [ext_resource type="Script" path="res://scripts/gameplay/local_player_spawner.gd" id="2_player_spawner"]
@@ -12,8 +12,6 @@
 [ext_resource type="FontFile" path="res://assets/fonts/NotoSansSC-UI.ttf" id="10_cjk_font"]
 [ext_resource type="PackedScene" path="res://scenes/ui/MobileOrientationGuard.tscn" id="11_orientation_guard"]
 [ext_resource type="Script" path="res://scripts/fx/combat_fx_prewarmer.gd" id="12_fx_prewarmer"]
-[ext_resource type="Script" path="res://scripts/navigation/navigation_world_manager.gd" id="13_navigation_manager"]
-[ext_resource type="PackedScene" path="res://scenes/navigation/NavigationChunk3D.tscn" id="14_navigation_chunk"]
 [ext_resource type="PackedScene" path="res://scenes/props/ExplosiveBarrel.tscn" id="15_explosive_barrel"]
 [ext_resource type="Script" path="res://scripts/gameplay/place_item_grid.gd" id="16_place_grid"]
 [ext_resource type="Script" path="res://scripts/gameplay/place_item_service.gd" id="17_place_service"]
@@ -197,16 +195,7 @@ cell_size = 1.0
 grid_origin = Vector3(0, 0, 0)
 dynamic_blocker_mask = 6
 
-[node name="Navigation" type="Node3D" parent="World"]
-script = ExtResource("13_navigation_manager")
-
-[node name="DemoArenaChunk" parent="World/Navigation" instance=ExtResource("14_navigation_chunk")]
-chunk_id = &"demo_arena"
-source_root_path = NodePath("../..")
-baking_bounds = AABB(-24.25, -0.5, -19.25, 48.5, 4, 38.5)
-threaded_baking = true
-
-[node name="Ground" type="StaticBody3D" parent="World" groups=["blood_surface", "navigation_source"]]
+[node name="Ground" type="StaticBody3D" parent="World" groups=["blood_surface"]]
 collision_layer = 1
 collision_mask = 0
 
@@ -220,7 +209,7 @@ shape = SubResource("BoxShape3D_ground")
 
 [node name="Boundaries" type="Node3D" parent="World"]
 
-[node name="North" type="StaticBody3D" parent="World/Boundaries" groups=["navigation_source", "place_item_obstacle"]]
+[node name="North" type="StaticBody3D" parent="World/Boundaries" groups=["place_item_obstacle"]]
 position = Vector3(0, 1, -19)
 collision_layer = 1
 collision_mask = 0
@@ -231,7 +220,7 @@ mesh = SubResource("BoxMesh_north_south")
 [node name="CollisionShape3D" type="CollisionShape3D" parent="World/Boundaries/North"]
 shape = SubResource("BoxShape3D_north_south")
 
-[node name="South" type="StaticBody3D" parent="World/Boundaries" groups=["navigation_source", "place_item_obstacle"]]
+[node name="South" type="StaticBody3D" parent="World/Boundaries" groups=["place_item_obstacle"]]
 position = Vector3(0, 1, 19)
 collision_layer = 1
 collision_mask = 0
@@ -242,7 +231,7 @@ mesh = SubResource("BoxMesh_north_south")
 [node name="CollisionShape3D" type="CollisionShape3D" parent="World/Boundaries/South"]
 shape = SubResource("BoxShape3D_north_south")
 
-[node name="West" type="StaticBody3D" parent="World/Boundaries" groups=["navigation_source", "place_item_obstacle"]]
+[node name="West" type="StaticBody3D" parent="World/Boundaries" groups=["place_item_obstacle"]]
 position = Vector3(-24, 1, 0)
 collision_layer = 1
 collision_mask = 0
@@ -253,7 +242,7 @@ mesh = SubResource("BoxMesh_east_west")
 [node name="CollisionShape3D" type="CollisionShape3D" parent="World/Boundaries/West"]
 shape = SubResource("BoxShape3D_east_west")
 
-[node name="East" type="StaticBody3D" parent="World/Boundaries" groups=["navigation_source", "place_item_obstacle"]]
+[node name="East" type="StaticBody3D" parent="World/Boundaries" groups=["place_item_obstacle"]]
 position = Vector3(24, 1, 0)
 collision_layer = 1
 collision_mask = 0
@@ -271,7 +260,7 @@ shape = SubResource("BoxShape3D_east_west")
 [node name="ContainerBVisual" parent="World/Props/Checkpoint" instance=ExtResource("6_container")]
 position = Vector3(-11, 0, -10.8)
 
-[node name="ContainerBCollision" type="StaticBody3D" parent="World/Props/Checkpoint" groups=["navigation_source", "place_item_obstacle"]]
+[node name="ContainerBCollision" type="StaticBody3D" parent="World/Props/Checkpoint" groups=["place_item_obstacle"]]
 position = Vector3(-11, 1.4, -10.8)
 collision_layer = 1
 collision_mask = 0
@@ -384,7 +373,7 @@ shadow_enabled = false
 position = Vector3(5, 0, -1.5)
 rotation_degrees = Vector3(0, 25, 0)
 
-[node name="PickupCollision" type="StaticBody3D" parent="World/Props/Incident" groups=["navigation_source", "place_item_obstacle"]]
+[node name="PickupCollision" type="StaticBody3D" parent="World/Props/Incident" groups=["place_item_obstacle"]]
 position = Vector3(5, 0.9, -1.5)
 rotation_degrees = Vector3(0, 25, 0)
 collision_layer = 1
@@ -449,7 +438,7 @@ scale = Vector3(1.15, 1.15, 1.15)
 position = Vector3(-9, 0, -2.5)
 rotation_degrees = Vector3(0, 90, 0)
 
-[node name="ContainerACollision" type="StaticBody3D" parent="World/Props/HazardZone" groups=["navigation_source", "place_item_obstacle"]]
+[node name="ContainerACollision" type="StaticBody3D" parent="World/Props/HazardZone" groups=["place_item_obstacle"]]
 position = Vector3(-9, 1.4, -2.5)
 rotation_degrees = Vector3(0, 90, 0)
 collision_layer = 1
