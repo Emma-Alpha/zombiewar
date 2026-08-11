@@ -142,10 +142,22 @@ if ! npx --yes wrangler r2 bucket info "$R2_BUCKET" --json >/dev/null 2>&1; then
 	npx --yes wrangler r2 bucket create "$R2_BUCKET"
 fi
 
+# The engine wasm is ~36 MB and Pages assets are served with automatic Brotli,
+# but this object is served by our Worker straight from R2, which bypasses that
+# compression. Pre-compress a Brotli sibling and upload both; the Worker picks
+# the `.br` object whenever the client advertises `Accept-Encoding: br`, cutting
+# the wire size to ~7 MB. The raw object stays for clients without Brotli.
+WASM_BR_PATH="${WASM_PATH}.br"
+node "$ROOT_DIR/tools/cloudflare/compress_brotli.js" "$WASM_PATH" "$WASM_BR_PATH"
+
 npx --yes wrangler r2 object put "$R2_BUCKET/$WASM_KEY" \
 	--file "$WASM_PATH" \
 	--content-type application/wasm \
-	--cache-control "no-store, no-cache, must-revalidate, max-age=0" \
+	--remote
+
+npx --yes wrangler r2 object put "$R2_BUCKET/$WASM_KEY.br" \
+	--file "$WASM_BR_PATH" \
+	--content-type application/wasm \
 	--remote
 
 PRODUCTION_URL="https://${PAGES_PROJECT}.pages.dev"
@@ -219,11 +231,12 @@ header_matches() {
 validate_common_headers() {
 	local headers_path="$1"
 	local description="$2"
+	local expected_cache_control="$3"
 	if ! tr -d '\r' < "$headers_path" | grep -Eiq '^HTTP/(1\.[01]|2|3)[[:space:]]+200([[:space:]]|$)'; then
 		echo "$description did not return HTTP 200" >&2
 		return 1
 	fi
-	if ! header_matches "$headers_path" "Cache-Control" "no-store, no-cache, must-revalidate, max-age=0"; then
+	if ! header_matches "$headers_path" "Cache-Control" "$expected_cache_control"; then
 		echo "$description has an invalid Cache-Control header" >&2
 		return 1
 	fi
@@ -237,10 +250,15 @@ validate_common_headers() {
 	fi
 }
 
+# The HTML shell stays no-store so players always pick up the newest deploy,
+# while the content-hashed wasm is safe to cache immutably.
+HTML_CACHE_CONTROL="no-store, no-cache, must-revalidate, max-age=0"
+WASM_CACHE_CONTROL="public, max-age=31536000, immutable"
+
 validate_wasm_headers() {
 	local headers_path="$1"
 	local description="$2"
-	validate_common_headers "$headers_path" "$description" || return 1
+	validate_common_headers "$headers_path" "$description" "$WASM_CACHE_CONTROL" || return 1
 	if ! header_matches "$headers_path" "Content-Type" "application/wasm"; then
 		echo "$description has an invalid Content-Type header" >&2
 		return 1
@@ -257,7 +275,7 @@ verify_deployment_once() {
 	if ! curl --fail --silent --show-error --head "$base_url/" > "$root_headers"; then
 		return 1
 	fi
-	validate_common_headers "$root_headers" "$base_url/" || return 1
+	validate_common_headers "$root_headers" "$base_url/" "$HTML_CACHE_CONTROL" || return 1
 
 	if ! curl --fail --silent --show-error --head "$base_url/index.wasm" > "$wasm_head_headers"; then
 		return 1
@@ -276,6 +294,34 @@ verify_deployment_once() {
 	downloaded_hash="$(shasum -a 256 "$downloaded_wasm" | awk '{print $1}')"
 	if [[ "$downloaded_hash" != "$WASM_HASH" ]]; then
 		echo "$base_url/index.wasm SHA-256 mismatch: expected $WASM_HASH, got $downloaded_hash" >&2
+		return 1
+	fi
+
+	# The whole point of the `.br` sibling is that Brotli-capable clients get the
+	# ~7 MB object instead of the 36 MB raw one. Assert the Worker actually honors
+	# `Accept-Encoding: br`, and that what it sends decodes back to the same wasm.
+	local wasm_br_headers="$VERIFY_DIR/wasm-br.headers"
+	local downloaded_br="$VERIFY_DIR/index.wasm.br"
+	if ! curl --fail --silent --show-error \
+		--header "Accept-Encoding: br" \
+		--dump-header "$wasm_br_headers" \
+		--output "$downloaded_br" \
+		"$base_url/index.wasm"; then
+		return 1
+	fi
+	validate_wasm_headers "$wasm_br_headers" "$base_url/index.wasm Brotli GET" || return 1
+	if ! header_matches "$wasm_br_headers" "Content-Encoding" "br"; then
+		echo "$base_url/index.wasm did not serve Brotli to a Brotli-capable client" >&2
+		return 1
+	fi
+	local decoded_br_hash
+	decoded_br_hash="$(node -e '
+		const fs = require("node:fs"), z = require("node:zlib"), crypto = require("node:crypto");
+		const decoded = z.brotliDecompressSync(fs.readFileSync(process.argv[1]));
+		process.stdout.write(crypto.createHash("sha256").update(decoded).digest("hex"));
+	' "$downloaded_br")"
+	if [[ "$decoded_br_hash" != "$WASM_HASH" ]]; then
+		echo "$base_url/index.wasm Brotli payload decoded to a different wasm" >&2
 		return 1
 	fi
 }
