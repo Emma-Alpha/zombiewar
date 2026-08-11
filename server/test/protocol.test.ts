@@ -5,17 +5,26 @@ import { describe, expect, it } from 'vitest';
 
 import {
   BIT_ALIVE,
+  BIT_CONFIRM,
+  BIT_NEXT_EQUIPMENT,
+  BIT_PREV_EQUIPMENT,
   BIT_PRESENT,
   BIT_USE_JUST_PRESSED,
   BIT_USE_PRESSED,
+  EDGE_BITS,
+  EVENT_MELEE,
   EVENT_SHOT,
+  MAX_MERGED_EVENTS,
   PROTOCOL_VERSION,
   QUANT,
+  STICKY_BITS,
   TICK_HZ,
   TICK_MS,
   isLobbyOpcode,
   isSyncOpcode,
+  mergeCommand,
   parseCommand,
+  type PlayerCommand,
 } from '../src/lib/protocol.js';
 
 const CLIENT_PROTOCOL = resolve(import.meta.dirname, '../../scripts/net/lobby_protocol.gd');
@@ -96,5 +105,111 @@ describe('parseCommand', () => {
 
   it('ignores an over-long hash', () => {
     expect(parseCommand({ ...valid, h: 'x'.repeat(64) })?.h).toBeUndefined();
+  });
+});
+
+describe('bit classes', () => {
+  const source = readFileSync(CLIENT_PROTOCOL, 'utf8');
+
+  it('splits every defined bit into exactly one of sticky or edge', () => {
+    expect(STICKY_BITS & EDGE_BITS).toBe(0);
+    expect(STICKY_BITS | EDGE_BITS).toBe(
+      BIT_USE_PRESSED |
+        BIT_USE_JUST_PRESSED |
+        BIT_PREV_EQUIPMENT |
+        BIT_NEXT_EQUIPMENT |
+        BIT_CONFIRM |
+        BIT_ALIVE |
+        BIT_PRESENT,
+    );
+  });
+
+  it('agrees with the client on which bits are one-shot', () => {
+    // The client clears exactly these after each send. If the two lists drift,
+    // one side repeats an edge every tick and the other does not -- a desync
+    // whose cause is two files that never reference each other.
+    const match = /const ONE_SHOT_BITS := \(([^)]*)\)/.exec(source);
+    if (match === null) throw new Error('client protocol has no ONE_SHOT_BITS');
+    const names = match[1]!
+      .split('|')
+      .map((entry) => entry.trim())
+      .filter((entry) => entry !== '');
+    expect(new Set(names)).toEqual(
+      new Set(['BIT_USE_JUST_PRESSED', 'BIT_PREV_EQUIPMENT', 'BIT_NEXT_EQUIPMENT', 'BIT_CONFIRM']),
+    );
+    expect(names.reduce((bits, name) => bits | readGdConstant(source, name), 0)).toBe(EDGE_BITS);
+  });
+});
+
+describe('mergeCommand', () => {
+  const shot = (weapon: number) => ({ k: EVENT_SHOT, w: weapon });
+  const base = (overrides: Partial<PlayerCommand> = {}): PlayerCommand => ({
+    m: [0, 0],
+    b: BIT_ALIVE | BIT_PRESENT,
+    p: [0, 0],
+    ...overrides,
+  });
+
+  it('takes the arriving command when the slot is empty', () => {
+    const next = base({ m: [5, 5] });
+    expect(mergeCommand(null, next)).toBe(next);
+  });
+
+  it('takes the newest move, position and held bits', () => {
+    const previous = base({ m: [1, 1], p: [10, 10], b: BIT_ALIVE | BIT_PRESENT | BIT_USE_PRESSED });
+    const next = base({ m: [2, 2], p: [20, 20], b: BIT_ALIVE | BIT_PRESENT });
+    const merged = mergeCommand(previous, next);
+    expect(merged.m).toEqual([2, 2]);
+    expect(merged.p).toEqual([20, 20]);
+    // The player let go between the two samples; the trigger must not stay down.
+    expect(merged.b & BIT_USE_PRESSED).toBe(0);
+  });
+
+  it('accumulates edges that happened in different messages', () => {
+    const previous = base({ b: BIT_ALIVE | BIT_PRESENT | BIT_USE_JUST_PRESSED });
+    const next = base({ b: BIT_ALIVE | BIT_PRESENT | BIT_NEXT_EQUIPMENT });
+    const merged = mergeCommand(previous, next);
+    expect(merged.b & BIT_USE_JUST_PRESSED).toBe(BIT_USE_JUST_PRESSED);
+    expect(merged.b & BIT_NEXT_EQUIPMENT).toBe(BIT_NEXT_EQUIPMENT);
+  });
+
+  it('keeps every event in arrival order', () => {
+    const previous = base({ e: [shot(0), { k: EVENT_MELEE, d: 5 }] });
+    const next = base({ e: [shot(1)] });
+    expect(mergeCommand(previous, next).e).toEqual([shot(0), { k: EVENT_MELEE, d: 5 }, shot(1)]);
+  });
+
+  it('bounds the events one frame can carry however long the burst', () => {
+    let merged: PlayerCommand | null = null;
+    for (let message = 0; message < 20; message += 1) {
+      merged = mergeCommand(merged, base({ e: [shot(0), shot(1)] }));
+    }
+    expect(merged?.e?.length).toBe(MAX_MERGED_EVENTS);
+  });
+
+  it('does not resurrect edges the pump already cleared', () => {
+    // What `latest[slot]` looks like after pumpFrame: held bits, no events.
+    const pumped = base({ b: BIT_ALIVE | BIT_PRESENT | BIT_USE_PRESSED });
+    const next = base({ b: BIT_ALIVE | BIT_PRESENT });
+    expect(mergeCommand(pumped, next)).toEqual(next);
+  });
+
+  it('keeps the shots a caught-up client fired across the whole burst', () => {
+    // The regression this exists for: DemoArena sends one command per frame it
+    // consumes, so catching up after a hitch delivers several at once.
+    const burst = [
+      base({ m: [1, 0], e: [shot(0)], b: BIT_ALIVE | BIT_PRESENT | BIT_USE_JUST_PRESSED }),
+      base({ m: [2, 0], e: [shot(0)] }),
+      base({ m: [3, 0], e: [shot(1)], b: BIT_ALIVE | BIT_PRESENT | BIT_CONFIRM }),
+    ];
+    const merged = burst.reduce<PlayerCommand | null>(
+      (accumulated, command) => mergeCommand(accumulated, command),
+      null,
+    );
+    expect(merged).not.toBeNull();
+    expect(merged!.e).toEqual([shot(0), shot(0), shot(1)]);
+    expect(merged!.m).toEqual([3, 0]);
+    expect(merged!.b & BIT_USE_JUST_PRESSED).toBe(BIT_USE_JUST_PRESSED);
+    expect(merged!.b & BIT_CONFIRM).toBe(BIT_CONFIRM);
   });
 });

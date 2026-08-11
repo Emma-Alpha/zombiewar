@@ -71,6 +71,40 @@ app.get('/api/health', (c) =>
   }),
 );
 
+/**
+ * The root is an API host with no site on it, so it would otherwise answer a
+ * bare `404 Not Found`. That page cannot be told apart from a dead service by
+ * anyone who opens the domain in a browser -- which is the first thing anyone
+ * does when the game reports a connection problem. Say what this host is and
+ * where the endpoints live instead.
+ */
+app.get('/', (c) =>
+  c.json({
+    service: 'zombiewar-server',
+    ok: true,
+    protocol_version: PROTOCOL_VERSION,
+    message:
+      'zombiewar 的联机后端。这里没有网页，只有 API。健康检查见 /api/health。',
+    endpoints: {
+      health: '/api/health',
+      auth: 'POST /api/auth/anon',
+      leaderboards: ['/api/leaderboard/team', '/api/leaderboard/kills'],
+      rooms: ['POST /api/rooms', 'GET /api/rooms', 'GET /api/rooms/:code'],
+      room_socket: 'GET /ws/rooms/:code (websocket upgrade)',
+    },
+  }),
+);
+
+app.notFound((c) =>
+  c.json(
+    {
+      error: 'not_found',
+      message: `没有这个端点：${new URL(c.req.url).pathname}。可用端点见 /`,
+    },
+    404,
+  ),
+);
+
 // --------------------------------------------------------------------- auth
 
 app.post('/api/auth/anon', async (c) => {

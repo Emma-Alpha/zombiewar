@@ -77,6 +77,12 @@ static func hash_world(world: SimWorld) -> String:
 	hasher.mix_bytes(world.barrel_state)
 	hasher.mix_bytes(world.barrel_hit_count.to_byte_array())
 	hasher.mix_bytes(world.barrel_fuse_ticks.to_byte_array())
+	# 补给箱进哈希：它的领取会清掉一块阻挡格，从而改写流场。领取时刻在各端
+	# 错开一个 tick，僵尸就从此走不同的路——而这正是最难靠肉眼发现的那种分叉。
+	hasher.mix_uint32(world.get_chest_count())
+	hasher.mix_bytes(world.chest_id.to_byte_array())
+	hasher.mix_bytes(world.chest_position.to_byte_array())
+	hasher.mix_bytes(world.chest_state)
 	hasher.mix_bytes(world.player_position_quantized.to_byte_array())
 	hasher.mix_bytes(world.player_alive)
 	hasher.mix_bytes(world.player_present)

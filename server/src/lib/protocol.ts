@@ -8,7 +8,7 @@
  * version numbers in the close reason, is worth more than any compatibility
  * shim. See close code 4001 below.
  */
-export const PROTOCOL_VERSION = 2;
+export const PROTOCOL_VERSION = 3;
 
 /** Lobby and control messages. */
 export const OPCODE_LOBBY_MIN = 0x00;
@@ -32,6 +32,14 @@ export const CLOSE_ROOM_FULL = 4002;
 export const CLOSE_BAD_MESSAGE = 4003;
 export const CLOSE_KICKED = 4004;
 export const CLOSE_ROOM_CLOSED = 4005;
+export const CLOSE_RECONNECTED_ELSEWHERE = 4006;
+/**
+ * The rejoining client is further behind than the frame history reaches, so
+ * there is no way to walk its simulation up to the live tick. Rejecting is the
+ * point: letting it in would seat a player whose world silently diverged from
+ * everyone else's for the rest of the match.
+ */
+export const CLOSE_CANNOT_RESUME = 4007;
 
 /**
  * Simulation tick rate. MUST equal 1 / SimClock.TICK_SECONDS on the client.
@@ -40,6 +48,20 @@ export const CLOSE_ROOM_CLOSED = 4005;
  */
 export const TICK_HZ = 20;
 export const TICK_MS = 1000 / TICK_HZ;
+
+/**
+ * How far back the room can replay for a rejoining client: 30 seconds, which
+ * covers the reconnects that actually happen (backgrounded app, WiFi handing
+ * over to mobile data) without holding a whole match in memory. Past this the
+ * rejoin is refused rather than served a partial replay.
+ *
+ * Spelled as a literal (TICK_HZ * 30) because the client's drift check reads
+ * these declarations as source text and cannot evaluate an expression.
+ */
+export const FRAME_HISTORY_LIMIT = 600;
+
+/** Frames per backfill message. Keeps any single message well clear of 1 MB. */
+export const BACKFILL_CHUNK_FRAMES = 200;
 
 /**
  * Fixed-point scale for every float that crosses the wire and then enters the
@@ -66,6 +88,21 @@ export const BIT_NEXT_EQUIPMENT = 1 << 3;
 export const BIT_CONFIRM = 1 << 4;
 export const BIT_ALIVE = 1 << 5;
 export const BIT_PRESENT = 1 << 6;
+
+/**
+ * Held or continuous state. These survive a pump and keep repeating while a
+ * player's packets are late -- a held trigger that stops repeating would read
+ * as the player letting go.
+ */
+export const STICKY_BITS = BIT_USE_PRESSED | BIT_ALIVE | BIT_PRESENT;
+
+/**
+ * Edges. These fire exactly once and are cleared by the pump. Mirrors
+ * `ONE_SHOT_BITS` in the client's `lobby_protocol.gd`; the two must agree or a
+ * repeated edge turns one weapon swap into a swap every tick.
+ */
+export const EDGE_BITS =
+  BIT_USE_JUST_PRESSED | BIT_PREV_EQUIPMENT | BIT_NEXT_EQUIPMENT | BIT_CONFIRM;
 
 /** Simulation request kinds raised by a player during one tick. */
 export const EVENT_SHOT = 0;
@@ -131,6 +168,49 @@ export interface RosterEntry {
 }
 
 /**
+ * A single message cannot legitimately raise more requests than this; the cap
+ * is what stops one client from making every other client's tick expensive.
+ */
+export const MAX_EVENTS_PER_MESSAGE = 8;
+
+/**
+ * Ceiling on events carried by one *frame* after merging a burst. A client that
+ * stalled and then caught up legitimately sends several messages between two
+ * pumps, so the per-message cap alone would no longer bound the work a frame
+ * costs everyone else.
+ */
+export const MAX_MERGED_EVENTS = 24;
+
+/**
+ * Folds a newly arrived command into the one still waiting to be pumped.
+ *
+ * The room pumps at a fixed rate but packets do not arrive at one: a client
+ * that stalled and caught up sends one command per frame it consumed, all of
+ * which land in the same pump window. Overwriting would silently drop every one
+ * but the last -- and with it the shots they carried. That loss is identical on
+ * every client, so no hash ever disagrees; it just reads as the game eating
+ * your trigger pulls after a hitch.
+ *
+ * Held state takes the newest value (that is what "held" means), edges
+ * accumulate (they each happened), and events concatenate in arrival order.
+ */
+export function mergeCommand(previous: PlayerCommand | null, next: PlayerCommand): PlayerCommand {
+  if (previous === null) return next;
+  const merged: PlayerCommand = {
+    m: next.m,
+    p: next.p,
+    b: (next.b & STICKY_BITS) | ((previous.b | next.b) & EDGE_BITS),
+  };
+  const events = [...(previous.e ?? []), ...(next.e ?? [])];
+  if (events.length > 0) merged.e = events.slice(0, MAX_MERGED_EVENTS);
+  // Hash and wave are per-message concerns the room has already acted on by the
+  // time this runs; carrying the newest keeps the relayed command faithful.
+  if (next.h !== undefined) merged.h = next.h;
+  if (previous.w === true || next.w === true) merged.w = true;
+  return merged;
+}
+
+/**
  * Validates a command shape before it is relayed. A malformed command is
  * dropped rather than repaired: a repaired command is a command that differs
  * between the sender's simulation and everyone else's, which is a desync with
@@ -149,9 +229,7 @@ export function parseCommand(raw: unknown): PlayerCommand | null {
   const events = value['e'];
   if (Array.isArray(events)) {
     const parsed: SimEvent[] = [];
-    // A single tick cannot legitimately raise more requests than this; the cap
-    // is what stops one client from making every other client's tick expensive.
-    for (const entry of events.slice(0, 8)) {
+    for (const entry of events.slice(0, MAX_EVENTS_PER_MESSAGE)) {
       const event = parseEvent(entry);
       if (event !== null) parsed.push(event);
     }
