@@ -28,6 +28,7 @@ const LobbyProtocolScript = preload("res://scripts/net/lobby_protocol.gd")
 @onready var ready_button: Button = %ReadyButton
 @onready var start_button: Button = %StartButton
 @onready var back_button: Button = %BackButton
+@onready var content: VBoxContainer = $MenuLayer/Root/Panel/Content
 
 var is_ready := false
 var transition_pending := false
@@ -37,6 +38,7 @@ var _ping_refresh_timer := 0.0
 const PING_REFRESH_INTERVAL_SECONDS := 0.5
 
 func _ready() -> void:
+	MenuEntrance.play(self, content.get_children(), 0)
 	nickname_edit.text = NetSession.identity.nickname
 	server_edit.text = NetConfigScript.base_url()
 	room_list.item_selected.connect(_on_room_selected)

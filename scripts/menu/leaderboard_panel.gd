@@ -17,12 +17,14 @@ const PAGE_SIZE := 20
 @onready var kills_button: Button = %KillsBoardButton
 @onready var previous_button: Button = %PreviousPageButton
 @onready var next_button: Button = %NextPageButton
+@onready var content: VBoxContainer = $MenuLayer/Root/Panel/Content
 
 var current_board := "team"
 var page := 0
 var total := 0
 
 func _ready() -> void:
+	MenuEntrance.play(self, content.get_children(), 0)
 	NetSession.api.leaderboard_loaded.connect(_on_loaded)
 	NetSession.api.leaderboard_failed.connect(_on_failed)
 	_load()

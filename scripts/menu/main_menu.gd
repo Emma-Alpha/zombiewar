@@ -18,11 +18,40 @@ const MenuFlow = preload("res://scripts/menu/menu_flow.gd")
 @onready var select_audio: AudioStreamPlayer = $SelectAudio
 @onready var confirm_audio: AudioStreamPlayer = $ConfirmAudio
 @onready var back_audio: AudioStreamPlayer = $BackAudio
+@onready var eyebrow: Label = %Eyebrow
+@onready var title: Label = %Title
+@onready var red_rule: ColorRect = %RedRule
+@onready var subtitle: Label = %Subtitle
+@onready var footer_hint: Label = %FooterHint
+@onready var version_label: Label = %VersionLabel
 
 var flow := MenuFlow.new()
 
 func _ready() -> void:
 	single_player_button.grab_focus()
+	_play_boot_sequence()
+
+## The menu opens like a boot sequence: each element wipes in from the left,
+## staggered, so the composition assembles instead of just appearing.
+func _play_boot_sequence() -> void:
+	MenuEntrance.play(self, _entrance_elements(), 1)
+	_breathe_title()
+
+func _entrance_elements() -> Array:
+	return [
+		eyebrow, title, red_rule, subtitle,
+		single_player_button, local_multiplayer_button,
+		online_multiplayer_button, leaderboard_button, quit_button,
+		footer_hint, version_label,
+	]
+
+func _breathe_title() -> void:
+	# A faint warm pulse keeps the headline alive against the dark backdrop.
+	var pulse := create_tween().set_loops()
+	pulse.tween_property(title, "modulate", Color(1.0, 0.94, 0.9, 1.0), 2.6) \
+		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	pulse.tween_property(title, "modulate", Color(1.0, 1.0, 1.0, 1.0), 2.6) \
+		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 
 func _unhandled_input(event: InputEvent) -> void:
 	var joy_button := event as InputEventJoypadButton

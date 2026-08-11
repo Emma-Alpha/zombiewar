@@ -141,6 +141,16 @@ theme_override_fonts/font = ExtResource("2_font")
 theme_override_font_sizes/font_size = 42
 text = "本地多人 · 设备加入"
 
+[node name="RedRule" type="ColorRect" parent="MenuLayer"]
+anchor_left = 0.06
+anchor_top = 0.155
+anchor_right = 0.06
+anchor_bottom = 0.155
+offset_right = 64.0
+offset_bottom = 4.0
+mouse_filter = 2
+color = Color(0.71, 0.16, 0.12, 1)
+
 [node name="JoinHint" type="Label" parent="MenuLayer"]
 anchor_left = 0.06
 anchor_top = 0.15

@@ -1,4 +1,4 @@
-[gd_scene load_steps=10 format=3]
+[gd_scene load_steps=14 format=3]
 
 [ext_resource type="Script" path="res://scripts/menu/menu_backdrop.gd" id="1_backdrop"]
 [ext_resource type="PackedScene" path="res://assets/characters/Characters_Lis_SingleWeapon.gltf" id="2_player"]
@@ -26,6 +26,32 @@ metallic = 0.08
 material = SubResource("StandardMaterial3D_ground")
 size = Vector2(34, 26)
 
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_ash"]
+transparency = 1
+shading_mode = 0
+billboard_mode = 3
+albedo_color = Color(1, 0.32, 0.18, 1)
+
+[sub_resource type="QuadMesh" id="QuadMesh_ash"]
+material = SubResource("StandardMaterial3D_ash")
+size = Vector2(0.05, 0.05)
+
+[sub_resource type="ParticleProcessMaterial" id="ParticleProcessMaterial_ash"]
+emission_shape = 3
+emission_box_extents = Vector3(11, 0.5, 8)
+direction = Vector3(0, 1, 0)
+spread = 18.0
+gravity = Vector3(0, 0.28, 0)
+initial_velocity_min = 0.12
+initial_velocity_max = 0.42
+linear_accel_min = 0.02
+linear_accel_max = 0.12
+damping_min = 0.05
+damping_max = 0.2
+scale_min = 0.4
+scale_max = 1.3
+color = Color(1, 0.36, 0.2, 0.55)
+
 [node name="MenuBackdrop" type="Node3D"]
 script = ExtResource("1_backdrop")
 
@@ -43,6 +69,22 @@ position = Vector3(-3.5, 3.4, -1.0)
 light_color = Color(1, 0.18, 0.08, 1)
 light_energy = 6.2
 omni_range = 15.0
+
+[node name="WarningLightFill" type="OmniLight3D" parent="."]
+position = Vector3(4.0, 2.4, 0.5)
+light_color = Color(1, 0.3, 0.14, 1)
+light_energy = 3.0
+omni_range = 11.0
+
+[node name="Ash" type="GPUParticles3D" parent="."]
+position = Vector3(0, 0.4, -2)
+amount = 90
+lifetime = 9.0
+preprocess = 9.0
+randomness = 0.7
+visibility_aabb = AABB(-12, -1, -9, 24, 12, 18)
+process_material = SubResource("ParticleProcessMaterial_ash")
+draw_pass_1 = SubResource("QuadMesh_ash")
 
 [node name="Ground" type="MeshInstance3D" parent="."]
 mesh = SubResource("PlaneMesh_ground")

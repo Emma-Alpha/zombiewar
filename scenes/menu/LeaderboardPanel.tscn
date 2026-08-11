@@ -74,6 +74,13 @@ theme_override_fonts/font = ExtResource("3_cjk_font")
 theme_override_font_sizes/font_size = 30
 text = "排行榜"
 
+[node name="RedRule" type="ColorRect" parent="MenuLayer/Root/Panel/Content"]
+custom_minimum_size = Vector2(64, 4)
+layout_mode = 2
+size_flags_horizontal = 0
+mouse_filter = 2
+color = Color(0.71, 0.16, 0.12, 1)
+
 [node name="BoardRow" type="HBoxContainer" parent="MenuLayer/Root/Panel/Content"]
 layout_mode = 2
 theme_override_constants/separation = 8

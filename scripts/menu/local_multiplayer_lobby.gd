@@ -14,14 +14,38 @@ const LOBBY_PLAYER_PREVIEW_SCENE := preload(
 @export_file("*.tscn") var game_scene_path := "res://scenes/gameplay/DemoArena.tscn"
 @export_file("*.tscn") var main_menu_scene_path := "res://scenes/menu/MainMenu.tscn"
 
+@onready var warning_light: OmniLight3D = $WarningLight
+@onready var camera: Camera3D = $Camera3D
+@onready var title: Label = $MenuLayer/Title
+@onready var join_hint: Label = $MenuLayer/JoinHint
+@onready var status_root: HBoxContainer = $MenuLayer/StatusRoot
+@onready var p1_hint: Label = $MenuLayer/P1Hint
+
 var join_state = LocalPlayerJoinStateScript.new()
 var transition_pending := false
 var slot_previews: Dictionary = {}
+var _elapsed := 0.0
+var _base_light_energy := 5.0
+var _base_camera_position := Vector3.ZERO
 
 func _ready() -> void:
+	_base_light_energy = warning_light.light_energy
+	_base_camera_position = camera.position
+	MenuEntrance.play(self, [title, join_hint, status_root, p1_hint], 0)
 	if not Input.joy_connection_changed.is_connected(_on_joy_connection_changed):
 		Input.joy_connection_changed.connect(_on_joy_connection_changed)
 	_sync_slots()
+
+func _process(delta: float) -> void:
+	_elapsed += delta
+	# 与主菜单同一套警戒灯语言：慢扫 + 闪烁，让座位区一直「待命」。
+	var sweep := sin(_elapsed * 1.9) * 0.5
+	var flicker := sin(_elapsed * 8.7) * sin(_elapsed * 3.3) * 0.4
+	warning_light.light_energy = _base_light_energy + sweep + flicker
+	# 镜头极轻地呼吸，画面不僵住。
+	camera.position = _base_camera_position + Vector3(
+		sin(_elapsed * 0.16) * 0.12, sin(_elapsed * 0.21) * 0.06, 0.0
+	)
 
 func _exit_tree() -> void:
 	if Input.joy_connection_changed.is_connected(_on_joy_connection_changed):
