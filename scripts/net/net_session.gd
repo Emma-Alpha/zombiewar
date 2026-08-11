@@ -48,6 +48,35 @@ func has_token() -> bool:
 func is_online_match() -> bool:
 	return local_slot >= 0 and room != null and room.is_connected_to_room()
 
+## 延迟显示的变色阈值（毫秒），大厅与对局 HUD 共用这一份，保证两处颜色一致。
+## 档位照王者荣耀的手感：绿通畅、黄可玩、红卡顿。
+const LATENCY_GOOD_MS := 20    ## < 此值：绿
+const LATENCY_FAIR_MS := 150   ## < 此值：黄；>= 此值：红
+const LATENCY_MAX_DISPLAY_MS := 460  ## 显示值封顶，再高也只显示这个数
+
+## 当前联机往返时延（毫秒）。-1 表示未知或未联机。供 HUD 做王者荣耀式延迟显示。
+func latency_ms() -> int:
+	if room == null:
+		return -1
+	return room.last_rtt_ms()
+
+## 延迟显示用的毫秒数：未知返回 -1，超过封顶值按封顶显示（实际卡顿不会因此看不见）。
+func latency_display_ms() -> int:
+	var rtt := latency_ms()
+	if rtt < 0:
+		return -1
+	return mini(rtt, LATENCY_MAX_DISPLAY_MS)
+
+## 延迟对应的显示颜色，按 LATENCY_*_MS 分档。
+func latency_color(rtt_ms: int) -> Color:
+	if rtt_ms < 0:
+		return Color(0.6, 0.6, 0.6)
+	if rtt_ms < LATENCY_GOOD_MS:
+		return Color(0.42, 0.9, 0.48)
+	if rtt_ms < LATENCY_FAIR_MS:
+		return Color(0.98, 0.8, 0.2)
+	return Color(0.96, 0.34, 0.22)
+
 func begin_match(seed_value: int, slots: Array) -> void:
 	match_seed = seed_value
 	local_slot = room.slot

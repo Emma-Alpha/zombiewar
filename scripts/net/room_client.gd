@@ -26,6 +26,9 @@ const FRAME_QUEUE_HARD_LIMIT := LobbyProtocolScript.FRAME_HISTORY_LIMIT + 60
 
 const RECONNECT_DELAY_SECONDS := 2.0
 const MAX_RECONNECT_ATTEMPTS := 5
+## 客户端侧延迟探测的间隔。服务器的心跳 ping 只够保活，测不出 RTT——
+## 往返时延必须在同一台机器的 clock 上做差，而那个 ping 的时间戳是服务器的。
+const PING_INTERVAL_SECONDS := 2.0
 
 signal connected(slot: int, player_id: String)
 signal connection_failed(reason: String)
@@ -55,6 +58,8 @@ var _joined := false
 var _reconnect_attempts := 0
 var _reconnect_timer := 0.0
 var _want_connection := false
+var _last_rtt_ms := -1
+var _ping_timer := 0.0
 
 func _ready() -> void:
 	set_process(true)
@@ -75,6 +80,8 @@ func leave() -> void:
 	_joined = false
 	_frames.clear()
 	_applied_tick = -1
+	_last_rtt_ms = -1
+	_ping_timer = 0.0
 
 func set_ready(is_ready: bool) -> void:
 	_send({"type": "ready", "ready": is_ready})
@@ -96,6 +103,11 @@ func send_command(command: Dictionary, hash_tick: int) -> void:
 	if hash_tick >= 0:
 		message["ht"] = hash_tick
 	_send(message)
+
+## 最近一次往返时延（毫秒）。-1 表示还没测出来（未连接，或第一个来回还没走完）。
+## 值是平滑过的，免得单个尖峰让 HUD 数字乱跳。
+func last_rtt_ms() -> int:
+	return _last_rtt_ms
 
 func report_result(team_wave: int, player_kills: Dictionary) -> void:
 	_send({
@@ -139,9 +151,33 @@ func _process(delta: float) -> void:
 			_send_join()
 		while socket.get_available_packet_count() > 0:
 			_handle_packet(socket.get_packet())
+		_tick_ping(delta)
 		return
 	if state == WebSocketPeer.STATE_CLOSED:
 		_handle_closed()
+
+## 周期性发一个带本机 monotonic 时间戳的 ping。服务器的 pong 把这个戳原样
+## 带回，做差的 clock 从头到尾都是本机这一个——这正是 RTT 测得准的前提。
+## get_ticks_usec 在 Web 端也单调且不受系统校时影响，比墙钟可靠。
+func _tick_ping(delta: float) -> void:
+	if not is_connected_to_room():
+		return
+	_ping_timer -= delta
+	if _ping_timer > 0.0:
+		return
+	_ping_timer = PING_INTERVAL_SECONDS
+	_send({"type": "ping", "ct": Time.get_ticks_usec()})
+
+func _on_pong_echo(client_time_usec: int) -> void:
+	var rtt_usec := Time.get_ticks_usec() - client_time_usec
+	if rtt_usec < 0:
+		return
+	var rtt_ms := rtt_usec / 1000
+	if _last_rtt_ms < 0:
+		_last_rtt_ms = rtt_ms
+	else:
+		# 指数平滑（约 1/3 新样本），压住偶发抖动。
+		_last_rtt_ms = int(round(lerpf(float(_last_rtt_ms), float(rtt_ms), 0.35)))
 
 func _open_socket() -> void:
 	socket = WebSocketPeer.new()
@@ -153,6 +189,8 @@ func _open_socket() -> void:
 		return
 	_connecting = true
 	_joined = false
+	_last_rtt_ms = -1
+	_ping_timer = 0.0
 
 ## 握手负载。单独抽出来是为了能在不开 socket 的情况下断言 resume_tick——
 ## 少报一个 tick 就是让房间补少一帧，而少一帧就是整局不同步。
@@ -230,7 +268,13 @@ func _handle_packet(packet: PackedByteArray) -> void:
 		"desync":
 			desync_detected.emit(int(message.get("tick", -1)), int(message.get("slot", -1)))
 		"ping":
+			# 服务器的心跳 ping，照旧回 pong 保活。它带的是服务器时钟，不能用来测延迟。
 			_send({"type": "pong", "t": message.get("t", 0)})
+		"pong":
+			# 我们自己 ping 的回声：ct 是本机 monotonic 戳，可直接做差。
+			var ct = message.get("ct", -1)
+			if typeof(ct) == TYPE_INT or typeof(ct) == TYPE_FLOAT:
+				_on_pong_echo(int(ct))
 		_:
 			pass
 

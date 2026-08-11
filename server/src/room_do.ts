@@ -207,6 +207,17 @@ export class RoomDurableObject implements DurableObject {
     switch (type) {
       case 'pong':
         return;
+      case 'ping': {
+        // A client-originated latency probe. Unlike the server heartbeat (whose
+        // timestamp lives on the server clock), the client stamps its own
+        // monotonic time in `ct` and we reflect it verbatim, so the round trip
+        // is measured on a single clock. Anything but a finite number is ignored.
+        const ct = message['ct'];
+        if (typeof ct === 'number' && Number.isFinite(ct)) {
+          this.send(socket, { type: 'pong', ct });
+        }
+        return;
+      }
       case 'ready':
         seat.ready = message['ready'] === true;
         this.broadcastRoster();

@@ -766,14 +766,29 @@ text = "PLAYER DOWN"
 horizontal_alignment = 1
 vertical_alignment = 1
 
-[node name="Objective" type="Label" parent="HUD"]
+[node name="Ping" type="Label" parent="HUD"]
+visible = false
 anchors_preset = 1
 anchor_left = 1.0
 anchor_right = 1.0
 offset_left = -448.0
 offset_top = 20.0
 offset_right = -24.0
-offset_bottom = 48.0
+offset_bottom = 42.0
+grow_horizontal = 0
+theme_override_colors/font_color = Color(0.42, 0.9, 0.48, 1)
+theme_override_font_sizes/font_size = 16
+text = "0ms"
+horizontal_alignment = 2
+
+[node name="Objective" type="Label" parent="HUD"]
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -448.0
+offset_top = 46.0
+offset_right = -24.0
+offset_bottom = 74.0
 grow_horizontal = 0
 theme_override_colors/font_color = Color(0.952941, 0.933333, 0.894118, 1)
 theme_override_font_sizes/font_size = 18
@@ -786,9 +801,9 @@ anchors_preset = 1
 anchor_left = 1.0
 anchor_right = 1.0
 offset_left = -448.0
-offset_top = 54.0
+offset_top = 80.0
 offset_right = -24.0
-offset_bottom = 82.0
+offset_bottom = 108.0
 grow_horizontal = 0
 theme_override_colors/font_color = Color(1, 0.78, 0.26, 1)
 theme_override_fonts/font = ExtResource("10_cjk_font")

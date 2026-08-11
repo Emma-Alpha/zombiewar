@@ -16,6 +16,7 @@ const LobbyProtocolScript = preload("res://scripts/net/lobby_protocol.gd")
 @export_file("*.tscn") var main_menu_scene_path := "res://scenes/menu/MainMenu.tscn"
 
 @onready var status_label: Label = %StatusLabel
+@onready var ping_label: Label = %Ping
 @onready var nickname_edit: LineEdit = %NicknameEdit
 @onready var server_edit: LineEdit = %ServerEdit
 @onready var room_code_edit: LineEdit = %RoomCodeEdit
@@ -30,6 +31,10 @@ const LobbyProtocolScript = preload("res://scripts/net/lobby_protocol.gd")
 
 var is_ready := false
 var transition_pending := false
+var _ping_refresh_timer := 0.0
+
+## 大厅延迟显示的刷新节流（秒）。RTT 本身每 2s 才更新，更频繁地读没有信息量。
+const PING_REFRESH_INTERVAL_SECONDS := 0.5
 
 func _ready() -> void:
 	nickname_edit.text = NetSession.identity.nickname
@@ -82,6 +87,26 @@ func _exit_tree() -> void:
 
 func _set_status(message: String) -> void:
 	status_label.text = message
+
+func _process(delta: float) -> void:
+	_update_ping(delta)
+
+## 大厅右上角的延迟显示：只在已连进房间、且测出 RTT 后显示。
+## 阈值与封顶直接复用 NetSession 上那份，与对局内 HUD 保持一致。
+func _update_ping(delta: float) -> void:
+	_ping_refresh_timer -= delta
+	if _ping_refresh_timer > 0.0:
+		return
+	_ping_refresh_timer = PING_REFRESH_INTERVAL_SECONDS
+	if ping_label == null:
+		return
+	var rtt := NetSession.latency_display_ms()
+	if not NetSession.room.is_connected_to_room() or rtt < 0:
+		ping_label.visible = false
+		return
+	ping_label.visible = true
+	ping_label.text = "%dms" % rtt
+	ping_label.add_theme_color_override("font_color", NetSession.latency_color(rtt))
 
 func _on_simple_error(message: String) -> void:
 	_set_status(message)

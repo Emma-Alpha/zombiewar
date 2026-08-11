@@ -25,6 +25,8 @@ const ARENA_SIM_GRID_WIDTH := 49
 const ARENA_SIM_GRID_HEIGHT := 39
 const DEFAULT_SIM_SEED := 20260807
 const ZOMBIE_MAX_HEALTH := 50.0
+## 延迟 HUD 的刷新节流（秒）。RTT 本身更新更慢，更频繁地读没有信息量。
+const PING_HUD_INTERVAL_SECONDS := 0.5
 const BLOCKER_GROUP: StringName = &"place_item_obstacle"
 const PISTOL_DEFINITION := preload("res://resources/weapons/pistol.tres")
 const SMG_DEFINITION := preload("res://resources/weapons/smg.tres")
@@ -60,6 +62,7 @@ var barrel_views: Dictionary = {}
 var chest_views: Dictionary = {}
 var wave_number := 0
 var team_defeated := false
+var _ping_hud_timer := 0.0
 var restart_pending := false
 var startup_pending := false
 var warmup_overlay_tween: Tween
@@ -130,6 +133,7 @@ func _process(delta: float) -> void:
 		local_team_state.sample_restart_requested()
 	):
 		request_restart()
+	_update_ping_hud(delta)
 	if zombie_renderer != null:
 		zombie_renderer.render_frame(
 			sim_world,
@@ -1283,6 +1287,29 @@ func _update_wave_hud() -> void:
 			wave_number,
 			active_count,
 		]
+
+## 王者荣耀式延迟显示：联机时右上角一个会按质量变色的毫秒数。
+## 节流更新——延迟本身每 2s 才刷新一次，没必要每帧去查 NetSession。
+## 阈值与封顶都用 NetSession 上那份共享定义，和大厅显示保持一致。
+func _update_ping_hud(delta: float) -> void:
+	_ping_hud_timer -= delta
+	if _ping_hud_timer > 0.0:
+		return
+	_ping_hud_timer = PING_HUD_INTERVAL_SECONDS
+	var label := get_node_or_null("HUD/Ping") as Label
+	if label == null:
+		return
+	if not online_mode:
+		label.visible = false
+		return
+	var net := get_node_or_null("/root/NetSession")
+	var rtt := net.latency_display_ms() if net != null else -1
+	if rtt < 0:
+		label.visible = false
+		return
+	label.visible = true
+	label.text = "%dms" % rtt
+	label.add_theme_color_override("font_color", net.latency_color(rtt))
 
 func _show_wave_status(message: String) -> void:
 	var label := get_node_or_null("HUD/WaveStatus") as Label
