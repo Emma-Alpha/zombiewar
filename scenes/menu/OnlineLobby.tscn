@@ -273,6 +273,27 @@ theme_override_styles/pressed = SubResource("StyleBox_button")
 theme_override_styles/focus = SubResource("StyleBox_button")
 text = "返回主菜单"
 
+[node name="LatencyLayer" type="CanvasLayer" parent="."]
+layer = 10
+
+[node name="Ping" type="Label" parent="LatencyLayer"]
+unique_name_in_owner = true
+visible = false
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -180.0
+offset_top = 16.0
+offset_right = -16.0
+offset_bottom = 44.0
+grow_horizontal = 0
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.42, 0.9, 0.48, 1)
+theme_override_fonts/font = ExtResource("3_cjk_font")
+theme_override_font_sizes/font_size = 20
+text = "0ms"
+horizontal_alignment = 2
+
 [connection signal="pressed" from="MenuLayer/Root/Panel/Content/IdentityRow/SaveNicknameButton" to="." method="_on_save_nickname_button_pressed"]
 [connection signal="pressed" from="MenuLayer/Root/Panel/Content/ServerRow/ApplyServerButton" to="." method="_on_apply_server_button_pressed"]
 [connection signal="pressed" from="MenuLayer/Root/Panel/Content/RoomRow/JoinRoomButton" to="." method="_on_join_room_button_pressed"]
