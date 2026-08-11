@@ -17,7 +17,7 @@ config/icon="res://icon.svg"
 
 [autoload]
 
-PhantomCameraManager="*uid://duq6jhf6unyis"
+PhantomCameraManager="*res://addons/phantom_camera/scripts/managers/phantom_camera_manager.gd"
 _mcp_game_helper="*res://addons/godot_ai/runtime/game_helper.gd"
 GameSession="*res://scripts/gameplay/game_session.gd"
 NetSession="*res://scripts/net/net_session.gd"
