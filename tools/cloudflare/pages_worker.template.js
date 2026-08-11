@@ -1,31 +1,25 @@
 const WASM_OBJECT_KEY = "__WASM_OBJECT_KEY__";
 // The key embeds the SHA-256 of the wasm bytes, so any byte change produces a
-// brand-new URL space. That makes the object safe to cache forever: there is no
-// stale-cache risk because a new deploy always serves a different key.
+// brand-new object. The response is safe to cache in the browser: a new deploy
+// always serves a different key.
 const CACHE_CONTROL = "public, max-age=31536000, immutable";
 const ERROR_CACHE_CONTROL = "no-store, no-cache, must-revalidate, max-age=0";
 
-function acceptsBrotli(request) {
-	const header = request.headers.get("Accept-Encoding");
-	if (header === null) return false;
-	return header.split(",").some((token) => token.trim().toLowerCase().startsWith("br"));
-}
-
-function buildHeaders(object, { brotli }) {
+function buildHeaders(object) {
 	const headers = new Headers();
 	if (typeof object.writeHttpMetadata === "function") {
 		object.writeHttpMetadata(headers);
 	}
-	// Always the decompressed type: when we send the Brotli object we set
-	// Content-Encoding so the browser decodes it back to application/wasm.
-	headers.set("Content-Type", "application/wasm");
-	if (brotli) headers.set("Content-Encoding", "br");
+	// application/octet-stream, NOT application/wasm. Cloudflare Pages' edge
+	// compression (both Brotli and gzip) corrupts this large R2-backed binary
+	// response, so we must keep the edge from treating it as compressible.
+	// Marking the payload octet-stream makes the edge pass it through untouched.
+	// The Godot/Emscripten loader fetches the bytes itself (arrayBuffer), so the
+	// MIME type does not affect instantiation.
+	headers.set("Content-Type", "application/octet-stream");
 	headers.set("Cache-Control", CACHE_CONTROL);
 	headers.set("Cross-Origin-Opener-Policy", "same-origin");
 	headers.set("Cross-Origin-Embedder-Policy", "require-corp");
-	// The response now varies on Accept-Encoding; tell caches so a br body is
-	// never served to a client that only asked for identity.
-	headers.set("Vary", "Accept-Encoding");
 	if (object.httpEtag) headers.set("ETag", object.httpEtag);
 	return headers;
 }
@@ -40,38 +34,21 @@ function errorResponse(status, message) {
 	});
 }
 
-async function readObject(request, env, key) {
-	return request.method === "HEAD"
-		? await env.GAME_ASSETS.head(key)
-		: await env.GAME_ASSETS.get(key);
-}
-
 async function serveWasm(request, env) {
 	const isHead = request.method === "HEAD";
-	// Prefer the pre-compressed object when the client takes Brotli. The `.br`
-	// sibling is uploaded alongside the raw wasm by deploy_r2_pages.sh; if it is
-	// missing (older deploy) we fall back to the raw object so nothing breaks.
-	if (acceptsBrotli(request)) {
-		try {
-			const brotliObject = await readObject(request, env, `${WASM_OBJECT_KEY}.br`);
-			if (brotliObject !== null) {
-				return new Response(isHead ? null : brotliObject.body, {
-					status: 200,
-					headers: buildHeaders(brotliObject, { brotli: true }),
-				});
-			}
-		} catch (error) {
-			console.error("Unable to read Brotli WASM from R2; falling back to raw", error);
-		}
-	}
 	try {
-		const object = await readObject(request, env, WASM_OBJECT_KEY);
+		const object = isHead
+			? await env.GAME_ASSETS.head(WASM_OBJECT_KEY)
+			: await env.GAME_ASSETS.get(WASM_OBJECT_KEY);
 		if (object === null) {
 			return errorResponse(503, `WASM object is unavailable: ${WASM_OBJECT_KEY}`);
 		}
-		return new Response(isHead ? null : object.body, {
+		// Buffer the body instead of streaming object.body: the Pages edge mangles
+		// large streamed binary responses. An ArrayBuffer passes through intact.
+		const body = isHead ? null : await object.arrayBuffer();
+		return new Response(body, {
 			status: 200,
-			headers: buildHeaders(object, { brotli: false }),
+			headers: buildHeaders(object),
 		});
 	} catch (error) {
 		console.error("Unable to read WASM from R2", error);
