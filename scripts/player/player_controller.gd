@@ -28,14 +28,14 @@ signal died
 
 @export_group("Survivability")
 @export var player_index := 0
-@export var max_health := 100.0
+@export var max_health: float = BASE_MAX_HEALTH
 @export var hit_reaction_duration := 0.24
 @export var hit_attack_lock_duration := 1.2
 @export var hit_knockback_speed := 8.0
 @export var hit_knockback_deceleration := 18.0
 
 @export_group("Movement Feel")
-@export var move_speed: float = 5.0
+@export var move_speed: float = BASE_MOVE_SPEED
 @export var ground_acceleration: float = 30.0
 @export var ground_deceleration: float = 42.0
 @export var air_acceleration: float = 12.0
@@ -64,6 +64,10 @@ var animation_player: AnimationPlayer
 var aim_direction := Vector3.FORWARD
 var visual_rest_position := Vector3.ZERO
 var visual_recoil_offset := 0.0
+## 角色三围的基准值。spawner 的 apply_character_definition 从这里起算，
+## 避免与 @export 默认值双写漂移。
+const BASE_MAX_HEALTH := 100.0
+const BASE_MOVE_SPEED := 5.0
 var health: Health
 var defeated := false
 var hit_reaction_remaining := 0.0
@@ -89,6 +93,31 @@ func set_sim_request_sink(value: Callable) -> void:
 	sim_request_sink = value
 	if equipment != null:
 		equipment.set_sim_request_sink(sim_request_sink)
+
+## 当前角色定义（spawner 注入）。被动与伤害缩放在表现层读它。
+var character_definition: CharacterDefinition = null
+
+## 应用角色三围与配色。必须在 set_input_source / 首次同步血条之前调用。
+##
+## 时序：spawner 在 add_child（触发 _ready）之前调用本方法，此时 health 仍为
+## null——这里只更新 max_health / move_speed，真正的 Health 实例交给 _ready 的
+## _ensure_health_initialized() 用新上限创建。若在运行时替换角色（health 已建），
+## 则重建 Health 并重连信号，保证血条与死亡回调不丢。
+func apply_character_definition(def: CharacterDefinition) -> void:
+	if def == null:
+		return
+	character_definition = def
+	max_health = maxf(1.0, BASE_MAX_HEALTH + def.max_health_bonus)
+	move_speed = BASE_MOVE_SPEED * def.move_speed_mult
+	if health != null:
+		health.changed.disconnect(_on_health_changed)
+		health.depleted.disconnect(_on_depleted)
+		health = Health.new(max_health)
+		health.changed.connect(_on_health_changed)
+		health.depleted.connect(_on_depleted)
+		health_changed.emit(health.current, health.maximum)
+		_sync_health_bar(false)
+	set_accent_color(def.accent_color)
 
 func _ready() -> void:
 	_ensure_health_initialized()

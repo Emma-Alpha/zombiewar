@@ -81,7 +81,7 @@ func spawn_players(
 			character_id = descriptor.character_id
 		var character = catalog.get_by_id(character_id)
 		if character != null:
-			player.set_accent_color(character.accent_color)
+			player.apply_character_definition(character)
 		player.screen_safe_margin_ratio = safe_margin_ratio
 		player.set_input_source(input_source)
 		player.set_place_item_service(place_item_service)
