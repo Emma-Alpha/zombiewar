@@ -420,7 +420,10 @@ func _on_weapon_changed(_definition: WeaponDefinition) -> void:
 
 func _on_equipment_changed(display_name: String, count_text: String) -> void:
 	if equipment_label != null:
-		equipment_label.set_status(player_index, display_name, count_text)
+		var class_prefix := ""
+		if character_definition != null and String(character_definition.display_name) != "":
+			class_prefix = "[%s] " % character_definition.display_name
+		equipment_label.set_status(player_index, class_prefix + display_name, count_text)
 
 ## 由竞技场在模拟层判定改装件归属之后推过来。
 ## 玩家自己不持有改装状态——它住在 SimWorld 里、逐 tick 进帧哈希，

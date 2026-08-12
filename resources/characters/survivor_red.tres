@@ -5,7 +5,7 @@
 [resource]
 script = ExtResource("1_definition")
 character_id = &"survivor_red"
-display_name = "红衣"
+display_name = "突击"
 accent_color = Color(0.906, 0.263, 0.212, 1)
 max_health_bonus = 0.0
 move_speed_mult = 0.92
