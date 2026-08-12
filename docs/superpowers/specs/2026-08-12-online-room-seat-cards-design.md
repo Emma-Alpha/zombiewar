@@ -196,16 +196,23 @@ OnlineLobby (Node3D)              状态宿主 + NetSession 信号订阅
 
 ### 6. 验证
 
-- `tools/validation/validate_lobby_player_preview.gd:22` 当前断言"预览必须是那个 GLTF"，
-  改为"必须来自 `CharacterCatalog` 中某个 definition"。
+- `tools/validation/validate_lobby_player_preview.gd:22` 的 GLTF 断言**保持不变**——
+  A 阶段四个角色共用同一个模型，它仍然是真的。改为模型来源断言要等 B 引入 `model_scene`
+  字段之后才有意义。本次给该脚本**增加**配色断言：`set_accent_color()` 后
+  `PlayerLight.light_color` 与 `PlayerLabel.outline_modulate` 必须变为传入的颜色，
+  且不影响 `set_online(false)` 的变暗行为。
 - 新增 `tools/validation/validate_character_catalog.gd`、`validate_map_catalog.gd`：
   id 唯一、非空、匹配 `^[a-z0-9_]{1,32}$`、引用字段非空、`default_id()` 命中目录内条目。
 - 新增 `tools/validation/validate_online_room_panel.gd`：实例化 `OnlineLobby.tscn`，
   断言两个面板互斥、四张 `SeatCard` 各自持有独立 `SubViewport`、空位态与占位态渲染无报错。
-- 协议一致性：`server/src/lib/protocol.ts` 的注释提到一个 `protocol/fixtures/` 目录用于
-  双端常量比对，**该目录实际不存在**，注释是过期的。本次**只把注释改对**，不搭建
-  fixture 比对设施——那是独立议题，塞进本次会把范围撑开，而握手时的版本号比对已经
-  覆盖了它真正要防的那类漂移。
+- 协议一致性：真正的双端常量对拍在 `tools/validation/validate_online_frame_sync.gd`
+  的 `_check_protocol_constants()`——它直接读 `server/src/lib/protocol.ts` 源码正则取值。
+  本次新增的协议常量必须加进它的 `expected` 字典，并按 AGENTS.md 的要求运行它。
+- `server/src/lib/protocol.ts` 头注释指向的 `protocol/fixtures/` 路径是错的，真实目录是
+  `tools/validation/fixtures/protocol/`。该目录里 6 个 JSON **没有任何代码读取**，
+  且 `manifest.json` 与 `handshake.json` 都停在 `protocol_version: 1`（真实版本即将是 4）。
+  本次把注释指向 `validate_online_frame_sync.gd`，并**删除这批无人读取的过期 fixture**：
+  留着一份停在旧版本又没人校验的"协议样例"，只会让下一个人把它当权威。
 - 手动验收：两台客户端各自建房/加入，验证换角色广播、准备锁定选择、房主换图清空准备、
   未全员准备时开始按钮不可用且服务端也拒绝、开局后双端角色配色一致。
 
