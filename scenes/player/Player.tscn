@@ -1,4 +1,4 @@
-[gd_scene load_steps=18 format=3]
+[gd_scene load_steps=19 format=3]
 
 [ext_resource type="Script" path="res://scripts/player/player_controller.gd" id="1_controller"]
 [ext_resource type="PackedScene" path="res://assets/characters/Characters_Lis_SingleWeapon.gltf" id="2_model"]
@@ -30,6 +30,12 @@ height = 1.55
 radius = 0.12
 height = 1.55
 
+[sub_resource type="TorusMesh" id="TorusMesh_accent"]
+inner_radius = 0.46
+outer_radius = 0.58
+rings = 24
+ring_segments = 8
+
 [node name="Player" type="CharacterBody3D" groups=["damageable_targets"]]
 collision_layer = 2
 collision_mask = 9
@@ -58,6 +64,11 @@ shape = SubResource("CapsuleShape3D_weapon_normal_probe")
 collision_mask = 1
 collide_with_areas = false
 shape = SubResource("CapsuleShape3D_weapon_raised_probe")
+
+[node name="AccentRing" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.03, 0)
+cast_shadow = 0
+mesh = SubResource("TorusMesh_accent")
 
 [node name="VisualRoot" type="Node3D" parent="."]
 rotation_degrees = Vector3(0, 180, 0)

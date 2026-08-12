@@ -5,6 +5,7 @@ const GameSessionScript = preload("res://scripts/gameplay/game_session.gd")
 const PlayerScreenBoundsScript = preload(
 	"res://scripts/camera/player_screen_bounds.gd"
 )
+const ContentCatalogsScript = preload("res://scripts/gameplay/content_catalogs.gd")
 const PLAYER_SHAPE_RADIUS := 0.45
 const PLAYER_SHAPE_HEIGHT := 1.8
 const PLAYER_SHAPE_CENTER_Y := 0.93
@@ -73,6 +74,14 @@ func spawn_players(
 			return _fail_spawn(spawned, "Player %d could not be instantiated" % (index + 1))
 		player.name = "P%d" % (index + 1)
 		player.player_index = index
+		# 两个描述符同形，都带 character_id；单机的 descriptor 为 null，走默认角色。
+		var catalog = ContentCatalogsScript.characters()
+		var character_id: StringName = catalog.default_id()
+		if descriptor != null and "character_id" in descriptor and String(descriptor.character_id) != "":
+			character_id = descriptor.character_id
+		var character = catalog.get_by_id(character_id)
+		if character != null:
+			player.set_accent_color(character.accent_color)
 		player.screen_safe_margin_ratio = safe_margin_ratio
 		player.set_input_source(input_source)
 		player.set_place_item_service(place_item_service)

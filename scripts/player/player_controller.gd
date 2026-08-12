@@ -46,6 +46,7 @@ signal died
 @export var visual_recoil_recovery := 1.2
 
 @onready var visual_root: Node3D = $VisualRoot
+@onready var accent_ring: MeshInstance3D = $AccentRing
 @onready var equipment: EquipmentController = $EquipmentController
 @onready var functional_ray_origin: Marker3D = $FunctionalRayOrigin
 @onready var weapon_clearance: WeaponClearanceController = $WeaponClearanceController
@@ -112,6 +113,26 @@ func _ready() -> void:
 		equipment.get_current_display_name(),
 		equipment.get_current_count_text()
 	)
+	# 先建一份材质：spawner 随后会用角色配色覆盖它。没有 spawner 的场合
+	# （编辑器里单独跑 Player.tscn）也不该是一圈没有材质的白环。
+	set_accent_color(Color.WHITE)
+
+## 角色配色。四个人共用同一个模型，脚下这圈光环是场上唯一分得清谁是谁的东西。
+##
+## 材质在这里 new 出来而不是写进 Player.tscn：写进场景的话四个玩家实例
+## 共用同一份 StandardMaterial3D，给第四个人上色会把前三个一起改掉。
+func set_accent_color(color: Color) -> void:
+	if accent_ring == null:
+		return
+	var material := accent_ring.material_override as StandardMaterial3D
+	if material == null:
+		material = StandardMaterial3D.new()
+		material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		accent_ring.material_override = material
+	material.albedo_color = color
+	if equipment_label != null and equipment_label.has_method("set_accent_color"):
+		equipment_label.set_accent_color(color)
 
 func _process(delta: float) -> void:
 	hit_reaction_remaining = maxf(hit_reaction_remaining - delta, 0.0)
@@ -371,6 +392,13 @@ func _on_weapon_changed(_definition: WeaponDefinition) -> void:
 func _on_equipment_changed(display_name: String, count_text: String) -> void:
 	if equipment_label != null:
 		equipment_label.set_status(player_index, display_name, count_text)
+
+## 由竞技场在模拟层判定改装件归属之后推过来。
+## 玩家自己不持有改装状态——它住在 SimWorld 里、逐 tick 进帧哈希，
+## 表现层只负责显示，读一份缓存反而会给"两边显示不一致"留口子。
+func set_weapon_mod_summary(summary: String) -> void:
+	if equipment_label != null:
+		equipment_label.set_mod_summary(summary)
 
 func apply_damage(amount: float, source_position := Vector3.ZERO) -> float:
 	_ensure_health_initialized()
