@@ -462,6 +462,15 @@ func apply_damage(amount: float, source_position := Vector3.ZERO) -> float:
 func is_alive() -> bool:
 	return not defeated
 
+## 医疗光环回血入口。只改血量（表现层），不触发击退/受击反馈。
+func heal(amount: float) -> void:
+	_ensure_health_initialized()
+	if defeated:
+		return
+	var applied := health.heal(amount)
+	if applied > 0.0:
+		health_changed.emit(health.current, health.maximum)
+
 func _ensure_health_initialized() -> void:
 	if health != null:
 		return

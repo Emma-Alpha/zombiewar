@@ -187,6 +187,7 @@ var tick_hit_events: Array = []
 var tick_death_events := PackedInt32Array()
 var tick_spawn_events := PackedInt32Array()
 var tick_player_damage_events: Array = []
+var tick_player_heal_events: Array = []
 var tick_shot_events: Array = []
 var tick_barrel_events: Array = []
 var tick_chest_events: Array = []
@@ -243,6 +244,18 @@ var player_mod_level := PackedByteArray()
 ## 目录不一致时（例如两端角色文件不同步）哈希立刻暴露。值 1.0 = 无加成。
 ## reset() 只把值复位为 1.0，保留尺寸分配（profile 数在装配期才确定）。
 var player_signature_scale := PackedFloat32Array()
+
+# ---- 医疗光环状态 ----
+## 医疗光环半径（世界单位）。光环影响**别的玩家**，因此必须进模拟层 tick 结算，
+## 各端才对齐"谁在光环里、回多少血"——放表现层用 Area3D 或各自计时会 desync。
+const MEDIC_AURA_RADIUS := 6.0
+## 每多少个 tick 结算一次回血。
+const MEDIC_AURA_INTERVAL_TICKS := 30
+## 每次结算的基准回血量（×passive_strength）。
+const MEDIC_AURA_HEAL_PER_PROC := 5.0
+## 逐座位：是否医疗 + 光环强度。装配期由 arena 按角色目录登记（各端一致）。
+var slot_is_medic := PackedByteArray()
+var slot_medic_strength := PackedFloat32Array()
 ## reward_profile_index -> 该奖励授予的改装件下标（-1 表示它不是改装件）与层数。
 ## 与 weapon_profiles 同性质：装配期由表现层灌入，**不进帧哈希、reset() 不清空**。
 var reward_mod_id := PackedInt32Array()
@@ -343,6 +356,9 @@ func reset(room_seed: int) -> void:
 	player_mod_level.fill(0)
 	# 签名表复位为 1.0（无加成），保留尺寸分配。
 	player_signature_scale.fill(1.0)
+	# 医疗登记复位（保留尺寸分配）。
+	slot_is_medic.fill(0)
+	slot_medic_strength.fill(1.0)
 	_clear_tick_events()
 	grid.mark_dirty()
 	flow_field.setup(grid)
@@ -987,6 +1003,7 @@ func step_tick() -> void:
 	_recover_spread()
 	_update_barrel_fuses()
 	_resolve_pending_events()
+	_update_medic_auras()
 	_materialize_death_rule_drops()
 	_update_flow_field()
 	_update_zombies()
@@ -1019,6 +1036,7 @@ func _clear_tick_events() -> void:
 	tick_death_events = PackedInt32Array()
 	tick_spawn_events = PackedInt32Array()
 	tick_player_damage_events = []
+	tick_player_heal_events = []
 	tick_shot_events = []
 	tick_barrel_events = []
 	tick_chest_events = []
@@ -1575,6 +1593,46 @@ func get_player_signature_scale(slot: int, profile_index: int) -> float:
 	if player_signature_scale.size() != MAX_PLAYER_SLOTS * count:
 		return 1.0
 	return player_signature_scale[slot * count + profile_index]
+
+## 登记某座位是否为医疗、及其光环强度。各端从同一份角色目录独立调用，
+## 结果必然一致（无需进网络帧）；回血量取决于它，进帧哈希间接覆盖。
+func set_slot_medic(slot: int, is_medic: bool, strength: float) -> void:
+	if slot < 0 or slot >= MAX_PLAYER_SLOTS:
+		return
+	if slot_is_medic.size() != MAX_PLAYER_SLOTS:
+		slot_is_medic.resize(MAX_PLAYER_SLOTS)
+		slot_is_medic.fill(0)
+		slot_medic_strength.resize(MAX_PLAYER_SLOTS)
+		slot_medic_strength.fill(1.0)
+	slot_is_medic[slot] = 1 if is_medic else 0
+	slot_medic_strength[slot] = maxf(strength, 0.0)
+
+## 医疗光环结算。复用 _resolve_chest_claims 的距离判定模式：用 get_player_position
+## 反量化 + length_squared 比较，绝不直接比较浮点距离（各端可能算出不同结果）。
+func _update_medic_auras() -> void:
+	if get_tick() % MEDIC_AURA_INTERVAL_TICKS != 0:
+		return
+	if slot_is_medic.size() != MAX_PLAYER_SLOTS:
+		return
+	for healer in range(MAX_PLAYER_SLOTS):
+		if slot_is_medic[healer] == 0:
+			continue
+		if not is_player_alive(healer) or not is_player_present(healer):
+			continue
+		var healer_position := get_player_position(healer)
+		var radius_squared := MEDIC_AURA_RADIUS * MEDIC_AURA_RADIUS
+		for target in range(MAX_PLAYER_SLOTS):
+			if target == healer:
+				continue
+			if not is_player_alive(target) or not is_player_present(target):
+				continue
+			var offset := get_player_position(target) - healer_position
+			if offset.length_squared() > radius_squared:
+				continue
+			tick_player_heal_events.append({
+				"slot": target,
+				"amount": MEDIC_AURA_HEAL_PER_PROC * slot_medic_strength[healer],
+			})
 
 ## 开火事件只携带玩家的瞄准方向，不携带散布后的方向。
 ## 散布由各客户端在 Stream.WEAPON_SPREAD 上各自确定性地算出。

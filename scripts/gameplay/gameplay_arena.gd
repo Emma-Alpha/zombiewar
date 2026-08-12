@@ -841,6 +841,8 @@ func _consume_sim_events() -> void:
 		_on_sim_hit_event(event)
 	for event in sim_world.tick_player_damage_events:
 		_on_sim_player_damage_event(event)
+	for event in sim_world.tick_player_heal_events:
+		_on_sim_player_heal_event(event)
 	if sim_world.tick_death_events.size() > 0:
 		zombie_renderer.notify_deaths(sim_world)
 		call_deferred("_refresh_wave_state_after_deaths")
@@ -892,6 +894,14 @@ func _on_sim_player_damage_event(event: Dictionary) -> void:
 		return
 	var origin: Vector2 = event["origin"]
 	target.apply_damage(float(event["damage"]), Vector3(origin.x, 0.0, origin.y))
+
+## 医疗光环回血落地。事件由模拟层 tick 结算产生（各端一致），这里只把回血量
+## 应用到表现层玩家的 Health 上。血量本身在表现层，回血不产生新的模拟状态。
+func _on_sim_player_heal_event(event: Dictionary) -> void:
+	var target := _player_for_slot(int(event["slot"]))
+	if target == null or not target.is_alive():
+		return
+	target.heal(float(event["amount"]))
 
 func _spawn_blood_impact(hit_position: Vector3, direction: Vector3) -> void:
 	var effect := BLOOD_IMPACT_SCENE.instantiate() as BloodImpact
@@ -1072,25 +1082,26 @@ func _spawn_session_players() -> bool:
 	_collect_network_input_sources()
 	return not players.is_empty()
 
-## 把每名玩家的本命武器伤害缩放登记进模拟层。
+## 把每名玩家的本命武器伤害缩放 + 医疗光环登记进模拟层。
 ##
 ## 必须在玩家生成后调用：register_weapon_profiles 跑在玩家之前，那时还没有
 ## player.character_definition 可读。本方法依赖 weapons profiles 已注册（
 ## weapon_profile_count() 非零）。各端从同一份角色目录独立算出同一张表，
-## 因此不进网络帧；sim_hasher 已把它混入帧哈希做哨兵。
+## 因此不进网络帧；sim_hasher 已把缩放表混入帧哈希做哨兵。
 func _register_player_signatures() -> void:
 	for slot in range(players.size()):
 		var player := players[slot]
 		if player == null or player.character_definition == null:
 			continue
 		var def := player.character_definition
-		if String(def.signature_weapon_id) == "":
-			continue
-		var profile_index := get_weapon_profile_index(def.signature_weapon_id)
-		if profile_index < 0:
-			continue
-		sim_world.set_player_signature_scale(
-			slot, profile_index, def.signature_weapon_damage_mult
+		if String(def.signature_weapon_id) != "":
+			var profile_index := get_weapon_profile_index(def.signature_weapon_id)
+			if profile_index >= 0:
+				sim_world.set_player_signature_scale(
+					slot, profile_index, def.signature_weapon_damage_mult
+				)
+		sim_world.set_slot_medic(
+			slot, def.passive_id == &"medic_aura", def.passive_strength
 		)
 
 ## 记下每个远端座位的输入源，之后每一帧都靠它把命令喂给对应的身体。
