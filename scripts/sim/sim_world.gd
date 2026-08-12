@@ -217,6 +217,12 @@ var chest_reward_profile := PackedInt32Array()
 var chest_amount := PackedInt32Array()
 var chest_respawn_delay_ticks := PackedInt32Array()
 var chest_respawn_at_tick := PackedInt32Array()
+## 这个箱子占不占阻挡格。固定补给箱是场景家具、要挡；僵尸死后掉的战利品不挡。
+##
+## 掉落物占阻挡格会造成三件事，密度一上来全都很明显：地上的箱子把战场织成迷宫、
+## 玩家的子弹被自己刚打出来的战利品挡住、以及每掉一件就标脏一次流场触发全网格
+## BFS 重建（而重建是这套模拟里最贵的一步）。
+var chest_blocks_movement := PackedByteArray()
 var chest_blocker_min := PackedVector2Array()
 var chest_blocker_max := PackedVector2Array()
 
@@ -315,6 +321,7 @@ func reset(room_seed: int) -> void:
 	chest_amount = PackedInt32Array()
 	chest_respawn_delay_ticks = PackedInt32Array()
 	chest_respawn_at_tick = PackedInt32Array()
+	chest_blocks_movement = PackedByteArray()
 	chest_blocker_min = PackedVector2Array()
 	chest_blocker_max = PackedVector2Array()
 	player_position_quantized.fill(0)
@@ -452,7 +459,8 @@ func spawn_chest(
 	respawn_delay_ticks: int,
 	blocker_min_xz: Vector2,
 	blocker_max_xz: Vector2,
-	claim_radius: float
+	claim_radius: float,
+	blocks_movement: bool = true
 ) -> int:
 	var new_id := next_entity_id
 	next_entity_id += 1
@@ -466,7 +474,9 @@ func spawn_chest(
 	chest_respawn_at_tick.append(-1)
 	chest_blocker_min.append(blocker_min_xz)
 	chest_blocker_max.append(blocker_max_xz)
-	set_blocker_world_rect(blocker_min_xz, blocker_max_xz, true)
+	chest_blocks_movement.append(1 if blocks_movement else 0)
+	if blocks_movement:
+		set_blocker_world_rect(blocker_min_xz, blocker_max_xz, true)
 	tick_chest_events.append({
 		"kind": &"chest_spawned",
 		"chest_id": new_id,
@@ -511,9 +521,10 @@ func _update_chest_respawns() -> void:
 			continue
 		chest_state[index] = CHEST_STATE_ACTIVE
 		chest_respawn_at_tick[index] = -1
-		set_blocker_world_rect(
-			chest_blocker_min[index], chest_blocker_max[index], true
-		)
+		if chest_blocks_movement[index] == 1:
+			set_blocker_world_rect(
+				chest_blocker_min[index], chest_blocker_max[index], true
+			)
 		tick_chest_events.append({
 			"kind": &"chest_respawned",
 			"chest_id": chest_id[index],
@@ -540,9 +551,10 @@ func _resolve_chest_claims() -> void:
 			var offset := get_player_position(slot) - chest_position[index]
 			if offset.length_squared() > claim_range_squared:
 				continue
-			set_blocker_world_rect(
-				chest_blocker_min[index], chest_blocker_max[index], false
-			)
+			if chest_blocks_movement[index] == 1:
+				set_blocker_world_rect(
+					chest_blocker_min[index], chest_blocker_max[index], false
+				)
 			# 改装件在模拟层当场生效，不经过表现层兑现。
 			# 走这条路的理由：拾取判定本身已经是确定性的（各端同 tick 判给同一个座位），
 			# 所以改装层数也就天然各端一致；而表现层兑现是「可能失败且模拟层不知情」的
@@ -985,7 +997,12 @@ func _materialize_death_rule_drops() -> void:
 			-1,
 			position - CHEST_BLOCKER_HALF_SIZE,
 			position + CHEST_BLOCKER_HALF_SIZE,
-			CHEST_CLAIM_RADIUS
+			CHEST_CLAIM_RADIUS,
+			# 战利品不占阻挡格。它落在僵尸死亡的那一点上、没有任何可通行性校验，
+			# 占格的后果是：地上的战利品把战场织成迷宫、玩家的子弹被自己刚打出来的
+			# 战利品挡住（阻挡格同时进 ray_blocked_distance 的静态图）、
+			# 以及每掉一件就标脏流场触发一次全网格 BFS 重建。
+			false
 		)
 
 func _clear_tick_events() -> void:

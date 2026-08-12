@@ -90,6 +90,7 @@ static func hash_world(world: SimWorld) -> String:
 	hasher.mix_bytes(world.chest_respawn_at_tick.to_byte_array())
 	hasher.mix_bytes(world.chest_blocker_min.to_byte_array())
 	hasher.mix_bytes(world.chest_blocker_max.to_byte_array())
+	hasher.mix_bytes(world.chest_blocks_movement)
 	hasher.mix_bytes(world.player_position_quantized.to_byte_array())
 	hasher.mix_bytes(world.player_alive)
 	hasher.mix_bytes(world.player_present)

@@ -201,9 +201,20 @@ func _check_death_drop_materializes_before_flow_update(failures: Array[String]) 
 		"death drop must use the shared blocker extent",
 		failures
 	)
+	# 战利品**不**占阻挡格。原先它占，是因为死亡掉落与固定补给箱共用 spawn_chest，
+	# 顺带继承了后者的阻挡语义——而两者的处境完全不同：固定刷新点的落位在
+	# game_map_runtime 里有越界与重叠校验，死亡掉落却直接用僵尸咽气的那一点、
+	# 不做任何可通行性检查。
+	#
+	# 占格的后果是玩家可见的三件事：地上的战利品把战场织成迷宫、子弹被自己刚
+	# 打出来的战利品挡住（阻挡格同时进 ray_blocked_distance 的静态图）、
+	# 以及每掉一件就标脏流场触发一次全网格 BFS 重建。
+	#
+	# blocker_min/max 仍然逐箱记录（上面那条断言），这样"生成时标没标"与
+	# "领取时清不清"始终对称——清掉一个当初没标过的矩形会在墙上开洞。
 	_expect(
-		world.get_grid().is_blocked(world.get_grid().world_to_cell(death_position)),
-		"death drop must establish its blocker in the death tick",
+		not world.get_grid().is_blocked(world.get_grid().world_to_cell(death_position)),
+		"death drop must NOT block movement or bullets",
 		failures
 	)
 	_expect(
@@ -279,7 +290,9 @@ func _spawn_chest(world: SimWorld, arguments: Array, failures: Array[String]) ->
 		if method.get("name") != &"spawn_chest":
 			continue
 		var method_arguments: Array = method.get("args", [])
-		if method_arguments.size() != arguments.size():
+		# 允许尾部追加带默认值的可选参数（blocks_movement 就是这样加进来的），
+		# 但前面这几个必填参数的顺序不能动——调用方是按位置传的。
+		if method_arguments.size() < arguments.size():
 			failures.append(
 				"spawn_chest must accept position, reward, amount, respawn, blocker bounds, and radius"
 			)
