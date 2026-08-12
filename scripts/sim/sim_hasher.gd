@@ -101,6 +101,8 @@ static func hash_world(world: SimWorld) -> String:
 	# 本命武器缩放决定每名玩家实际打出的伤害，混进哈希做哨兵：两端角色目录
 	# 不一致时（角色文件不同步），这帧就会暴露，而不是等到某枪伤害差被发现。
 	hasher.mix_bytes(world.player_signature_scale.to_byte_array())
+	# 材料是商店购买力，各端必须一致；不一致会在金钱数上立刻暴露。
+	hasher.mix_bytes(world.player_material.to_byte_array())
 	for state_word in world.get_wave_state_words():
 		hasher.mix_uint32(state_word)
 	hasher.mix_uint32(world.pending_spawn_requests.size())

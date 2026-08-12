@@ -26,6 +26,7 @@ const STATE_DEAD := 3
 const HEALTH_SCALE := 100
 const POSITION_QUANTIZATION := 1000.0
 const DROP_ITEM := 0
+const DROP_MATERIAL := 1
 
 ## 与 Godot 的 physics/3d/default_gravity 引擎缺省值一致；project.godot 未覆盖该项
 ## （基线的 zombie_target.gd 是用 ProjectSettings.get_setting(..., 9.8) 读到同一个缺省值的），
@@ -245,6 +246,10 @@ var player_mod_level := PackedByteArray()
 ## reset() 只把值复位为 1.0，保留尺寸分配（profile 数在装配期才确定）。
 var player_signature_scale := PackedFloat32Array()
 
+# ---- 逐玩家材料（货币） ----
+## 波间商店的购买力。僵尸死亡掉落积累。进帧哈希，各端必须一致。
+var player_material := PackedInt32Array()
+
 # ---- 医疗光环状态 ----
 ## 医疗光环半径（世界单位）。光环影响**别的玩家**，因此必须进模拟层 tick 结算，
 ## 各端才对齐"谁在光环里、回多少血"——放表现层用 Area3D 或各自计时会 desync。
@@ -273,6 +278,8 @@ func _init() -> void:
 	player_alive.fill(0)
 	player_present.resize(MAX_PLAYER_SLOTS)
 	player_present.fill(0)
+	player_material.resize(MAX_PLAYER_SLOTS)
+	player_material.fill(0)
 	player_spread_degrees.resize(MAX_PLAYER_SLOTS)
 	player_spread_degrees.fill(0.0)
 	player_spread_profile.resize(MAX_PLAYER_SLOTS)
@@ -359,6 +366,8 @@ func reset(room_seed: int) -> void:
 	# 医疗登记复位（保留尺寸分配）。
 	slot_is_medic.fill(0)
 	slot_medic_strength.fill(1.0)
+	# 材料是局内货币，reset() 即开新局，清零。
+	player_material.fill(0)
 	_clear_tick_events()
 	grid.mark_dirty()
 	flow_field.setup(grid)
@@ -1013,23 +1022,38 @@ func step_tick() -> void:
 
 func _materialize_death_rule_drops() -> void:
 	for event in tick_death_rule_events:
-		if event.get("kind", StringName()) != &"drop_item":
-			continue
-		var position: Vector2 = event["position"]
-		spawn_chest(
-			position,
-			int(event["reward_profile_index"]),
-			int(event["amount"]),
-			-1,
-			position - CHEST_BLOCKER_HALF_SIZE,
-			position + CHEST_BLOCKER_HALF_SIZE,
-			CHEST_CLAIM_RADIUS,
-			# 战利品不占阻挡格。它落在僵尸死亡的那一点上、没有任何可通行性校验，
-			# 占格的后果是：地上的战利品把战场织成迷宫、玩家的子弹被自己刚打出来的
-			# 战利品挡住（阻挡格同时进 ray_blocked_distance 的静态图）、
-			# 以及每掉一件就标脏流场触发一次全网格 BFS 重建。
-			false
-		)
+		if event.get("kind", StringName()) == &"drop_item":
+			var position: Vector2 = event["position"]
+			spawn_chest(
+				position,
+				int(event["reward_profile_index"]),
+				int(event["amount"]),
+				-1,
+				position - CHEST_BLOCKER_HALF_SIZE,
+				position + CHEST_BLOCKER_HALF_SIZE,
+				CHEST_CLAIM_RADIUS,
+				# 战利品不占阻挡格。它落在僵尸死亡的那一点上、没有任何可通行性校验，
+				# 占格的后果是：地上的战利品把战场织成迷宫、玩家的子弹被自己刚打出来的
+				# 战利品挡住（阻挡格同时进 ray_blocked_distance 的静态图）、
+				# 以及每掉一件就标脏流场触发一次全网格 BFS 重建。
+				false
+			)
+		elif event.get("kind", StringName()) == &"material_drop":
+			# 材料归属：僵尸死亡时它在追的玩家（zombie_target_slot）。这是确定性
+			# 判定——各端对「这只僵尸在追谁」的答案一致，于是材料给谁也一样。
+			# 用 max/min 区间 + 确定性 RNG 定实际掉落数。
+			var index := index_of_zombie(int(event["zombie_id"]))
+			if index < 0:
+				continue
+			var target_slot := int(zombie_target_slot[index])
+			if target_slot < 0 or target_slot >= MAX_PLAYER_SLOTS:
+				continue
+			var min_amount := maxi(int(event.get("min_amount", 1)), 1)
+			var max_amount := maxi(int(event.get("max_amount", 1)), min_amount)
+			var amount := rng.next_uint32(
+				DeterministicRngScript.Stream.LOOT_DROP
+			) % (max_amount - min_amount + 1) + min_amount
+			add_player_material(target_slot, amount)
 
 func _clear_tick_events() -> void:
 	tick_hit_events = []
@@ -1526,18 +1550,29 @@ func _resolve_zombie_death_groups(index: int) -> void:
 			accumulated_weight += weight
 			if choice >= accumulated_weight:
 				continue
-			if int(event.get("event_type", -1)) != DROP_ITEM:
-				push_error("unsupported zombie death event type: %d" % int(event.get("event_type", -1)))
-				break
-			tick_death_rule_events.append({
-				"kind": &"drop_item",
-				"zombie_id": zombie_id[index],
-				"profile_index": zombie_profile_index[index],
-				"group_id": group["group_id"],
-				"reward_profile_index": event["reward_profile_index"],
-				"amount": event["amount"],
-				"position": zombie_position[index],
-			})
+			var event_type := int(event.get("event_type", -1))
+			if event_type == DROP_ITEM:
+				tick_death_rule_events.append({
+					"kind": &"drop_item",
+					"zombie_id": zombie_id[index],
+					"profile_index": zombie_profile_index[index],
+					"group_id": group["group_id"],
+					"reward_profile_index": event["reward_profile_index"],
+					"amount": event["amount"],
+					"position": zombie_position[index],
+				})
+			elif event_type == DROP_MATERIAL:
+				tick_death_rule_events.append({
+					"kind": &"material_drop",
+					"zombie_id": zombie_id[index],
+					"profile_index": zombie_profile_index[index],
+					"group_id": group["group_id"],
+					"min_amount": event.get("material_drop_min", 1),
+					"max_amount": event.get("material_drop_max", 1),
+					"position": zombie_position[index],
+				})
+			else:
+				push_error("unsupported zombie death event type: %d" % event_type)
 			break
 
 ## ---- 武器档案 ----
@@ -1593,6 +1628,28 @@ func get_player_signature_scale(slot: int, profile_index: int) -> float:
 	if player_signature_scale.size() != MAX_PLAYER_SLOTS * count:
 		return 1.0
 	return player_signature_scale[slot * count + profile_index]
+
+## ---- 逐玩家材料（货币） ----
+
+## 给某座位增加材料。amount 可为负（退款用），结果钳到非负。
+func add_player_material(slot: int, amount: int) -> void:
+	if slot < 0 or slot >= MAX_PLAYER_SLOTS:
+		return
+	player_material[slot] = maxi(0, player_material[slot] + amount)
+
+func get_player_material(slot: int) -> int:
+	if slot < 0 or slot >= MAX_PLAYER_SLOTS:
+		return 0
+	return player_material[slot]
+
+## 扣费。够才扣并返回 true；不够不动并返回 false。
+func spend_player_material(slot: int, amount: int) -> bool:
+	if slot < 0 or slot >= MAX_PLAYER_SLOTS:
+		return false
+	if player_material[slot] < amount:
+		return false
+	player_material[slot] -= amount
+	return true
 
 ## 登记某座位是否为医疗、及其光环强度。各端从同一份角色目录独立调用，
 ## 结果必然一致（无需进网络帧）；回血量取决于它，进帧哈希间接覆盖。

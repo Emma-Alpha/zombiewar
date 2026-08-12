@@ -3,12 +3,15 @@ class_name DeathEventDefinition
 
 const PICKUP_DEFINITION_SCRIPT = preload("res://scripts/gameplay/pickup_definition.gd")
 
-enum EventType { DROP_ITEM, ENHANCEMENT }
+enum EventType { DROP_ITEM, ENHANCEMENT, DROP_MATERIAL }
 
 @export var event_type := EventType.DROP_ITEM
 @export_range(1, 1000000, 1) var weight := 1
 @export var pickup: PickupDefinition
 @export_range(1, 9999, 1) var amount := 1
+## DROP_MATERIAL 时用：掉落的材料数。可设 min/max 用 interval，见 material_drop_max。
+@export_range(1, 999, 1) var material_drop_min := 1
+@export_range(1, 999, 1) var material_drop_max := 1
 @export var enhancement_id: StringName
 
 func validate_configuration() -> PackedStringArray:
@@ -23,6 +26,9 @@ func validate_configuration() -> PackedStringArray:
 				errors.append("pickup must use an external resource")
 			if amount <= 0:
 				errors.append("amount must be positive")
+		EventType.DROP_MATERIAL:
+			if material_drop_min < 1 or material_drop_max < material_drop_min:
+				errors.append("material_drop range must satisfy 1 <= min <= max")
 		EventType.ENHANCEMENT:
 			errors.append("enhancement events are not supported")
 		_:
