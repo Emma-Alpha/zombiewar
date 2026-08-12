@@ -16,6 +16,11 @@ const LobbyProtocolScript = preload("res://scripts/net/lobby_protocol.gd")
 
 const MINIMUM_CHARACTER_COUNT := 4
 
+## 允许的被动 id。与 character_definition.gd 的注释保持一致。
+const VALID_PASSIVE_IDS := [&"", &"suppression", &"fortify", &"medic_aura", &"blast_armor"]
+## 允许的本命武器 id。必须覆盖 resources/weapons/*.tres 的 weapon_id。
+const VALID_SIGNATURE_WEAPONS := [&"", &"knife", &"pistol", &"smg", &"shotgun", &"rifle"]
+
 func _init() -> void:
 	call_deferred("_run")
 
@@ -68,6 +73,36 @@ func _run() -> void:
 			failures
 		)
 		seen_colors[color_key] = id
+		# 三围与被动/本命武器合法性：这些值会进联机（角色各端从同一目录解析），
+		# 非法值不报错只会在对局里表现成「技能不触发/武器没加成」。
+		_expect(
+			definition.move_speed_mult > 0.0 and definition.move_speed_mult <= 2.0,
+			"角色 %s 的 move_speed_mult 超出 (0, 2]：%f" % [
+				id, definition.move_speed_mult
+			],
+			failures
+		)
+		_expect(
+			definition.signature_weapon_damage_mult >= 0.5 and definition.signature_weapon_damage_mult <= 3.0,
+			"角色 %s 的 signature_weapon_damage_mult 超出 [0.5, 3]：%f" % [
+				id, definition.signature_weapon_damage_mult
+			],
+			failures
+		)
+		_expect(
+			VALID_PASSIVE_IDS.has(definition.passive_id),
+			"角色 %s 的 passive_id '%s' 不在允许集合内" % [
+				id, definition.passive_id
+			],
+			failures
+		)
+		_expect(
+			VALID_SIGNATURE_WEAPONS.has(definition.signature_weapon_id),
+			"角色 %s 的 signature_weapon_id '%s' 不是已知武器" % [
+				id, definition.signature_weapon_id
+			],
+			failures
+		)
 
 	_expect(
 		catalog.has_id(catalog.default_id()),
