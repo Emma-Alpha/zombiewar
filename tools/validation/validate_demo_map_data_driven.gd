@@ -266,8 +266,11 @@ func _test_definition_values(definition, failures: Array[String]) -> void:
 		if death_rule.groups.size() == 1:
 			var group = death_rule.groups[0]
 			_expect(group.group_id == &"common_drop", "common drop id", failures)
-			_expect(group.trigger_chance_per_10000 == 2000, "common drop chance", failures)
-			_expect(group.events.size() == 5, "five common drops", failures)
+			_expect(group.trigger_chance_per_10000 == 3200, "common drop chance", failures)
+			# 前五件是武器与弹药，后六件是改装件。下面的 expected_drops 只逐件核对
+			# 前五件的语义；改装件那六件由 validate_weapon_mod_catalog.gd 与
+			# validate_weapon_mods.gd 负责，在这里重复一遍只会让两处断言互相漂移。
+			_expect(group.events.size() == 11, "eleven common drops", failures)
 			var expected_drops := [
 				[
 					"res://resources/pickups/smg_pickup.tres",
@@ -500,11 +503,20 @@ func _test_runtime_assembly(definition, failures: Array[String]) -> void:
 			"zombie profiles sorted by type id",
 			failures
 		)
-		_expect(runtime.reward_definitions.size() == 7, "seven runtime reward profiles", failures)
+		_expect(runtime.reward_definitions.size() == 13, "thirteen runtime reward profiles", failures)
 		var reward_paths: Array[String] = []
 		for reward in runtime.reward_definitions:
 			reward_paths.append(reward.resource_path)
+		# 这个顺序就是 reward_profile_index：模拟层只认这个 int，各端靠「同一份地图
+		# 资源排出同一个序」才对得上。锁死整张表而不只是长度，是因为插入一件新奖励
+		# 会把它后面每一件的下标整体挪位——那正是「捡到的东西和别人看到的不一样」。
 		_expect(reward_paths == [
+			"res://resources/mods/mod_compensator_1.tres",
+			"res://resources/mods/mod_damage_1.tres",
+			"res://resources/mods/mod_heavy_core.tres",
+			"res://resources/mods/mod_hollow_point.tres",
+			"res://resources/mods/mod_pierce_1.tres",
+			"res://resources/mods/mod_split_1.tres",
 			"res://resources/pickups/oil_barrel_pickup.tres",
 			"res://resources/pickups/rifle_ammo_pickup.tres",
 			"res://resources/pickups/rifle_pickup.tres",
