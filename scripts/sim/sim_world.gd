@@ -178,6 +178,8 @@ var flow_field: FlowField
 var wave_director
 
 var tick_index := 0
+## 本局房间种子。reset(room_seed) 时存入，供商店等表现层确定性派生用。
+var _room_seed := 0
 var last_flow_field_rebuild_tick := -1000
 var next_entity_id := 1
 var default_move_speed := DEFAULT_PERCEPTION_MOVE_SPEED
@@ -299,6 +301,7 @@ func configure(
 ## 清空全部实体状态并按房间种子重置随机流。阻挡网格保留（静态几何不随开局变化）。
 func reset(room_seed: int) -> void:
 	rng.seed_streams(room_seed)
+	_room_seed = room_seed
 	tick_index = 0
 	# 负值保证开局第一 tick 一定重建，而不是等节流间隔走完。
 	last_flow_field_rebuild_tick = -1000
@@ -381,6 +384,10 @@ func set_perception_range(value: float) -> void:
 
 func get_rng() -> DeterministicRng:
 	return rng
+
+## 本局房间种子。表现层用它确定性派生商店等（各端同一房间种子 → 同一结果）。
+func get_room_seed() -> int:
+	return _room_seed
 
 func get_grid() -> FlowFieldGrid:
 	return grid

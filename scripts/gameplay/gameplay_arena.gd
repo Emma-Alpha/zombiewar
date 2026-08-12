@@ -7,6 +7,7 @@ signal shop_phase_ended
 
 const HitResult = preload("res://scripts/combat/hit_result.gd")
 const ZombieDifficultyProfile = preload("res://scripts/gameplay/zombie_difficulty_profile.gd")
+const DeterministicRngScript = preload("res://scripts/sim/deterministic_rng.gd")
 const SinglePlayerInputSourceScript = preload(
 	"res://scripts/input/single_player_input_source.gd"
 )
@@ -57,6 +58,8 @@ var _ping_hud_timer := 0.0
 var restart_pending := false
 var startup_pending := false
 var warmup_overlay_tween: Tween
+## 波间商店：当前展示的商品（本波生成一次）。购买后重新计算金钱刷新 UI。
+var _shop_offers: Array[ShopOfferDefinition] = []
 var single_player_input = SinglePlayerInputSourceScript.new()
 var players: Array[PlayerController] = []
 var local_team_state = LocalTeamStateScript.new()
@@ -856,12 +859,86 @@ func _on_sim_wave_event(event: Dictionary) -> void:
 	var kind: StringName = event.get("kind", StringName())
 	if kind == &"wave_started":
 		wave_number = int(event.get("wave_number", wave_number))
+		_close_shop()
 		shop_phase_ended.emit()
 		_update_wave_hud()
 	elif kind == &"intermission_started":
 		wave_number = int(event.get("wave_number", wave_number))
+		_open_shop()
 		shop_phase_started.emit(wave_number)
 		_update_wave_hud()
+
+## 波间打开商店：生成商品（确定性 RNG，各端一致）+ 显示当前材料。
+func _open_shop() -> void:
+	var panel := get_node_or_null("HUD/ShopPanel") as ShopPanel
+	if panel == null:
+		return
+	_shop_offers = _generate_shop_offers(3)
+	panel.set_offers(_shop_offers)
+	panel.set_material_count(sim_world.get_player_material(_local_slot()))
+	panel.show()
+
+## 波开始/结束关闭商店。
+func _close_shop() -> void:
+	var panel := get_node_or_null("HUD/ShopPanel") as ShopPanel
+	if panel == null:
+		return
+	panel.hide()
+	_shop_offers = []
+
+## 从商店目录确定性选 count 个不重复条目（用 DeterministicRng 的 SHOP 流）。
+## 种子 = 房间种子 + 波次号，各端独立派生、必然一致；不碰共享 RNG（那会打乱
+## 僵尸 AI / 掉落的随机序列）。
+func _generate_shop_offers(count: int) -> Array[ShopOfferDefinition]:
+	var catalog := ContentCatalogsScript.shop()
+	if catalog == null or catalog.count() == 0:
+		return []
+	var store_rng := DeterministicRngScript.new()
+	store_rng.seed_streams(_shop_seed())
+	var pool: Array = []
+	for i in range(catalog.count()):
+		pool.append(catalog.entry_at(i))
+	var result: Array[ShopOfferDefinition] = []
+	for _i in range(mini(count, pool.size())):
+		var idx := store_rng.next_uint32(DeterministicRngScript.Stream.SHOP) % pool.size()
+		result.append(pool[idx])
+		pool.remove_at(idx)
+	return result
+
+## 商店 RNG 种子：房间种子 + 波次号。联机各端从同一房间种子派生同一商店。
+## room_seed 存于 sim_world（reset 时接收），get_room_seed() 返回它。
+func _shop_seed() -> int:
+	var base := sim_world.get_room_seed() if sim_world != null else DEFAULT_SIM_SEED
+	return base + wave_number
+
+## 本机玩家的座位号：单机是 slot 0，联机是 online_slot。
+func _local_slot() -> int:
+	if online_slot >= 0:
+		return online_slot
+	return 0 if not players.is_empty() else 0
+
+## 玩家点了商店里的一个商品。按 offer_type 分派：
+##   stat/heal  —— 进模拟（确定性，T5 实现）
+##   weapon/passive/ammo —— 表现层 grant（单机直接处理，联机走命令事件，T6 实现）
+func _on_shop_buy(offer_index: int) -> void:
+	if offer_index < 0 or offer_index >= _shop_offers.size():
+		return
+	var offer := _shop_offers[offer_index]
+	var slot := _local_slot()
+	if offer.offer_type == ShopOfferDefinition.OfferType.STAT or offer.offer_type == ShopOfferDefinition.OfferType.HEAL:
+		_buy_sim_stat(slot, offer)
+	else:
+		_buy_equipment(slot, offer)
+
+## 属性/回血购买：发确定性命令进模拟层（T5 实现 queue_shop_purchase + 成长表）。
+func _buy_sim_stat(slot: int, offer: ShopOfferDefinition) -> void:
+	# T5 实现
+	pass
+
+## 武器/被动/弹药购买：表现层处理（T6 实现）。
+func _buy_equipment(slot: int, offer: ShopOfferDefinition) -> void:
+	# T6 实现
+	pass
 
 func _on_sim_hit_event(event: Dictionary) -> void:
 	var planar: Vector2 = event["position"]
@@ -1041,6 +1118,9 @@ func _wire_runtime_dependencies() -> void:
 			place_item_service.item_placed.connect(_on_item_placed)
 		if not place_item_service.item_removed.is_connected(_on_item_removed):
 			place_item_service.item_removed.connect(_on_item_removed)
+	var shop_panel := get_node_or_null("HUD/ShopPanel") as ShopPanel
+	if shop_panel != null and not shop_panel.buy_requested.is_connected(_on_shop_buy):
+		shop_panel.buy_requested.connect(_on_shop_buy)
 	var follow_camera := get_node_or_null("FollowCamera") as FollowCamera
 	var movement_camera := get_node_or_null(
 		"FollowCamera/VisualOffset/Camera3D"
