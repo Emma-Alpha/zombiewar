@@ -1,0 +1,16 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="PackedScene" path="res://assets/environment/Container_Red.gltf" id="1_visual"]
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_container_red"]
+size = Vector3(6.2, 2.8, 2.5)
+
+[node name="ContainerRedObstacle" type="StaticBody3D" groups=["place_item_obstacle"]]
+collision_layer = 1
+collision_mask = 0
+
+[node name="Visual" parent="." instance=ExtResource("1_visual")]
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+position = Vector3(0, 1.4, 0)
+shape = SubResource("BoxShape3D_container_red")

@@ -1,4 +1,4 @@
-[gd_scene load_steps=33 format=3]
+[gd_scene load_steps=40 format=3]
 
 [ext_resource type="PackedScene" path="res://assets/vehicles/Vehicle_Pickup.gltf" id="1_pickup"]
 [ext_resource type="PackedScene" path="res://assets/environment/Container_Red.gltf" id="2_container"]
@@ -9,6 +9,13 @@
 [ext_resource type="PackedScene" path="res://assets/environment/TrafficCone_1.gltf" id="7_traffic_cone"]
 [ext_resource type="PackedScene" path="res://scenes/props/SupplyChest.tscn" id="8_supply_chest"]
 [ext_resource type="PackedScene" path="res://scenes/fx/GroundBloodSplat.tscn" id="9_story_blood"]
+[ext_resource type="Script" path="res://scripts/gameplay/map/authoring/map_content_authoring_root.gd" id="10_authoring_root"]
+[ext_resource type="Script" path="res://scripts/gameplay/map/authoring/map_player_spawn_marker.gd" id="11_player_marker"]
+[ext_resource type="Script" path="res://scripts/gameplay/map/authoring/map_zombie_spawn_marker.gd" id="12_zombie_marker"]
+[ext_resource type="Script" path="res://scripts/gameplay/map/authoring/map_fixed_item_spawn_marker.gd" id="13_fixed_marker"]
+[ext_resource type="Resource" path="res://resources/pickups/smg_pickup.tres" id="14_smg_pickup"]
+[ext_resource type="Resource" path="res://resources/pickups/smg_ammo_pickup.tres" id="15_smg_ammo_pickup"]
+[ext_resource type="Resource" path="res://resources/pickups/oil_barrel_pickup.tres" id="16_oil_pickup"]
 
 [sub_resource type="Environment" id="Environment_arena"]
 background_mode = 1
@@ -103,6 +110,9 @@ radius = 0.18
 height = 0.36
 
 [node name="DemoMapContent" type="Node3D"]
+script = ExtResource("10_authoring_root")
+map_definition_path = "res://resources/maps/demo/demo_map.tres"
+managed_template_geometry = false
 
 [node name="WorldEnvironment" type="WorldEnvironment" parent="."]
 environment = SubResource("Environment_arena")
@@ -476,3 +486,87 @@ rotation_degrees = Vector3(0, -9, 0)
 [node name="East" parent="Props/RoadDetails/SouthCones" instance=ExtResource("7_traffic_cone")]
 position = Vector3(5, 0, 10)
 rotation_degrees = Vector3(0, 11, 0)
+
+[node name="MapMarkers" type="Node3D" parent="."]
+
+[node name="PlayerSpawns" type="Node3D" parent="MapMarkers"]
+
+[node name="Player01" type="Node3D" parent="MapMarkers/PlayerSpawns"]
+position = Vector3(-1.2, 0, 6.2)
+script = ExtResource("11_player_marker")
+marker_id = &"player_01"
+slot_index = 0
+
+[node name="Player02" type="Node3D" parent="MapMarkers/PlayerSpawns"]
+position = Vector3(1.2, 0, 6.2)
+script = ExtResource("11_player_marker")
+marker_id = &"player_02"
+slot_index = 1
+
+[node name="Player03" type="Node3D" parent="MapMarkers/PlayerSpawns"]
+position = Vector3(-1.2, 0, 4.2)
+script = ExtResource("11_player_marker")
+marker_id = &"player_03"
+slot_index = 2
+
+[node name="Player04" type="Node3D" parent="MapMarkers/PlayerSpawns"]
+position = Vector3(1.2, 0, 4.2)
+script = ExtResource("11_player_marker")
+marker_id = &"player_04"
+slot_index = 3
+
+[node name="ZombieSpawns" type="Node3D" parent="MapMarkers"]
+
+[node name="NorthWest" type="Node3D" parent="MapMarkers/ZombieSpawns"]
+position = Vector3(-19, 0, -14)
+script = ExtResource("12_zombie_marker")
+spawn_id = &"01_north_west"
+spawn_radius = 1.75
+minimum_spacing = 1.1
+
+[node name="NorthEast" type="Node3D" parent="MapMarkers/ZombieSpawns"]
+position = Vector3(19, 0, -14)
+script = ExtResource("12_zombie_marker")
+spawn_id = &"02_north_east"
+spawn_radius = 1.75
+minimum_spacing = 1.1
+
+[node name="SouthWest" type="Node3D" parent="MapMarkers/ZombieSpawns"]
+position = Vector3(-19, 0, 14)
+script = ExtResource("12_zombie_marker")
+spawn_id = &"03_south_west"
+spawn_radius = 1.75
+minimum_spacing = 1.1
+
+[node name="SouthEast" type="Node3D" parent="MapMarkers/ZombieSpawns"]
+position = Vector3(19, 0, 14)
+script = ExtResource("12_zombie_marker")
+spawn_id = &"04_south_east"
+spawn_radius = 1.75
+minimum_spacing = 1.1
+
+[node name="FixedItemSpawns" type="Node3D" parent="MapMarkers"]
+
+[node name="Smg" type="Node3D" parent="MapMarkers/FixedItemSpawns"]
+position = Vector3(-4.5, 0, 6)
+script = ExtResource("13_fixed_marker")
+spawn_id = &"01_smg"
+pickup = ExtResource("14_smg_pickup")
+amount = 60
+respawn_delay_ticks = 60
+
+[node name="SmgAmmo" type="Node3D" parent="MapMarkers/FixedItemSpawns"]
+position = Vector3(0, 0, 9)
+script = ExtResource("13_fixed_marker")
+spawn_id = &"02_smg_ammo"
+pickup = ExtResource("15_smg_ammo_pickup")
+amount = 90
+respawn_delay_ticks = 60
+
+[node name="Oil" type="Node3D" parent="MapMarkers/FixedItemSpawns"]
+position = Vector3(4.5, 0, 6)
+script = ExtResource("13_fixed_marker")
+spawn_id = &"03_oil"
+pickup = ExtResource("16_oil_pickup")
+amount = 30
+respawn_delay_ticks = 60

@@ -2,8 +2,8 @@ extends Node3D
 
 const MenuFlow = preload("res://scripts/menu/menu_flow.gd")
 
-@export_file("*.tscn") var game_scene_path := "res://scenes/maps/demo/DemoMap.tscn"
-@export_file("*.tscn") var local_lobby_scene_path := "res://scenes/menu/LocalMultiplayerLobby.tscn"
+@export_file("*.tscn") var map_selection_scene_path := \
+	"res://scenes/menu/MapSelection.tscn"
 @export_file("*.tscn") var online_lobby_scene_path := "res://scenes/menu/OnlineLobby.tscn"
 @export_file("*.tscn") var leaderboard_scene_path := "res://scenes/menu/LeaderboardPanel.tscn"
 
@@ -94,14 +94,14 @@ func _activate_focused_button() -> bool:
 func _on_single_player_button_pressed() -> void:
 	if not flow.request_single():
 		return
-	GameSession.configure_single()
-	_start_transition(game_scene_path)
+	GameSession.begin_map_selection(GameSessionState.Mode.SINGLE)
+	_start_transition(map_selection_scene_path)
 
 func _on_local_multiplayer_button_pressed() -> void:
 	if not flow.request_local():
 		return
-	GameSession.clear()
-	_start_transition(local_lobby_scene_path)
+	GameSession.begin_map_selection(GameSessionState.Mode.LOCAL_MULTIPLAYER)
+	_start_transition(map_selection_scene_path)
 
 func _on_online_multiplayer_button_pressed() -> void:
 	if not flow.request_local():

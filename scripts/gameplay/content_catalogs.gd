@@ -11,14 +11,14 @@ const CHARACTER_CATALOG_PATH := "res://resources/characters/character_catalog.tr
 const MAP_CATALOG_PATH := "res://resources/maps/map_catalog.tres"
 
 static var _characters: CharacterCatalog = null
-static var _maps: MapCatalog = null
+static var _maps: MapDefinitionCatalog = null
 
 static func characters() -> CharacterCatalog:
 	if _characters == null:
 		_characters = load(CHARACTER_CATALOG_PATH) as CharacterCatalog
 	return _characters
 
-static func maps() -> MapCatalog:
+static func maps() -> MapDefinitionCatalog:
 	if _maps == null:
-		_maps = load(MAP_CATALOG_PATH) as MapCatalog
+		_maps = load(MAP_CATALOG_PATH) as MapDefinitionCatalog
 	return _maps

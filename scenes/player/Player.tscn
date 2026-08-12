@@ -50,6 +50,7 @@ shape = SubResource("CapsuleShape3D_player")
 [node name="WeaponCollision" type="CollisionShape3D" parent="."]
 position = Vector3(0, 1.12, -0.62)
 rotation_degrees = Vector3(90, 0, 0)
+disabled = true
 shape = SubResource("CapsuleShape3D_weapon_collision")
 
 [node name="WeaponClearanceController" type="Node3D" parent="."]
