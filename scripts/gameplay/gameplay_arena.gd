@@ -21,6 +21,7 @@ const SimHasherScript = preload("res://scripts/sim/sim_hasher.gd")
 const LobbyProtocolScript = preload("res://scripts/net/lobby_protocol.gd")
 const GameSessionScript = preload("res://scripts/gameplay/game_session.gd")
 const BLOOD_IMPACT_SCENE := preload("res://scenes/fx/BloodImpact.tscn")
+const DAMAGE_POPUP_SCENE := preload("res://scenes/fx/DamagePopup.tscn")
 const PICKUP_CHEST_SCENE := preload("res://scenes/gameplay/PickupChest.tscn")
 const DEFAULT_SIM_SEED := 20260807
 ## 延迟 HUD 的刷新节流（秒）。RTT 本身更新更慢，更频繁地读没有信息量。
@@ -1039,6 +1040,12 @@ func _on_sim_hit_event(event: Dictionary) -> void:
 	manager.queue_hit_splat(hit_position, direction, 1.0)
 	if bool(event["killed"]):
 		manager.queue_death_pool(Vector3(planar.x, 0.0, planar.y), 1.25)
+	# 伤害数字飘字：肉鸽爽点核心。数值来自模拟层（已确定），表现层只负责飘升淡出。
+	var damage := float(event.get("damage", 0.0))
+	if damage > 0.0:
+		var popup := DAMAGE_POPUP_SCENE.instantiate() as DamagePopup
+		add_child(popup)
+		popup.setup(damage, hit_position, bool(event["killed"]))
 
 func _on_sim_player_damage_event(event: Dictionary) -> void:
 	var view := zombie_renderer.get_near_view(int(event["zombie_id"]))
@@ -1157,6 +1164,21 @@ func _complete_combat_startup(animate_overlay: bool) -> void:
 	await warmup_overlay_tween.finished
 	if is_instance_valid(warmup_layer):
 		warmup_layer.hide()
+	# 操作说明开局后 8 秒自动淡出——新手看一眼就够，不该常驻挡视线。
+	# 纯 UI 表现（Tween），不进模拟层，不影响确定性。
+	_fade_out_controls_panel()
+
+## 操作说明面板开局后自动淡出。
+func _fade_out_controls_panel() -> void:
+	var panel := get_node_or_null("HUD/ControlsPanel") as PanelContainer
+	if panel == null:
+		return
+	var tween := create_tween()
+	tween.tween_interval(8.0)
+	tween.tween_property(panel, "modulate:a", 0.0, 0.6)
+	await tween.finished
+	if is_instance_valid(panel):
+		panel.visible = false
 
 func _release_startup_actions() -> void:
 	for action in [
@@ -1399,9 +1421,13 @@ func _update_wave_hud() -> void:
 	var objective := get_node_or_null("HUD/Objective") as Label
 	if objective == null:
 		return
-	objective.text = "WAVE %d    ALIVE %d" % [
+	# 肉鸽式结算牌：波次 + 存活 + 材料。材料是「我在变富」的可视化——
+	# 玩家一眼看到这局攒了多少购买力，比纯 WAVE/ALIVE 更有爽感。
+	var material := sim_world.get_player_material(_local_slot()) if sim_world != null else 0
+	objective.text = "第 %d 波 · 存活 %d · 材料 %d" % [
 		wave_number,
 		get_active_zombie_count(),
+		material,
 	]
 
 ## 王者荣耀式延迟显示：联机时右上角一个会按质量变色的毫秒数。
