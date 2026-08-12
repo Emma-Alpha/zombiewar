@@ -9,8 +9,8 @@ class_name ShopPanel
 
 signal buy_requested(offer_index: int)
 
-@onready var material_label: Label = $Margin/MaterialLabel
-@onready var offers_container: VBoxContainer = $Margin/OffersContainer
+@onready var material_label: Label = $Margin/VBox/MaterialLabel
+@onready var offers_container: VBoxContainer = $Margin/VBox/OffersContainer
 
 var _offers: Array[ShopOfferDefinition] = []
 var _material := 0
