@@ -16,6 +16,7 @@ import {
   type RoomState,
   type RosterEntry,
 } from './lib/protocol.js';
+import { allNonHostSeatsReady, isValidContentId } from './lib/room_rules.js';
 import { FrameHistory } from './lib/frame_history.js';
 import { submitMatchResult, type MatchReport } from './lib/leaderboard.js';
 import { resolveSession } from './lib/sessions.js';
@@ -37,6 +38,13 @@ interface Seat {
   playerId: string;
   nickname: string;
   ready: boolean;
+  /**
+   * Opaque to the server. It rides on the seat rather than being remembered by
+   * the client because `startMatch` compacts the seat table: slot numbers move,
+   * and a client acting on the number it held at join time would apply someone
+   * else's choice.
+   */
+  characterId: string;
   socket: WebSocket | null;
   lastSeenAt: number;
 }
@@ -59,6 +67,13 @@ export class RoomDurableObject implements DurableObject {
   private isPublic = true;
   private roomState: RoomState = 'lobby';
   private hostSlot = -1;
+
+  /**
+   * The map every client will load when the match starts. Opaque to the server;
+   * the host writes it with a concrete id and clients resolve it against their
+   * own catalog, refusing to enter if they do not have it.
+   */
+  private mapId = '';
 
   private readonly seats: Array<Seat | null> = new Array(MAX_PLAYERS_PER_ROOM).fill(null);
   private readonly sockets = new Map<WebSocket, number>();
@@ -222,8 +237,37 @@ export class RoomDurableObject implements DurableObject {
         seat.ready = message['ready'] === true;
         this.broadcastRoster();
         return;
+      // The three rejections below are silent by design. A client's own UI is
+      // what stops these from being sent, so receiving one means the peer has a
+      // bug or someone is hand-crafting frames -- neither is worth a new error
+      // message type that every client would then have to handle.
+      case 'select_character': {
+        // A ready seat cannot re-pick: everyone else pressed ready against the
+        // line-up as it stood.
+        if (this.roomState !== 'lobby' || seat.ready) return;
+        const requested = message['character_id'];
+        if (!isValidContentId(requested)) return;
+        seat.characterId = requested;
+        this.broadcastRoster();
+        return;
+      }
+      case 'select_map': {
+        if (this.roomState !== 'lobby' || slot !== this.hostSlot) return;
+        const requested = message['map_id'];
+        if (!isValidContentId(requested)) return;
+        this.mapId = requested;
+        // Changing the map voids every ready: they were pressed against the old one.
+        for (const entry of this.seats) if (entry !== null) entry.ready = false;
+        this.broadcastRoster();
+        return;
+      }
       case 'start':
-        if (slot === this.hostSlot) this.startMatch();
+        if (slot !== this.hostSlot) return;
+        if (!allNonHostSeatsReady(this.seats, this.hostSlot)) {
+          this.diag('start_rejected', { why: 'not_all_ready', seats: this.diagSeats() });
+          return;
+        }
+        this.startMatch();
         return;
       case 'cmd':
         this.onCommand(slot, message);
@@ -270,6 +314,12 @@ export class RoomDurableObject implements DurableObject {
         : -1;
     const resumeFrom = resumeTick + 1;
 
+    // Shape-checked, never interpreted: an id the server does not recognise is
+    // still a valid id for a client that has the content. A malformed one is
+    // dropped to '' so the seat never carries something no client could parse.
+    const requestedCharacter = message['character_id'];
+    const characterId = isValidContentId(requestedCharacter) ? requestedCharacter : '';
+
     // Reconnect: a seat already held by this player_id is reclaimed rather than
     // duplicated. This is what makes a dropped phone able to rejoin its own
     // slot mid-match instead of watching its body stand there until the end.
@@ -284,7 +334,14 @@ export class RoomDurableObject implements DurableObject {
         socket.close(CLOSE_ROOM_FULL, 'room is full');
         return;
       }
-      this.seats[slot] = { playerId, nickname, ready: false, socket, lastSeenAt: Date.now() };
+      this.seats[slot] = {
+        playerId,
+        nickname,
+        ready: false,
+        characterId,
+        socket,
+        lastSeenAt: Date.now(),
+      };
     } else {
       // Decided before the seat changes hands: a rejoin that cannot be replayed
       // must leave the room exactly as it found it, so the player can try again
@@ -300,6 +357,9 @@ export class RoomDurableObject implements DurableObject {
       seat.socket?.close(CLOSE_RECONNECTED_ELSEWHERE, 'reconnected elsewhere');
       seat.socket = socket;
       seat.nickname = nickname;
+      // A rejoin re-asserts the client's own choice; an empty one means the
+      // client had none to assert, and the seat keeps what it already had.
+      if (characterId !== '') seat.characterId = characterId;
       seat.lastSeenAt = Date.now();
     }
     this.sockets.set(socket, slot);
@@ -458,12 +518,16 @@ export class RoomDurableObject implements DurableObject {
       type: 'start',
       seed: this.seed,
       tick: 0,
+      map_id: this.mapId,
       // player_id is here so a client can re-derive its own slot after the
       // compaction above without trusting the one it got at welcome time.
+      // character_id rides along for the same reason: the compaction moved the
+      // slot numbers, so a client cannot resolve its own choice by memory.
       slots: occupied.map((entry) => ({
         slot: entry.slot,
         nickname: entry.seat.nickname,
         player_id: entry.seat.playerId,
+        character_id: entry.seat.characterId,
       })),
     });
     this.diag('match_started', {
@@ -688,6 +752,7 @@ export class RoomDurableObject implements DurableObject {
       nickname: seat.nickname,
       ready: seat.ready,
       connected: seat.socket !== null,
+      character_id: seat.characterId,
     }));
   }
 
@@ -696,6 +761,7 @@ export class RoomDurableObject implements DurableObject {
       type: 'roster',
       state: this.roomState,
       host_slot: this.hostSlot,
+      map_id: this.mapId,
       players: this.roster(),
     });
   }

@@ -174,6 +174,8 @@ export interface RosterEntry {
   nickname: string;
   ready: boolean;
   connected: boolean;
+  /** Opaque to the server; resolved against the client's own catalog. */
+  character_id: string;
 }
 
 /**
