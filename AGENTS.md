@@ -152,6 +152,30 @@ frame rather than per tick, so a placement made while moving can land on
 different cells across clients. It is detected by the frame-hash cross-check,
 not prevented. Route it through the frame channel before relying on it online.
 
+## Content Catalogs
+
+角色与地图都由 `resources/characters/character_catalog.tres` 与
+`resources/maps/map_catalog.tres` 两张目录按 `StringName` id 索引，统一经
+`ContentCatalogs` 加载。跨线传输的永远是 id 字符串而不是数组下标：下标会随目录
+顺序变化，id 不会。服务端**不认识**这些 id，只按 `^[a-z0-9_]{1,32}$` 校验形状——
+维护白名单意味着每加一个角色都要发一次 Worker。
+
+代价落在客户端：收到 `start` 时若其中的 `map_id` 或任一 `character_id` 不在本机目录
+里，必须**拒绝入局并报错**，绝不回退到默认值。回退会让缺内容的那一端悄悄跑另一套
+配置，而其他人不会知道。这条检查在 `OnlineLobby._missing_content()`。
+
+选择挂在服务端的 seat 上，不由客户端记忆：`startMatch()` 会压实座位表，slot 号会变，
+客户端按入房时拿到的编号行事就会套用别人的选择。所以 `roster` 与 `start` 两条消息
+都携带 `character_id`，`start` 另外携带 `map_id`。
+
+注意这套机制挡不住「同名不同内容」：两个客户端各有一份 id 相同但数值不同的
+`demo_map.tres` 仍会不同步，协议版本号覆盖不到内容漂移。彻底的解法是在握手时比对
+内容摘要，尚未实现。
+
+改动目录后运行 `tools/validation/validate_character_catalog.gd` 与
+`validate_map_catalog.gd`：它们守 id 唯一、形状合法、默认 id 命中、以及未知 id
+返回 null 而非回退。
+
 ## UI Font Coverage
 
 `assets/fonts/NotoSansSC-UI.ttf` is a subset of Noto Sans SC. Its import sets
@@ -168,6 +192,15 @@ text. If it reports missing glyphs, regenerate the subset from a full Noto Sans
 SC rather than adding the characters one at a time. Changing the `.ttf` requires
 a `--headless --editor --quit` pass before the new glyphs take effect; Godot
 otherwise keeps serving the cached `.godot/imported/*.fontdata`.
+
+**这个校验只回答「字体里有没有这个字形」，不回答「节点用不用这个字体」。**
+`project.godot` 没有 `[gui]` 默认主题字体，所以每个显示中文的 Control 都必须自己带
+`theme_override_fonts/font`，运行时 `new` 出来的控件则要 `add_theme_font_override()`。
+漏掉时校验照样 PASS，而 Web 导出上是豆腐块——和缺字形完全一样的症状，且同样在
+桌面端被系统字体回退掩盖。新增中文 UI 时，除了跑这个校验，还要逐个确认字体覆盖。
+
+装饰性符号（`●`、`★` 这类）不要用字形，改用 `ColorRect` 之类的绘制节点：
+不用字形就不可能缺字形。`MapCard` 的难度星就是这么做的。
 
 ## Combat FX Render Warmup
 

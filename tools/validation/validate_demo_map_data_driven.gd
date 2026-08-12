@@ -7,11 +7,18 @@ const GAME_MAP_RUNTIME_SCRIPT_PATH := "res://scripts/gameplay/map/game_map_runti
 const DEMO_MAP_SCENE_PATH := "res://scenes/maps/demo/DemoMap.tscn"
 const ZOMBIE_DIFFICULTY_PATH := "res://resources/difficulty/zombie_normal.tres"
 const DEFAULT_GAME_SCENE_PATH := "res://scenes/maps/demo/DemoMap.tscn"
+## 单机与本地多人没有房间，地图不来自任何协商，因此继续硬指 demo 的包装场景。
 const GAME_ENTRY_SCRIPT_PATHS: PackedStringArray = [
 	"res://scripts/menu/main_menu.gd",
 	"res://scripts/menu/local_multiplayer_lobby.gd",
+]
+## 联机的地图由房间的 map_id 决定，客户端不能自带一个默认答案：
+## 硬指某张图意味着房主换了图而这一端还是跑原来那张。所以它进的是通用竞技场，
+## 由 GameplayArena._resolve_map_definition() 按 GameSession.map_id 去目录里取。
+const ROOM_ROUTED_ENTRY_SCRIPT_PATHS: PackedStringArray = [
 	"res://scripts/menu/online_lobby.gd",
 ]
+const GENERIC_ARENA_SCENE_PATH := "res://scenes/gameplay/GameplayArena.tscn"
 const CURRENT_RUNTIME_ROOTS: PackedStringArray = [
 	"res://scripts",
 	"res://scenes",
@@ -66,6 +73,20 @@ func _test_gameplay_entry_paths(failures: Array[String]) -> void:
 		_expect(
 			entry.game_scene_path == DEFAULT_GAME_SCENE_PATH,
 			"%s must default to %s" % [script_path, DEFAULT_GAME_SCENE_PATH],
+			failures
+		)
+		entry.free()
+	for script_path in ROOM_ROUTED_ENTRY_SCRIPT_PATHS:
+		var entry_script := load(script_path) as GDScript
+		_expect(entry_script != null, "%s must load" % script_path, failures)
+		if entry_script == null:
+			continue
+		var entry: Node = entry_script.new()
+		_expect(
+			entry.game_scene_path == GENERIC_ARENA_SCENE_PATH,
+			"%s must route through %s, not hardcode a map" % [
+				script_path, GENERIC_ARENA_SCENE_PATH
+			],
 			failures
 		)
 		entry.free()
