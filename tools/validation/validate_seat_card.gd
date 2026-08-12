@@ -89,21 +89,24 @@ func _run() -> void:
 	_expect(bounds.size.y > 0.0, "角色必须有可见网格，否则卡片是空的", failures)
 	if bounds.size.y > 0.0:
 		var half_fov := deg_to_rad(camera_a.fov * 0.5)
-		var distance: float = camera_a.position.z - bounds.end.z
+		# 距离按包围盒中心量，与 _frame_character() 的基准一致。
+		# 用前表面量会把半个盒深算漏，两边对不上就会得出一个假的占比。
+		var distance: float = camera_a.position.z - bounds.get_center().z
 		_expect(distance > 0.0, "相机必须在角色前方", failures)
-		var visible_height := 2.0 * distance * tan(half_fov)
-		var fill := bounds.size.y / visible_height
+		var half_height := distance * tan(half_fov)
+		var fill := bounds.size.y / (2.0 * half_height)
 		_expect(
 			fill > 0.7 and fill <= 1.0,
 			"角色应占卡片可视高度的 70%%-100%%，实际 %.0f%%" % (fill * 100.0),
 			failures
 		)
-		# 相机要瞄在角色身上，不能瞄到脚底或头顶外面去。
-		var aim_y := camera_a.position.y + distance * tan(camera_a.rotation.x)
+		# 最重要的一条：角色必须**完整**入镜。占比再好看，切掉脚也是废的。
+		var aim_y: float = camera_a.position.y + distance * tan(camera_a.rotation.x)
 		_expect(
-			aim_y > bounds.position.y and aim_y < bounds.end.y,
-			"相机的视线必须落在角色包围盒内，实际 y=%.2f 盒 %.2f..%.2f" % [
-				aim_y, bounds.position.y, bounds.end.y
+			aim_y - half_height <= bounds.position.y and aim_y + half_height >= bounds.end.y,
+			"角色必须完整入镜：视野 %.2f..%.2f 角色盒 %.2f..%.2f" % [
+				aim_y - half_height, aim_y + half_height,
+				bounds.position.y, bounds.end.y
 			],
 			failures
 		)

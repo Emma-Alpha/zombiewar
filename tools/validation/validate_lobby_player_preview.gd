@@ -21,6 +21,33 @@ func _run() -> void:
 	if character_model != null:
 		_expect(character_model.scene_file_path == "res://assets/characters/Characters_Lis_SingleWeapon.gltf", "preview character must come from the approved GLTF", failures)
 		_expect(character_model.find_child("AnimationPlayer", true, false) is AnimationPlayer, "real character preview must contain AnimationPlayer", failures)
+		# 待机动画必须**循环**。GLTF 导进来的 Idle_Gun 是 loop_mode = NONE：
+		# 长 1 秒、播完停死在最后一帧，而它幅度只有 0.034，停住就和静态图一样。
+		var animation_player := character_model.find_child("AnimationPlayer", true, false) as AnimationPlayer
+		if animation_player != null:
+			_expect(animation_player.is_playing(), "预览必须正在播放待机动画", failures)
+			var playing := animation_player.get_animation(animation_player.current_animation)
+			_expect(
+				playing != null and playing.loop_mode != Animation.LOOP_NONE,
+				"待机动画必须循环，否则一秒后就停死在最后一帧",
+				failures
+			)
+			# 循环必须开在副本上：原来那份 Animation 由整个 GLTF 共享，
+			# 直接改它会顺带把游戏里玩家角色的待机也改掉。
+			var source := animation_player.get_animation(&"Idle_Gun")
+			_expect(
+				source != null and source.loop_mode == Animation.LOOP_NONE,
+				"不得就地修改 GLTF 自带的 Idle_Gun，它是共享资源",
+				failures
+			)
+		# 这个 GLTF 的正面朝 +Z，不是 Godot 惯例的 -Z：给 ModelAnchor 加 180°
+		# 会让角色背对镜头。远景相机下看不出来，放大到座位卡尺寸就很明显。
+		var model_anchor := preview.get_node("ModelAnchor") as Node3D
+		_expect(
+			is_zero_approx(model_anchor.rotation.y),
+			"ModelAnchor 不得旋转，否则角色背对镜头",
+			failures
+		)
 		var smg := character_model.find_child("SMG", true, false) as Node3D
 		_expect(smg != null and smg.visible, "preview must show SMG", failures)
 		for hidden_weapon in ["Axe", "Guitar", "Knife", "Pistol", "Ri" + "fle", "Shotgun", "Spear", "WoodenBat_Barbed", "WoodenBat_Saw"]:

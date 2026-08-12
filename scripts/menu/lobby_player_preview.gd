@@ -105,16 +105,33 @@ func _configure_weapons() -> void:
 		if weapon != null:
 			weapon.visible = weapon_name == DISPLAY_WEAPON
 
+## 待机动画必须循环播放。
+##
+## GLTF 导进来的 Idle_Gun 是 loop_mode = NONE：长 1 秒，播完就停死在最后一帧。
+## 而它本身幅度极小（骨骼位移合计变化 0.034），停住之后和一张静态图没有区别——
+## 这正是「模型没有动」的成因，而且在本地多人大厅那个远景相机下一直没被发现。
+##
+## 循环开在一份**副本**上，不改 AnimationPlayer 原来那份：那份 Animation 资源
+## 由整个 GLTF 共享，直接改它会顺带影响游戏里的玩家角色。
+const IDLE_ANIMATION := &"Idle_Gun"
+const LOBBY_LIBRARY := &"lobby"
+
 func _play_idle_animation() -> void:
 	var animation_player := character_model.find_child(
 		"AnimationPlayer", true, false
 	) as AnimationPlayer
-	if animation_player == null or not animation_player.has_animation(&"Idle_Gun"):
+	if animation_player == null or not animation_player.has_animation(IDLE_ANIMATION):
 		if not missing_animation_warned:
 			push_warning("Lobby character preview is missing Idle_Gun animation")
 			missing_animation_warned = true
 		return
-	animation_player.play(&"Idle_Gun", 0.15)
+	var source := animation_player.get_animation(IDLE_ANIMATION)
+	var looping := source.duplicate() as Animation
+	looping.loop_mode = Animation.LOOP_LINEAR
+	var library := AnimationLibrary.new()
+	library.add_animation(IDLE_ANIMATION, looping)
+	animation_player.add_animation_library(LOBBY_LIBRARY, library)
+	animation_player.play(StringName("%s/%s" % [LOBBY_LIBRARY, IDLE_ANIMATION]), 0.15)
 
 func _apply_status() -> void:
 	var label := get_node_or_null("PlayerLabel") as Label3D

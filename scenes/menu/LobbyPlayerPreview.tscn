@@ -8,7 +8,9 @@ script = ExtResource("1_preview")
 character_scene = ExtResource("2_character")
 
 [node name="ModelAnchor" type="Node3D" parent="."]
-rotation_degrees = Vector3(0, 180, 0)
+; 不旋转：这个 GLTF 的正面朝 +Z，不是 Godot 惯例的 -Z。原先那个 180°
+; 恰好把角色转成了背对镜头——本地多人大厅的远景相机下看不出来，
+; 直到座位卡第一次把模型放大才暴露。
 
 [node name="PlayerLight" type="OmniLight3D" parent="."]
 position = Vector3(0, 1.65, 0.55)

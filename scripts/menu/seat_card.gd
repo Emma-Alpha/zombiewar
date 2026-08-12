@@ -55,10 +55,12 @@ func _frame_character() -> void:
 	# 角色反而缩成一小团。高度不受绑定姿势影响，是这里唯一可信的那一维。
 	var half_fov := deg_to_rad(camera.fov * 0.5)
 	var distance := (bounds.size.y / CHARACTER_FILL_RATIO) * 0.5 / tan(half_fov)
+	# 距离从包围盒**中心**量，不是从前表面：相机看的是角色整体，
+	# 按前表面量会让主体实际距离多出半个盒深，角色于是比设定值小一圈。
 	var eye := Vector3(
 		center.x,
 		center.y + distance * CAMERA_ELEVATION_RATIO,
-		bounds.end.z + distance
+		center.z + distance
 	)
 	camera.position = eye
 	camera.look_at(center, Vector3.UP)
@@ -104,3 +106,6 @@ func set_occupied(
 	preview.set_online(true)
 	# 本机那张卡靠更亮的描边区分，不做单独的放大预览。
 	self_modulate = Color(1.15, 1.15, 1.15, 1.0) if is_local else Color.WHITE
+	# 取景放在最后：_ready() 里那次是在座位状态定下来之前算的，此刻的可见网格
+	# 才是真正要入镜的那一组，用它重算才能保证角色真的按设定比例占满卡片。
+	_frame_character()
