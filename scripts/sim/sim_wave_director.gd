@@ -166,6 +166,13 @@ func _finish_wave(current_tick: int, output: Array[Dictionary]) -> void:
 	entry_index = 0
 	remaining_in_entry = 0
 	intermission_end_tick = current_tick + inter_wave_delay_ticks
+	# 通知表现层波间开始（商店阶段）。只在真正进入等待时发一次：
+	# inter_wave_delay_ticks == 0 时会立即 _begin_wave，那种连续波不进商店。
+	if inter_wave_delay_ticks > 0:
+		output.append({
+			"kind": &"intermission_started",
+			"wave_number": wave_number,
+		})
 	if inter_wave_delay_ticks == 0:
 		_begin_wave(current_tick)
 

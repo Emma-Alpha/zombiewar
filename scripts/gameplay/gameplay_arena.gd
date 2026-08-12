@@ -1,6 +1,9 @@
 extends Node3D
 
 signal restart_requested
+## 波间商店阶段开始/结束。ShopPanel 连这两个信号控制显隐。
+signal shop_phase_started(wave_number: int)
+signal shop_phase_ended
 
 const HitResult = preload("res://scripts/combat/hit_result.gd")
 const ZombieDifficultyProfile = preload("res://scripts/gameplay/zombie_difficulty_profile.gd")
@@ -850,10 +853,15 @@ func _consume_sim_events() -> void:
 	_sync_command_controls()
 
 func _on_sim_wave_event(event: Dictionary) -> void:
-	if event.get("kind", StringName()) != &"wave_started":
-		return
-	wave_number = int(event.get("wave_number", wave_number))
-	_update_wave_hud()
+	var kind: StringName = event.get("kind", StringName())
+	if kind == &"wave_started":
+		wave_number = int(event.get("wave_number", wave_number))
+		shop_phase_ended.emit()
+		_update_wave_hud()
+	elif kind == &"intermission_started":
+		wave_number = int(event.get("wave_number", wave_number))
+		shop_phase_started.emit(wave_number)
+		_update_wave_hud()
 
 func _on_sim_hit_event(event: Dictionary) -> void:
 	var planar: Vector2 = event["position"]

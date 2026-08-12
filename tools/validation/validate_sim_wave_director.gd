@@ -24,6 +24,7 @@ func _run() -> void:
 		return
 	_check_interval_zero_order(failures)
 	_check_wave_started_events(failures)
+	_check_intermission_event(failures)
 	_check_positive_interval_and_advance_guard(failures)
 	_check_active_cap_backpressure(failures)
 	_check_complete_emits_once(failures)
@@ -60,6 +61,40 @@ func _check_wave_started_events(failures: Array[String]) -> void:
 	started = _first_wave_event(world, &"wave_started")
 	_expect(not started.is_empty(), "loop restart must emit wave_started", failures)
 	_expect(int(started.get("wave_number", -1)) == 2, "loop wave number must increase", failures)
+
+func _check_intermission_event(failures: Array[String]) -> void:
+	# 波间（inter_wave_delay > 0）必须发出 intermission_started：商店阶段由它触发。
+	var world := _new_world()
+	world.configure_wave_schedule(
+		[_one_zombie_wave(NORMAL_PROFILE)],
+		_default_points(),
+		sim_wave_director_script.EndMode.LOOP,
+		60,  # 波间等待 60 tick，让 intermission_started 有机会发出
+		300
+	)
+	world.start_wave_schedule()
+	# 推进到 wave 1 的僵尸全部出场并清场，再等 _finish_wave 进 INTERMISSION。
+	# 循环 step 直到拿到 intermission_started 或超过 200 tick（防死循环）。
+	var intermission := {}
+	for _tick in range(200):
+		world.step_tick()
+		# 事件只存活当帧，step 后立刻查；_finish_wave 在 WAITING_CLEAR 分支调用，
+		# 事件在 _kill_all 之前的那次 step 里产生。
+		intermission = _first_wave_event(world, &"intermission_started")
+		if not intermission.is_empty():
+			break
+		_kill_all(world)
+	_expect(
+		not intermission.is_empty(),
+		"intermission must emit intermission_started (delay > 0)",
+		failures
+	)
+	if not intermission.is_empty():
+		_expect(
+			int(intermission.get("wave_number", -1)) == 1,
+			"intermission_started must carry the finished wave number",
+			failures
+		)
 
 func _check_interval_zero_order(failures: Array[String]) -> void:
 	var world := _new_world()
