@@ -197,6 +197,10 @@ func _test_map_runtime_contract(map_runtime_script: Script, catalog: InventoryPr
 	var runtime = map_runtime_script.new()
 	_check("GameMapRuntime must expose inventory_profiles()", runtime.has_method(&"inventory_profiles"))
 	_check("GameMapRuntime must expose inventory_profile_index_for()", runtime.has_method(&"inventory_profile_index_for"))
+	var catalog_errors := PackedStringArray()
+	var no_rewards: Array[PickupDefinition] = []
+	runtime._compile_inventory_profiles(no_rewards, catalog_errors)
+	_check("unmodified inventory profile catalog must compile without validation errors", catalog_errors.is_empty())
 	if runtime.has_method(&"inventory_profile_index_for"):
 		_check(
 			"unknown inventory reward profile must not fall back to a default",
@@ -231,6 +235,10 @@ func _test_map_runtime_contract(map_runtime_script: Script, catalog: InventoryPr
 	_assert_map_compile_rejects_catalog_field(
 		runtime, catalog, &"ammo_smg", &"max_stack", 1,
 		"inventory ammo max stack must match weapon max_ammo"
+	)
+	_assert_map_compile_rejects_catalog_field(
+		runtime, catalog, &"ammo_smg", &"max_stack", 0,
+		"inventory profile max stack must be positive"
 	)
 	_assert_map_compile_rejects_catalog_field(
 		runtime, catalog, &"mod_damage", &"max_stack", 1,

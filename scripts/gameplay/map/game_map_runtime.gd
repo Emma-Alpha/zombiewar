@@ -406,7 +406,10 @@ func _validate_inventory_profile(
 	weapon_definitions_by_id: Dictionary,
 	errors: PackedStringArray
 ) -> void:
-	if profile.max_stack <= 0:
+	if profile.max_stack < 0 or (
+		profile.max_stack == 0
+		and not _allows_zero_ammo_max_stack(profile, weapon_definitions_by_id)
+	):
 		errors.append("inventory profile max stack must be positive: %s" % profile.profile_id)
 	if not InventoryProfile.is_icon_region_inside_atlas(profile.icon_region):
 		errors.append("inventory profile icon region must be a single atlas cell: %s" % profile.profile_id)
@@ -425,6 +428,20 @@ func _validate_inventory_profile(
 				errors.append("inventory oil max stack must be positive: %s" % profile.profile_id)
 		InventoryProfile.Category.WEAPON_MOD:
 			_validate_inventory_weapon_mod_profile(profile, errors)
+
+func _allows_zero_ammo_max_stack(
+	profile: InventoryProfile,
+	weapon_definitions_by_id: Dictionary
+) -> bool:
+	if (
+		profile.max_stack != 0
+		or profile.category != InventoryProfile.Category.AMMO
+		or not weapon_definitions_by_id.has(profile.weapon_id)
+	):
+		return false
+	var definition := weapon_definitions_by_id[profile.weapon_id] as WeaponDefinition
+	var ranged_definition := definition as RangedWeaponDefinition
+	return ranged_definition != null and ranged_definition.max_ammo == 0
 
 func _validate_inventory_weapon_profile(
 	profile: InventoryProfile,
