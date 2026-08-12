@@ -1,7 +1,8 @@
-[gd_scene load_steps=4 format=3]
+[gd_scene load_steps=5 format=3]
 
 [ext_resource type="Script" path="res://scripts/menu/seat_card.gd" id="1_seat_card"]
 [ext_resource type="PackedScene" path="res://scenes/menu/LobbyPlayerPreview.tscn" id="2_preview"]
+[ext_resource type="FontFile" path="res://assets/fonts/NotoSansSC-UI.ttf" id="9_cjk_font"]
 
 [sub_resource type="Environment" id="Environment_card"]
 ambient_light_source = 2
@@ -23,6 +24,7 @@ layout_mode = 2
 [node name="HostBadge" type="Label" parent="Body/Header"]
 unique_name_in_owner = true
 layout_mode = 2
+theme_override_fonts/font = ExtResource("9_cjk_font")
 text = "房主"
 theme_override_font_sizes/font_size = 15
 
@@ -84,6 +86,7 @@ text = ">"
 [node name="NameLabel" type="Label" parent="Body"]
 unique_name_in_owner = true
 layout_mode = 2
+theme_override_fonts/font = ExtResource("9_cjk_font")
 text = "等待玩家加入"
 horizontal_alignment = 1
 theme_override_font_sizes/font_size = 18
@@ -91,6 +94,7 @@ theme_override_font_sizes/font_size = 18
 [node name="ReadyBanner" type="Label" parent="Body"]
 unique_name_in_owner = true
 layout_mode = 2
+theme_override_fonts/font = ExtResource("9_cjk_font")
 text = "准 备"
 horizontal_alignment = 1
 theme_override_colors/font_color = Color(1, 0.84, 0.25, 1)

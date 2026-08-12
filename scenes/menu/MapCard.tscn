@@ -1,6 +1,7 @@
-[gd_scene load_steps=2 format=3]
+[gd_scene load_steps=3 format=3]
 
 [ext_resource type="Script" path="res://scripts/menu/map_card.gd" id="1_map_card"]
+[ext_resource type="FontFile" path="res://assets/fonts/NotoSansSC-UI.ttf" id="9_cjk_font"]
 
 [node name="MapCard" type="PanelContainer"]
 custom_minimum_size = Vector2(280, 200)
@@ -13,6 +14,7 @@ theme_override_constants/separation = 4
 [node name="MapNameLabel" type="Label" parent="Body"]
 unique_name_in_owner = true
 layout_mode = 2
+theme_override_fonts/font = ExtResource("9_cjk_font")
 text = "未选择地图"
 horizontal_alignment = 1
 theme_override_font_sizes/font_size = 18
@@ -90,6 +92,7 @@ flat = true
 [node name="ChangeHint" type="Label" parent="Body"]
 unique_name_in_owner = true
 layout_mode = 2
+theme_override_fonts/font = ExtResource("9_cjk_font")
 text = "点击更换地图"
 horizontal_alignment = 1
 theme_override_font_sizes/font_size = 14
