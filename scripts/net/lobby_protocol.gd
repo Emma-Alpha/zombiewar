@@ -58,6 +58,24 @@ const EVENT_SPREAD_RESET := 2
 
 const MAX_PLAYER_SLOTS := 4
 
+## 跨线内容标识（角色 id、地图 id）的长度上限。
+## 服务端存着同一个数字并按同样的形状拒收，双向常量对拍守护两者相等。
+## 之所以是「形状校验」而不是「白名单」：服务端不认识游戏内容，
+## 维护一份 id 白名单意味着每加一个角色都要发一次 Worker。
+const CONTENT_ID_MAX_LENGTH := 32
+
+static func is_valid_content_id(value: String) -> bool:
+	if value.length() == 0 or value.length() > CONTENT_ID_MAX_LENGTH:
+		return false
+	for index in range(value.length()):
+		var code := value.unicode_at(index)
+		var is_lower := code >= 97 and code <= 122
+		var is_digit := code >= 48 and code <= 57
+		var is_underscore := code == 95
+		if not (is_lower or is_digit or is_underscore):
+			return false
+	return true
+
 static func quantize(value: float) -> int:
 	return roundi(value * QUANT)
 
