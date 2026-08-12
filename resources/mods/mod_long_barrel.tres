@@ -15,4 +15,4 @@ weapon_mod_id = &"long_barrel"
 weapon_mod_stacks = 1
 view_scene = ExtResource("2_view")
 view_scale = 1.5
-effect_text = "射程 +40%\n基础散布略增"
+effect_text = "射程 +40%\n代价：基础散布 +0.15°"
