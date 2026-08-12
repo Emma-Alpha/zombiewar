@@ -1,14 +1,37 @@
 extends MeshInstance3D
 class_name GroundBloodSplat
 
-@export var surface_offset := 0.012
+## 共享材质缓存：血迹贴图总共只有寥寥几种，按贴图缓存一份共享 ShaderMaterial。
+## 之前在 setup() 里给每个 splat duplicate() 一份独立 StandardMaterial3D，尸潮
+## 一枪死一片时几十上百个 splat 各自成材质实例，在 Web/单线程下触发逐实例的
+## 着色器编译与纹理上传——这是开枪瞬间整帧卡顿的主因。改成共享 ShaderMaterial 后，
+## 同一贴图的所有 splat 只编译一次；每实例的明暗/透明度差异走 instance uniform
+## （tint），不再触碰材质本身，因此不触发重编译。
+static var shared_materials: Dictionary = {}
 
-var base_size := Vector2.ONE
-var current_size := Vector2.ONE
-var current_tint := Color.WHITE
-var current_surface_normal := Vector3.UP
-var current_rotation := 0.0
-var runtime_material: StandardMaterial3D
+## 极简贴地血迹 shader：无光照、alpha 混合、双面。final = 贴图色 * instance tint。
+## 地面血迹是被压平的贴片，不需要 StandardMaterial3D 的 PBR 光照。
+const SPLAT_SHADER_CODE := """
+shader_type spatial;
+render_mode unshaded, cull_disabled, blend_mix, depth_draw_never, fog_disabled;
+
+uniform sampler2D splat_texture : source_color, filter_linear_mipmap, repeat_disable;
+instance uniform vec4 tint : source_color = vec4(1.0);
+
+void fragment() {
+	vec4 tex = texture(splat_texture, UV);
+	ALBEDO = tex.rgb * tint.rgb;
+	ALPHA = tex.a * tint.a;
+}
+"""
+
+static var _shared_shader: Shader
+
+static func _get_shader() -> Shader:
+	if _shared_shader == null:
+		_shared_shader = Shader.new()
+		_shared_shader.code = SPLAT_SHADER_CODE
+	return _shared_shader
 
 static func surface_basis(
 	surface_normal: Vector3,
@@ -24,8 +47,25 @@ static func surface_basis(
 	var local_x := local_y.cross(normal).normalized()
 	return Basis(local_x, local_y, normal).rotated(normal, random_rotation)
 
-func _ready() -> void:
-	set_process(false)
+@export var surface_offset := 0.012
+
+var base_size := Vector2.ONE
+var current_size := Vector2.ONE
+var current_tint := Color.WHITE
+var current_surface_normal := Vector3.UP
+var current_rotation := 0.0
+
+## 取（或建）某张贴图对应的共享材质。之后所有同贴图 splat 复用同一份。
+func _shared_material_for(texture: Texture2D) -> ShaderMaterial:
+	var key := texture.get_instance_id() if texture != null else 0
+	var cached := shared_materials.get(key) as ShaderMaterial
+	if cached != null:
+		return cached
+	var shared := ShaderMaterial.new()
+	shared.shader = _get_shader()
+	shared.set_shader_parameter("splat_texture", texture)
+	shared_materials[key] = shared
+	return shared
 
 func setup(
 	surface_position: Vector3,
@@ -50,13 +90,8 @@ func setup(
 	else:
 		position = resolved_position
 	_apply_size_basis()
-	if runtime_material == null:
-		var source_material := material_override as StandardMaterial3D
-		runtime_material = source_material.duplicate() as StandardMaterial3D
-		material_override = runtime_material
-	runtime_material.albedo_texture = texture
-	runtime_material.albedo_color = tint
-	runtime_material.roughness = clampf(roughness, 0.2, 0.8)
+	material_override = _shared_material_for(texture)
+	set_instance_shader_parameter("tint", tint)
 	visible = true
 
 func merge_limited(size_growth: float, darken_amount: float) -> void:
@@ -72,18 +107,19 @@ func merge_limited(size_growth: float, darken_amount: float) -> void:
 		minf(current_tint.a + 0.02, 0.96)
 	)
 	_apply_size_basis()
-	var material := material_override as StandardMaterial3D
-	material.albedo_color = current_tint
+	set_instance_shader_parameter("tint", current_tint)
+
+## 场景里 StandardMaterial3D 模板的默认贴图（kenney_splat29），warmup 用它。
+const DEFAULT_WARMUP_TEXTURE := preload("res://assets/fx/blood/kenney_splat29.png")
 
 func warmup_for_render(context: FxWarmupContext) -> void:
-	var material := material_override as StandardMaterial3D
 	setup(
 		context.position_in_view(3.5, Vector2(0.3, -0.3)),
 		-context.forward_direction(),
 		Vector2.ONE,
 		0.0,
 		Color(0.42, 0.008, 0.015, 0.92),
-		material.albedo_texture,
+		DEFAULT_WARMUP_TEXTURE,
 		0.4
 	)
 

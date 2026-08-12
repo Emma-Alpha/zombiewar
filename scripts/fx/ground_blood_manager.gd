@@ -49,6 +49,58 @@ func _ready() -> void:
 	_ensure_impact_pool()
 	set_process(not pending_requests.is_empty())
 
+## 记录 prewarm() 里建的那些 splat，供 finish_prewarm() 在 force_draw 之后统一隐藏。
+var _prewarmed_splats: Array[GroundBloodSplat] = []
+
+## 开局预建并预热地面血迹池。共享材质重构后（见 ground_blood_splat.gd），
+## 同一贴图的所有 splat 只编译一次着色器，明暗/透明度走 instance_color 不再
+## 触发重编译——所以这里只需：
+##  1) 预建一批实例，覆盖一枪命中的峰值复用，避免开枪瞬间首次 instantiate 的
+##     GL 资源创建开销；
+##  2) 每种血迹贴图各取一个摆进视野，让紧随其后的 force_draw 把每个共享材质的
+##     着色器/纹理各编译一次（共 ≤4 次，而非过去的每实例一次）。
+## 之后真实命中全部复用池里已建好的实例，开枪零新增实例化、零新增编译。
+const PREWARM_POOL_SIZE := 64
+
+func prewarm(context: FxWarmupContext) -> void:
+	# 1) 预建一批实例（不必建满 max_splats：实例化开销已摊到热身期）。
+	var target := mini(PREWARM_POOL_SIZE, maxi(max_splats, 1))
+	while splats.size() < target:
+		_acquire_splat()
+	# 2) 每种贴图各取一个摆进视野，触发其共享材质编译。
+	var all_textures: Array[Texture2D] = []
+	all_textures.append_array(HIT_TEXTURES)
+	all_textures.append_array(TRAIL_TEXTURES)
+	var seen: Dictionary = {}
+	var index := 0
+	for texture in all_textures:
+		if texture == null or seen.has(texture.get_instance_id()):
+			continue
+		seen[texture.get_instance_id()] = true
+		var splat := splats[index] as GroundBloodSplat
+		var lateral := float(index % 4) * 0.3 - 0.45
+		var depth := 3.0 + float(index / 4) * 0.3
+		splat.setup(
+			context.position_in_view(depth, Vector2(lateral, -0.3)),
+			Vector3.UP,
+			Vector2.ONE,
+			0.0,
+			Color(0.42, 0.008, 0.015, 0.92),
+			texture,
+			0.4
+		)
+		splat.visible = true
+		_prewarmed_splats.append(splat)
+		index += 1
+
+## force_draw 完成之后调用：把预热用的 splat 隐藏。它们留在池里（已编译），
+## 后续真实命中直接复用，不进模拟层、不影响判定。
+func finish_prewarm() -> void:
+	for splat in _prewarmed_splats:
+		if is_instance_valid(splat):
+			splat.visible = false
+	_prewarmed_splats.clear()
+
 func spawn_blood_impact(
 	hit_position: Vector3,
 	shot_direction: Vector3,

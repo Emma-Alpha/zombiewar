@@ -73,14 +73,31 @@ func prewarm(camera: Camera3D) -> void:
 		effect.call("warmup_for_render", context)
 		active_effects.append(effect)
 	_warmup_zombie_renderer(context)
+	# 地面血迹池也要在 force_draw 之前预建+摆进视野：它的懒扩张正是开枪瞬间
+	# 大面积首次实例化 + 换贴图触发同步编译的来源。
+	var blood_manager := _find_ground_blood_manager()
+	if blood_manager != null:
+		blood_manager.prewarm(context)
 	RenderingServer.force_draw(false, 0.0)
 	RenderingServer.force_sync()
 	for effect in active_effects:
 		if not is_instance_valid(effect):
 			continue
 		effect.call("finish_render_warmup")
+	if blood_manager != null:
+		blood_manager.finish_prewarm()
 	host.free()
 	_prewarm_audio()
+
+## 在场景树里按名字找 GroundBloodManager（它与本预热点同在竞技场场景下）。
+## 找不到就返回 null，让血迹预热安静地跳过，不影响其它预热。
+func _find_ground_blood_manager() -> GroundBloodManager:
+	var tree := get_tree()
+	if tree == null or tree.current_scene == null:
+		return null
+	return tree.current_scene.find_child(
+		"GroundBloodManager", true, false
+	) as GroundBloodManager
 
 ## 在开局把战斗相关的每条 MP3 都以近静音各播一遍，强制浏览器/引擎
 ## 提前完成懒解码与 voice 连接，避免「首次进房 + 第一枪」时这条路径
