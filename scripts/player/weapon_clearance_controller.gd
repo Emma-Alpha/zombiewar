@@ -53,7 +53,6 @@ func try_bind_weapon(weapon: WeaponBase) -> bool:
 		current_visual = weapon.visual_anchor
 		visual_rest_transform = current_visual.transform
 		_configure_shapes()
-		weapon_collision.disabled = false
 		_commit_pose(state.pose)
 		return true
 	_configure_shapes()
@@ -72,7 +71,6 @@ func try_bind_weapon(weapon: WeaponBase) -> bool:
 	elif raised_clear:
 		initial_pose = WeaponClearanceState.Pose.RAISED
 	state.configure(initial_pose)
-	weapon_collision.disabled = false
 	_commit_pose(initial_pose)
 	return true
 
@@ -135,6 +133,9 @@ func reset() -> void:
 	_disable_clearance()
 
 func _configure_shapes() -> void:
+	# 武器胶囊只保存净空姿态和枪口端点数据。若把它启用为 Player 的运动形状，
+	# 它会继承 Player 对 ZombieBlocker 层的遮罩，让长枪从正面提前顶住僵尸。
+	weapon_collision.disabled = true
 	var capsules: Array[CapsuleShape3D] = [
 		weapon_collision.shape as CapsuleShape3D,
 		normal_probe.shape as CapsuleShape3D,
