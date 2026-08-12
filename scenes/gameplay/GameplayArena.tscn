@@ -1,4 +1,4 @@
-[gd_scene load_steps=21 format=3]
+[gd_scene load_steps=22 format=3]
 
 [ext_resource type="Script" path="res://scripts/gameplay/gameplay_arena.gd" id="1_arena"]
 [ext_resource type="Script" path="res://scripts/gameplay/local_player_spawner.gd" id="2_player_spawner"]
@@ -14,6 +14,7 @@
 [ext_resource type="Script" path="res://scripts/gameplay/place_item_service.gd" id="17_place_service"]
 [ext_resource type="PackedScene" path="res://scenes/ui/ShopPanel.tscn" id="18_shop_panel"]
 [ext_resource type="PackedScene" path="res://scenes/ui/InventoryPanel.tscn" id="31_inventory_panel"]
+[ext_resource type="PackedScene" path="res://scenes/ui/PauseMenu.tscn" id="32_pause_menu"]
 [ext_resource type="Script" path="res://scripts/gameplay/player_registry.gd" id="23_player_registry"]
 [ext_resource type="Script" path="res://scripts/render/zombie_renderer.gd" id="28_zombie_renderer"]
 [ext_resource type="Script" path="res://scripts/fx/spatial_sfx_pool.gd" id="29_spatial_sfx_pool"]
@@ -317,3 +318,5 @@ vertical_alignment = 1
 [node name="ShopPanel" parent="HUD" instance=ExtResource("18_shop_panel")]
 
 [node name="InventoryPanel" parent="HUD" instance=ExtResource("31_inventory_panel")]
+
+[node name="PauseMenu" parent="HUD" instance=ExtResource("32_pause_menu")]

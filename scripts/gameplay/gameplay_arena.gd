@@ -33,6 +33,8 @@ const RIFLE_DEFINITION := preload("res://resources/weapons/rifle.tres")
 const WeaponModTableScript = preload("res://scripts/sim/weapon_mod_table.gd")
 const HitStopStateScript = preload("res://scripts/fx/hit_stop_state.gd")
 const ContentCatalogsScript = preload("res://scripts/gameplay/content_catalogs.gd")
+const MetaBankerScript = preload("res://scripts/meta/meta_banker.gd")
+const PauseMenuScript = preload("res://scripts/ui/pause_menu.gd")
 
 @export var map_definition: MapDefinition
 @export var zombie_difficulty: ZombieDifficultyProfile
@@ -115,6 +117,7 @@ func _ready() -> void:
 		return
 	local_team_state.all_players_defeated.connect(_on_all_players_defeated)
 	local_team_state.setup(players)
+	_wire_pause_menu()
 	_set_touch_game_over_active(false)
 	_wire_runtime_dependencies()
 	sim_world.start_wave_schedule()
@@ -1099,6 +1102,11 @@ func _unhandled_input(event: InputEvent) -> void:
 			and (event as InputEventKey).keycode == KEY_B:
 		_toggle_inventory_panel()
 		get_viewport().set_input_as_handled()
+		return
+	# ESC 呼出/关闭暂停菜单。
+	if event.is_action_pressed(&"ui_cancel"):
+		_toggle_pause_menu()
+		get_viewport().set_input_as_handled()
 
 ## Tab 打开/关闭背包。数据从模拟层读（确定性），表现层只显示。
 func _toggle_inventory_panel() -> void:
@@ -1360,6 +1368,57 @@ func _handle_player_spawn_failure() -> void:
 		elif session.mode == GameSessionScript.Mode.ONLINE_MULTIPLAYER:
 			destination = "res://scenes/menu/OnlineLobby.tscn"
 	get_tree().change_scene_to_file.call_deferred(destination)
+
+## ---- 暂停菜单 / 返回大厅 ----
+
+func _wire_pause_menu() -> void:
+	var menu := get_node_or_null("HUD/PauseMenu") as Control
+	if menu == null:
+		return
+	if not menu.resume_requested.is_connected(_on_pause_resume):
+		menu.resume_requested.connect(_on_pause_resume)
+	if not menu.return_to_lobby_requested.is_connected(_on_pause_return_to_lobby):
+		menu.return_to_lobby_requested.connect(_on_pause_return_to_lobby)
+
+func _toggle_pause_menu() -> void:
+	var menu := get_node_or_null("HUD/PauseMenu") as Control
+	if menu == null:
+		return
+	if menu.is_open():
+		_on_pause_resume()
+	else:
+		menu.open()
+		# 单人局冻结游戏；联机不能冻结（会断 tick 同步），只弹菜单。
+		if not online_mode:
+			get_tree().paused = true
+
+func _on_pause_resume() -> void:
+	var menu := get_node_or_null("HUD/PauseMenu") as Control
+	if menu != null:
+		menu.close()
+	# 只有单人局被我们冻结过，才需要解冻；联机本就没冻结，别动。
+	if not online_mode:
+		get_tree().paused = false
+
+func _on_pause_return_to_lobby() -> void:
+	get_tree().paused = false
+	_bank_run_material_to_meta()
+	get_tree().change_scene_to_file.call_deferred(
+		"res://scenes/menu/MainMenu.tscn"
+	)
+
+## 把本局本机座位的材料累加进跨局银行。仅单人局生效（本地/联机由
+## MetaBanker.compute_banked 判 0，避免刷币 + 不碰网络同步确定性）。
+func _bank_run_material_to_meta() -> void:
+	var meta := get_node_or_null("/root/MetaProgression")
+	var session := get_node_or_null("/root/GameSession")
+	if meta == null or sim_world == null or session == null:
+		return
+	var amount: int = MetaBankerScript.compute_banked(
+		session.mode, online_mode, sim_world.get_player_material(_local_slot())
+	)
+	if amount > 0:
+		meta.add_banked_material(amount)
 
 func _handle_startup_failure(message: String) -> void:
 	var session := get_node_or_null("/root/GameSession")
