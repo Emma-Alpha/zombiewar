@@ -43,6 +43,13 @@ func request_place_item(
 		instance.free()
 		return _reject(&"invalid_scene_root")
 	var item := instance as Node3D
+	# 记下放置者座位：工兵「加固」被动需要知道这桶是谁放的，才能确定性缩放
+	# 爆炸范围/伤害。requester 是本机玩家（PlayerController），其 player_index
+	# 即模拟层座位号；用 get() 鸭子类型读，未知类型静默跳过。联机各端从同一份
+	# 角色目录得到同一 owner 判定，确定性成立。
+	var owner_index: Variant = requester.get("player_index") if requester != null else null
+	if owner_index is int:
+		item.set_meta("owner_slot", owner_index)
 	container.add_child(item)
 	item.global_position = grid.cell_to_world(cell)
 	if not grid.reserve_cells(item, [cell]):

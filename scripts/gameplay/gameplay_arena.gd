@@ -664,6 +664,16 @@ func _register_barrel(barrel: ExplosiveBarrel) -> void:
 	if bounds.size != Vector3.ZERO:
 		minimum = Vector2(bounds.position.x, bounds.position.z)
 		maximum = Vector2(bounds.end.x, bounds.end.z)
+	# 工兵「加固」被动：放置者的油桶爆炸范围与伤害 ×passive_strength。
+	# owner_slot 由 PlaceItemService 在放置时写到桶的 meta（来自玩家的 player_index）。
+	# 各端从同一份角色目录算出同一 owner/scale，油桶爆炸在模拟层，确定性成立。
+	var fortify_scale := 1.0
+	var owner_slot: int = barrel.get_meta("owner_slot", -1) if barrel.has_meta("owner_slot") else -1
+	if owner_slot >= 0 and owner_slot < players.size():
+		var owner := players[owner_slot]
+		if owner != null and owner.character_definition != null \
+				and owner.character_definition.passive_id == &"fortify":
+			fortify_scale = owner.character_definition.passive_strength
 	var barrel_id_value := sim_world.spawn_barrel(
 		Vector2(origin.x, origin.z),
 		origin.y,
@@ -672,9 +682,9 @@ func _register_barrel(barrel: ExplosiveBarrel) -> void:
 		barrel.firearm_hits_to_explode,
 		barrel.firearm_hits_to_damage,
 		barrel.chain_delay_seconds,
-		barrel.explosion_radius,
-		barrel.explosion_center_damage,
-		barrel.explosion_edge_damage
+		barrel.explosion_radius * fortify_scale,
+		barrel.explosion_center_damage * fortify_scale,
+		barrel.explosion_edge_damage * fortify_scale
 	)
 	barrel.bind_sim_barrel(barrel_id_value)
 	barrel_views[barrel_id_value] = barrel
