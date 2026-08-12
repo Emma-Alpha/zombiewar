@@ -10,3 +10,5 @@ amount = 30
 auto_equip = true
 display_name = "步枪"
 marker_color = Color(0.98, 0.82, 0.2, 1)
+inventory_key = &"weapon_rifle"
+inventory_weapon_id = &"rifle"

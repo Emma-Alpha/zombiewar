@@ -10,3 +10,7 @@ amount = 12
 auto_equip = false
 display_name = "散弹枪弹药"
 marker_color = Color(0.78, 0.3, 0.88, 1)
+inventory_category = 1
+inventory_key = &"ammo_shotgun"
+inventory_max_stack = 40
+inventory_weapon_id = &"shotgun"

@@ -1,0 +1,217 @@
+[gd_resource type="Resource" script_class="InventoryProfile" load_steps=21 format=3]
+
+[ext_resource type="Script" path="res://scripts/gameplay/inventory/inventory_profile.gd" id="1_inventory_profile"]
+
+[sub_resource type="Resource" id="InventoryProfile_knife"]
+script = ExtResource("1_inventory_profile")
+profile_id = &"weapon_knife"
+display_name = "匕首"
+description = "近战武器"
+weapon_id = &"knife"
+icon_region = Rect2(0, 0, 64, 64)
+
+[sub_resource type="Resource" id="InventoryProfile_pistol"]
+script = ExtResource("1_inventory_profile")
+profile_id = &"weapon_pistol"
+display_name = "手枪"
+description = "无限弹药的标准配枪"
+weapon_id = &"pistol"
+icon_region = Rect2(64, 0, 64, 64)
+
+[sub_resource type="Resource" id="InventoryProfile_smg"]
+script = ExtResource("1_inventory_profile")
+profile_id = &"weapon_smg"
+display_name = "冲锋枪"
+description = "高速自动武器"
+weapon_id = &"smg"
+icon_region = Rect2(128, 0, 64, 64)
+
+[sub_resource type="Resource" id="InventoryProfile_shotgun"]
+script = ExtResource("1_inventory_profile")
+profile_id = &"weapon_shotgun"
+display_name = "散弹枪"
+description = "近距离高爆发武器"
+weapon_id = &"shotgun"
+icon_region = Rect2(192, 0, 64, 64)
+
+[sub_resource type="Resource" id="InventoryProfile_rifle"]
+script = ExtResource("1_inventory_profile")
+profile_id = &"weapon_rifle"
+display_name = "步枪"
+description = "中远距离武器"
+weapon_id = &"rifle"
+icon_region = Rect2(256, 0, 64, 64)
+
+[sub_resource type="Resource" id="InventoryProfile_pistol_ammo"]
+script = ExtResource("1_inventory_profile")
+profile_id = &"ammo_pistol"
+category = 1
+display_name = "手枪弹药"
+description = "手枪当前使用无限弹药，不会生成此槽位"
+max_stack = 0
+weapon_id = &"pistol"
+icon_region = Rect2(0, 64, 64, 64)
+
+[sub_resource type="Resource" id="InventoryProfile_smg_ammo"]
+script = ExtResource("1_inventory_profile")
+profile_id = &"ammo_smg"
+category = 1
+display_name = "冲锋枪弹药"
+description = "冲锋枪备用弹药"
+max_stack = 360
+weapon_id = &"smg"
+icon_region = Rect2(64, 64, 64, 64)
+
+[sub_resource type="Resource" id="InventoryProfile_shotgun_ammo"]
+script = ExtResource("1_inventory_profile")
+profile_id = &"ammo_shotgun"
+category = 1
+display_name = "散弹枪弹药"
+description = "散弹枪备用弹药"
+max_stack = 40
+weapon_id = &"shotgun"
+icon_region = Rect2(128, 64, 64, 64)
+
+[sub_resource type="Resource" id="InventoryProfile_rifle_ammo"]
+script = ExtResource("1_inventory_profile")
+profile_id = &"ammo_rifle"
+category = 1
+display_name = "步枪弹药"
+description = "步枪备用弹药"
+max_stack = 90
+weapon_id = &"rifle"
+icon_region = Rect2(192, 64, 64, 64)
+
+[sub_resource type="Resource" id="InventoryProfile_oil"]
+script = ExtResource("1_inventory_profile")
+profile_id = &"oil_barrel"
+category = 2
+display_name = "油桶"
+description = "可放置的爆炸油桶"
+max_stack = 999
+icon_region = Rect2(256, 64, 64, 64)
+
+[sub_resource type="Resource" id="InventoryProfile_damage"]
+script = ExtResource("1_inventory_profile")
+profile_id = &"mod_damage"
+category = 3
+display_name = "伤害改装"
+description = "提高全武器伤害"
+max_stack = 6
+mod_id = &"damage"
+icon_region = Rect2(0, 128, 64, 64)
+
+[sub_resource type="Resource" id="InventoryProfile_pierce"]
+script = ExtResource("1_inventory_profile")
+profile_id = &"mod_pierce"
+category = 3
+display_name = "穿透改装"
+description = "提高穿透能力"
+max_stack = 3
+mod_id = &"pierce"
+icon_region = Rect2(64, 128, 64, 64)
+
+[sub_resource type="Resource" id="InventoryProfile_split"]
+script = ExtResource("1_inventory_profile")
+profile_id = &"mod_split"
+category = 3
+display_name = "弹丸改装"
+description = "增加单次发射的弹丸"
+max_stack = 3
+mod_id = &"split"
+icon_region = Rect2(128, 128, 64, 64)
+
+[sub_resource type="Resource" id="InventoryProfile_compensator"]
+script = ExtResource("1_inventory_profile")
+profile_id = &"mod_compensator"
+category = 3
+display_name = "控枪改装"
+description = "降低连射散布增量"
+max_stack = 3
+mod_id = &"compensator"
+icon_region = Rect2(192, 128, 64, 64)
+
+[sub_resource type="Resource" id="InventoryProfile_long_barrel"]
+script = ExtResource("1_inventory_profile")
+profile_id = &"mod_long_barrel"
+category = 3
+display_name = "枪管改装"
+description = "提高射程"
+max_stack = 2
+mod_id = &"long_barrel"
+icon_region = Rect2(256, 128, 64, 64)
+
+[sub_resource type="Resource" id="InventoryProfile_matched"]
+script = ExtResource("1_inventory_profile")
+profile_id = &"mod_matched"
+category = 3
+display_name = "精配改装"
+description = "提高伤害并降低基础散布"
+max_stack = 3
+mod_id = &"matched"
+icon_region = Rect2(0, 192, 64, 64)
+
+[sub_resource type="Resource" id="InventoryProfile_choke"]
+script = ExtResource("1_inventory_profile")
+profile_id = &"mod_choke"
+category = 3
+display_name = "收束改装"
+description = "降低最大散布"
+max_stack = 2
+mod_id = &"choke"
+icon_region = Rect2(64, 192, 64, 64)
+
+[sub_resource type="Resource" id="InventoryProfile_stabilizer"]
+script = ExtResource("1_inventory_profile")
+profile_id = &"mod_stabilizer"
+category = 3
+display_name = "稳定改装"
+description = "加快散布回复"
+max_stack = 3
+mod_id = &"stabilizer"
+icon_region = Rect2(128, 192, 64, 64)
+
+[sub_resource type="Resource" id="InventoryProfile_heavy_core"]
+script = ExtResource("1_inventory_profile")
+profile_id = &"mod_heavy_core"
+category = 3
+display_name = "重型弹芯"
+description = "提高伤害，增加基础散布"
+max_stack = 2
+mod_id = &"heavy_core"
+icon_region = Rect2(192, 192, 64, 64)
+
+[sub_resource type="Resource" id="InventoryProfile_hollow_point"]
+script = ExtResource("1_inventory_profile")
+profile_id = &"mod_hollow_point"
+category = 3
+display_name = "空尖弹"
+description = "提高伤害，降低穿透"
+max_stack = 2
+mod_id = &"hollow_point"
+icon_region = Rect2(256, 192, 64, 64)
+
+[resource]
+script = ExtResource("1_inventory_profile")
+profiles = Array[ExtResource("1_inventory_profile")]([
+	SubResource("InventoryProfile_knife"),
+	SubResource("InventoryProfile_pistol"),
+	SubResource("InventoryProfile_smg"),
+	SubResource("InventoryProfile_shotgun"),
+	SubResource("InventoryProfile_rifle"),
+	SubResource("InventoryProfile_pistol_ammo"),
+	SubResource("InventoryProfile_smg_ammo"),
+	SubResource("InventoryProfile_shotgun_ammo"),
+	SubResource("InventoryProfile_rifle_ammo"),
+	SubResource("InventoryProfile_oil"),
+	SubResource("InventoryProfile_damage"),
+	SubResource("InventoryProfile_pierce"),
+	SubResource("InventoryProfile_split"),
+	SubResource("InventoryProfile_compensator"),
+	SubResource("InventoryProfile_long_barrel"),
+	SubResource("InventoryProfile_matched"),
+	SubResource("InventoryProfile_choke"),
+	SubResource("InventoryProfile_stabilizer"),
+	SubResource("InventoryProfile_heavy_core"),
+	SubResource("InventoryProfile_hollow_point"),
+])

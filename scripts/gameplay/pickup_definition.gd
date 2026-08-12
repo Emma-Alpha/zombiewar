@@ -1,6 +1,8 @@
 extends Resource
 class_name PickupDefinition
 
+const InventoryProfile = preload("res://scripts/gameplay/inventory/inventory_profile.gd")
+
 enum RewardMode { EQUIPMENT, AMMO, WEAPON_MOD }
 
 @export var reward_mode := RewardMode.EQUIPMENT
@@ -9,6 +11,15 @@ enum RewardMode { EQUIPMENT, AMMO, WEAPON_MOD }
 @export var auto_equip := false
 @export var display_name := "补给"
 @export var marker_color := Color.WHITE
+
+@export_group("Inventory")
+## 这些字段是稳定的 UI 身份；它们不等同于 MapRuntime 按资源路径建立的
+## reward_profile_index。后者只在当前地图运行期存在并进入模拟。
+@export var inventory_category := InventoryProfile.Category.WEAPON
+@export var inventory_key: StringName = &""
+@export_range(0, 9999, 1) var inventory_max_stack := 1
+@export var inventory_weapon_id: StringName = &""
+@export var inventory_mod_id: StringName = &""
 
 @export_group("Weapon Mod")
 ## 改装件 id，必须是 WeaponModTable.MOD_IDS 里的一项。
@@ -30,6 +41,15 @@ enum RewardMode { EQUIPMENT, AMMO, WEAPON_MOD }
 
 func is_weapon_mod() -> bool:
 	return reward_mode == RewardMode.WEAPON_MOD and not weapon_mod_id.is_empty()
+
+func get_inventory_category() -> int:
+	return inventory_category
+
+func get_inventory_key() -> StringName:
+	return inventory_key
+
+func get_inventory_max_stack() -> int:
+	return inventory_max_stack
 
 func grant_to(player: PlayerController, amount_override: int = -1) -> bool:
 	# 改装件的效果已经由 SimWorld._resolve_chest_claims() 在拾取判定当场施加了，

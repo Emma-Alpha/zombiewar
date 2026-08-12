@@ -3,11 +3,15 @@ class_name GameMapRuntime
 
 const FlowFieldGridScript = preload("res://scripts/sim/flow_field_grid.gd")
 const PlaceItemGridScript = preload("res://scripts/gameplay/place_item_grid.gd")
+const InventoryProfileCatalog = preload("res://resources/inventory/inventory_profiles.tres")
 
 var content_root: Node3D
 var zombie_definitions: Array[ZombieDefinition] = []
 var reward_definitions: Array[PickupDefinition] = []
 var initial_chest_events: Array[Dictionary] = []
+
+var _inventory_profiles: Array[InventoryProfile] = []
+var _inventory_profile_indices_by_reward := PackedInt32Array()
 
 var _player_spawn_positions: Array[Vector3] = []
 var _camera_bounds := Rect2()
@@ -78,6 +82,9 @@ func load(
 	var reward_profile_indices: Dictionary = {}
 	for profile_index in range(sorted_rewards.size()):
 		reward_profile_indices[sorted_rewards[profile_index].resource_path] = profile_index
+	# reward profile 的次序来自已按资源路径排序的 sorted_rewards；UI profile 的
+	# StringName 身份独立保存于 inventory_profiles.tres，二者在此显式映射。
+	var inventory_profile_compilation := _compile_inventory_profiles(sorted_rewards, errors)
 
 	var compiled_waves: Array[Dictionary] = []
 	for wave in definition.waves:
@@ -193,6 +200,8 @@ func load(
 		previous_content_root.free()
 	zombie_definitions = sorted_zombies
 	reward_definitions = sorted_rewards
+	_inventory_profiles = inventory_profile_compilation["profiles"] as Array[InventoryProfile]
+	_inventory_profile_indices_by_reward = inventory_profile_compilation["indices"] as PackedInt32Array
 	initial_chest_events.clear()
 	_player_spawn_positions.clear()
 	_player_spawn_positions.append_array(definition.player_spawn_positions)
@@ -262,6 +271,16 @@ func reward_definition(profile_index: int) -> PickupDefinition:
 		return null
 	return reward_definitions[profile_index]
 
+func inventory_profiles() -> Array[InventoryProfile]:
+	var result: Array[InventoryProfile] = []
+	result.append_array(_inventory_profiles)
+	return result
+
+func inventory_profile_index_for(reward_profile_index: int) -> int:
+	if reward_profile_index < 0 or reward_profile_index >= _inventory_profile_indices_by_reward.size():
+		return -1
+	return _inventory_profile_indices_by_reward[reward_profile_index]
+
 func player_spawn_positions() -> Array[Vector3]:
 	var result: Array[Vector3] = []
 	result.append_array(_player_spawn_positions)
@@ -304,6 +323,53 @@ func _collect_reward_definition(
 		errors.append("conflicting reward definition path: %s" % path)
 		return
 	definitions_by_path[path] = reward
+
+func _compile_inventory_profiles(
+	sorted_rewards: Array[PickupDefinition],
+	errors: PackedStringArray
+) -> Dictionary:
+	var catalog := InventoryProfileCatalog as InventoryProfile
+	if catalog == null:
+		errors.append("inventory profile catalog must load as InventoryProfile")
+		return {"profiles": [], "indices": PackedInt32Array()}
+	var profiles: Array[InventoryProfile] = []
+	profiles.append_array(catalog.profiles)
+	profiles.sort_custom(_inventory_profile_less)
+	var profile_indices_by_id: Dictionary = {}
+	for profile_index in range(profiles.size()):
+		var profile := profiles[profile_index]
+		if profile == null or profile.profile_id.is_empty():
+			errors.append("inventory profile must have a non-empty id")
+			continue
+		if profile_indices_by_id.has(profile.profile_id):
+			errors.append("duplicate inventory profile id: %s" % profile.profile_id)
+			continue
+		profile_indices_by_id[profile.profile_id] = profile_index
+	var indices := PackedInt32Array()
+	indices.resize(sorted_rewards.size())
+	indices.fill(-1)
+	for reward_profile_index in range(sorted_rewards.size()):
+		var reward := sorted_rewards[reward_profile_index]
+		var key := reward.get_inventory_key()
+		if key.is_empty() or not profile_indices_by_id.has(key):
+			errors.append(
+				"reward has unknown inventory key: %s (%s)" % [key, reward.resource_path]
+			)
+			continue
+		var inventory_profile_index: int = profile_indices_by_id[key]
+		var profile := profiles[inventory_profile_index]
+		if reward.get_inventory_category() != profile.category:
+			errors.append(
+				"reward inventory category does not match profile: %s (%s)" % [key, reward.resource_path]
+			)
+			continue
+		if reward.get_inventory_max_stack() != profile.max_stack:
+			errors.append(
+				"reward inventory max stack does not match profile: %s (%s)" % [key, reward.resource_path]
+			)
+			continue
+		indices[reward_profile_index] = inventory_profile_index
+	return {"profiles": profiles, "indices": indices}
 
 func _collect_content_nodes(
 	root_node: Node3D,
@@ -445,6 +511,9 @@ func _zombie_definition_less(left: ZombieDefinition, right: ZombieDefinition) ->
 
 func _reward_definition_less(left: PickupDefinition, right: PickupDefinition) -> bool:
 	return left.resource_path < right.resource_path
+
+func _inventory_profile_less(left: InventoryProfile, right: InventoryProfile) -> bool:
+	return String(left.profile_id) < String(right.profile_id)
 
 func _spawn_point_less(
 	left: MapSpawnPointDefinition,

@@ -10,3 +10,6 @@ amount = 30
 auto_equip = false
 display_name = "油桶"
 marker_color = Color(0.2, 0.9, 0.35, 1)
+inventory_category = 2
+inventory_key = &"oil_barrel"
+inventory_max_stack = 999

@@ -10,3 +10,7 @@ amount = 90
 auto_equip = false
 display_name = "冲锋枪弹药"
 marker_color = Color(0.2, 0.55, 1, 1)
+inventory_category = 1
+inventory_key = &"ammo_smg"
+inventory_max_stack = 360
+inventory_weapon_id = &"smg"

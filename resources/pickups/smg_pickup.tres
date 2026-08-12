@@ -10,3 +10,5 @@ amount = 60
 auto_equip = true
 display_name = "冲锋枪"
 marker_color = Color(1, 0.45, 0.08, 1)
+inventory_key = &"weapon_smg"
+inventory_weapon_id = &"smg"

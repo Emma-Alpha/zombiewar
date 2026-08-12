@@ -10,3 +10,5 @@ amount = 16
 auto_equip = true
 display_name = "散弹枪"
 marker_color = Color(0.95, 0.2, 0.25, 1)
+inventory_key = &"weapon_shotgun"
+inventory_weapon_id = &"shotgun"
