@@ -21,6 +21,7 @@ const SimHitGeometryScript = preload("res://scripts/sim/sim_hit_geometry.gd")
 const SimWaveDirectorScript = preload("res://scripts/sim/sim_wave_director.gd")
 
 const MAX_PLAYER_SLOTS := 4
+const INVENTORY_SLOT_COUNT := 12
 const NO_TARGET_SLOT := 255
 const STATE_DEAD := 3
 const HEALTH_SCALE := 100
@@ -262,6 +263,13 @@ var player_upgrade_scale := PackedFloat32Array()
 ## 波间商店的购买力。僵尸死亡掉落积累。进帧哈希，各端必须一致。
 var player_material := PackedInt32Array()
 
+# ---- 逐玩家背包槽位 ----
+## 展平为 [slot * INVENTORY_SLOT_COUNT + inventory_slot]。
+## profile 为稳定的 inventory profile 下标，空槽为 -1；amount 为数量或等级。
+var inventory_profiles: Array[Dictionary] = []
+var inventory_slot_profile := PackedInt32Array()
+var inventory_slot_amount := PackedInt32Array()
+
 # ---- 医疗光环状态 ----
 ## 医疗光环半径（世界单位）。光环影响**别的玩家**，因此必须进模拟层 tick 结算，
 ## 各端才对齐"谁在光环里、回多少血"——放表现层用 Area3D 或各自计时会 desync。
@@ -292,6 +300,10 @@ func _init() -> void:
 	player_present.fill(0)
 	player_material.resize(MAX_PLAYER_SLOTS)
 	player_material.fill(0)
+	inventory_slot_profile.resize(MAX_PLAYER_SLOTS * INVENTORY_SLOT_COUNT)
+	inventory_slot_profile.fill(-1)
+	inventory_slot_amount.resize(MAX_PLAYER_SLOTS * INVENTORY_SLOT_COUNT)
+	inventory_slot_amount.fill(0)
 	player_upgrade_scale.resize(MAX_PLAYER_SLOTS * STAT_COUNT)
 	player_upgrade_scale.fill(1.0)
 	player_spread_degrees.resize(MAX_PLAYER_SLOTS)
@@ -383,6 +395,9 @@ func reset(room_seed: int) -> void:
 	slot_medic_strength.fill(1.0)
 	# 材料是局内货币，reset() 即开新局，清零。
 	player_material.fill(0)
+	# 背包槽位是局内状态：profile 清空、数量归零。
+	inventory_slot_profile.fill(-1)
+	inventory_slot_amount.fill(0)
 	# 属性成长表复位为 1.0（无加成）。
 	player_upgrade_scale.fill(1.0)
 	_clear_tick_events()
@@ -402,6 +417,32 @@ func get_rng() -> DeterministicRng:
 ## 本局房间种子。表现层用它确定性派生商店等（各端同一房间种子 → 同一结果）。
 func get_room_seed() -> int:
 	return _room_seed
+
+## 装配层按稳定顺序注入背包 profile；模拟层只保存轻量字典，不读取 Resource。
+func configure_inventory_profiles(profiles: Array[Dictionary]) -> void:
+	inventory_profiles.clear()
+	for profile in profiles:
+		inventory_profiles.append(profile.duplicate(true))
+
+func get_inventory_slot_profile(slot: int, inventory_slot: int) -> int:
+	if (
+		slot < 0
+		or slot >= MAX_PLAYER_SLOTS
+		or inventory_slot < 0
+		or inventory_slot >= INVENTORY_SLOT_COUNT
+	):
+		return -1
+	return inventory_slot_profile[slot * INVENTORY_SLOT_COUNT + inventory_slot]
+
+func get_inventory_slot_amount(slot: int, inventory_slot: int) -> int:
+	if (
+		slot < 0
+		or slot >= MAX_PLAYER_SLOTS
+		or inventory_slot < 0
+		or inventory_slot >= INVENTORY_SLOT_COUNT
+	):
+		return 0
+	return inventory_slot_amount[slot * INVENTORY_SLOT_COUNT + inventory_slot]
 
 func get_grid() -> FlowFieldGrid:
 	return grid
