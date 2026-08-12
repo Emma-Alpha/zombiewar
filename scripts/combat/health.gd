@@ -20,3 +20,12 @@ func apply_damage(amount: float) -> float:
 	if current == 0.0:
 		depleted.emit()
 	return applied
+
+## 治疗。返回实际恢复量；不超过上限。
+func heal(amount: float) -> float:
+	var applied := minf(maxf(amount, 0.0), maximum - current)
+	if applied <= 0.0:
+		return 0.0
+	current += applied
+	changed.emit(current, maximum)
+	return applied

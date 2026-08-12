@@ -433,7 +433,11 @@ func apply_damage(amount: float, source_position := Vector3.ZERO) -> float:
 	_ensure_health_initialized()
 	if defeated:
 		return 0.0
-	var applied := health.apply_damage(amount)
+	var effective := amount
+	# 防爆甲：passive_strength 为减伤比例（0.3 = 减 30%）。
+	if character_definition != null and character_definition.passive_id == &"blast_armor":
+		effective *= (1.0 - clampf(character_definition.passive_strength, 0.0, 0.9))
+	var applied := health.apply_damage(effective)
 	if applied <= 0.0:
 		return 0.0
 	equipment.cancel_attack()
@@ -443,11 +447,14 @@ func apply_damage(amount: float, source_position := Vector3.ZERO) -> float:
 		hit_reaction_remaining = maxf(hit_reaction_duration, 0.0)
 		hit_attack_lock_remaining = maxf(hit_attack_lock_duration, 0.0)
 		var facing_direction := -global_basis.z
+		var knockback_scale := 1.0
+		if character_definition != null and character_definition.passive_id == &"blast_armor":
+			knockback_scale = 0.5
 		knockback_velocity = PlayerMotion.knockback_direction(
 			global_position,
 			source_position,
 			facing_direction
-		) * maxf(hit_knockback_speed, 0.0)
+		) * maxf(hit_knockback_speed, 0.0) * knockback_scale
 		if animation_player != null and animation_player.has_animation(&"HitReact"):
 			animation_player.play(&"HitReact", 0.05)
 	return applied

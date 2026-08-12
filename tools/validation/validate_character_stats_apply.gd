@@ -44,7 +44,48 @@ func _run() -> void:
 	if red != null:
 		_check_player(red, 100.0, 4.6, "突击", failures)
 
+	# 防爆减伤：防爆角色 apply_damage(100) 只掉 70%（100×0.7），剩 130/140。
+	_check_blast_armor(catalog, failures)
+
 	_finish(failures)
+
+## 防爆甲：passive_strength=0.3 时，100 点伤害被减到 70，140 血剩 70。
+func _check_blast_armor(catalog, failures: Array[String]) -> void:
+	var green = catalog.get_by_id(&"survivor_green")
+	if green == null:
+		_expect(false, "防爆减伤：survivor_green 不存在", failures)
+		return
+	var player := PLAYER_SCENE.instantiate()
+	player.apply_character_definition(green)
+	root.add_child(player)
+	var before: float = player.health.current
+	player.apply_damage(100.0, Vector3.ZERO)
+	var expected: float = before - 100.0 * (1.0 - 0.3)
+	_expect(
+		is_equal_approx(player.health.current, expected),
+		"防爆减伤：health.current 应为 %f，实际 %f" % [
+			expected, player.health.current
+		],
+		failures
+	)
+	player.queue_free()
+
+	# 对照：无 blast_armor 的角色吃满 100。
+	var red = catalog.get_by_id(&"survivor_red")
+	var control := PLAYER_SCENE.instantiate()
+	control.apply_character_definition(red)
+	root.add_child(control)
+	var control_before: float = control.health.current
+	control.apply_damage(100.0, Vector3.ZERO)
+	var control_expected: float = control_before - 100.0
+	_expect(
+		is_equal_approx(control.health.current, control_expected),
+		"对照减伤：无防爆角色应掉满 100，实际掉 %f" % [
+			control_before - control.health.current
+		],
+		failures
+	)
+	control.queue_free()
 
 func _check_player(
 	def: CharacterDefinition,
