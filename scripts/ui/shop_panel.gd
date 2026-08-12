@@ -94,34 +94,30 @@ func _make_card(index: int, offer: ShopOfferDefinition) -> Control:
 
 	return card
 
-## 按 offer_type 给卡片配图标（占位，后续换 image-2 生成的图标）。
+## 按 offer_type 给卡片配图标（codex image-2 生成的）。
 func _icon_for_offer(offer: ShopOfferDefinition) -> Texture2D:
-	# 先用纯文字/符号占位，后续替换为 image-2 生成的图标。
 	match offer.offer_type:
 		ShopOfferDefinition.OfferType.WEAPON:
-			return _placeholder_icon("枪", Color(0.8, 0.5, 0.2))
+			return _load_icon("res://assets/ui/icons/shop_icon_weapon.png")
 		ShopOfferDefinition.OfferType.PASSIVE:
-			return _placeholder_icon("技", Color(0.5, 0.7, 0.9))
+			return _load_icon("res://assets/ui/icons/shop_icon_passive.png")
 		ShopOfferDefinition.OfferType.STAT:
-			return _placeholder_icon("属", Color(0.9, 0.6, 0.2))
+			return _load_icon("res://assets/ui/icons/shop_icon_stat.png")
 		ShopOfferDefinition.OfferType.HEAL:
-			return _placeholder_icon("血", Color(0.8, 0.3, 0.3))
+			return _load_icon("res://assets/ui/icons/shop_icon_heal.png")
 		ShopOfferDefinition.OfferType.AMMO:
-			return _placeholder_icon("弹", Color(0.7, 0.7, 0.5))
+			return _load_icon("res://assets/ui/icons/shop_icon_ammo.png")
 	return null
 
-## 占位图标：纯色块 + 文字（后续替换为 image-2 生成的真图标）。
-func _placeholder_icon(text: String, color: Color) -> Texture2D:
-	var image := Image.create(64, 64, false, Image.FORMAT_RGBA8)
-	image.fill(Color(0, 0, 0, 0))
-	# 简单圆形背景
-	for x in range(64):
-		for y in range(64):
-			var dx := x - 32
-			var dy := y - 32
-			if dx * dx + dy * dy <= 28 * 28:
-				image.set_pixel(x, y, color)
-	return ImageTexture.create_from_image(image)
+## 缓存加载图标（避免每次刷新都 load）。
+static var _icon_cache: Dictionary = {}
+
+func _load_icon(path: String) -> Texture2D:
+	if _icon_cache.has(path):
+		return _icon_cache[path]
+	var tex := load(path) as Texture2D
+	_icon_cache[path] = tex
+	return tex
 
 ## 效果描述文案（按 offer_type）。
 func _effect_text(offer: ShopOfferDefinition) -> String:
