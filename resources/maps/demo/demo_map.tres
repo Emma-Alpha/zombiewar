@@ -317,11 +317,25 @@ weight = 1
 pickup = ExtResource("17_shotgun_ammo_pickup")
 amount = 12
 
+[sub_resource type="Resource" id="Resource_drop_material_small"]
+script = ExtResource("8_death_event_definition")
+event_type = 1
+weight = 3
+material_drop_min = 2
+material_drop_max = 5
+
+[sub_resource type="Resource" id="Resource_drop_material_medium"]
+script = ExtResource("8_death_event_definition")
+event_type = 1
+weight = 2
+material_drop_min = 6
+material_drop_max = 10
+
 [sub_resource type="Resource" id="Resource_common_drop_group"]
 script = ExtResource("7_death_group_definition")
 group_id = &"common_drop"
 trigger_chance_per_10000 = 3200
-events = [SubResource("Resource_drop_smg"), SubResource("Resource_drop_smg_ammo"), SubResource("Resource_drop_oil"), SubResource("Resource_drop_shotgun_ammo"), SubResource("Resource_drop_rifle_ammo"), SubResource("Resource_drop_mod_damage_1"), SubResource("Resource_drop_mod_pierce_1"), SubResource("Resource_drop_mod_split_1"), SubResource("Resource_drop_mod_compensator_1"), SubResource("Resource_drop_mod_heavy_core"), SubResource("Resource_drop_mod_hollow_point")]
+events = [SubResource("Resource_drop_smg"), SubResource("Resource_drop_smg_ammo"), SubResource("Resource_drop_oil"), SubResource("Resource_drop_shotgun_ammo"), SubResource("Resource_drop_rifle_ammo"), SubResource("Resource_drop_material_small"), SubResource("Resource_drop_material_medium"), SubResource("Resource_drop_mod_damage_1"), SubResource("Resource_drop_mod_pierce_1"), SubResource("Resource_drop_mod_split_1"), SubResource("Resource_drop_mod_compensator_1"), SubResource("Resource_drop_mod_heavy_core"), SubResource("Resource_drop_mod_hollow_point")]
 
 [sub_resource type="Resource" id="Resource_tank_drop_group"]
 script = ExtResource("7_death_group_definition")
@@ -357,7 +371,7 @@ grid_height = 39
 camera_bounds = Rect2(-10, -7, 20, 14)
 maximum_active_zombies = 300
 zombie_perception_range = 60.0
-inter_wave_delay_ticks = 60
+inter_wave_delay_ticks = 300
 player_spawn_positions = [Vector3(-1.2, 0, 6.2), Vector3(1.2, 0, 6.2), Vector3(-1.2, 0, 4.2), Vector3(1.2, 0, 4.2)]
 spawn_points = [SubResource("Resource_spawn_north_west"), SubResource("Resource_spawn_north_east"), SubResource("Resource_spawn_south_west"), SubResource("Resource_spawn_south_east")]
 waves = [SubResource("Resource_wave_01"), SubResource("Resource_wave_02"), SubResource("Resource_wave_03"), SubResource("Resource_wave_04"), SubResource("Resource_wave_05"), SubResource("Resource_wave_06"), SubResource("Resource_wave_07"), SubResource("Resource_wave_08")]

@@ -3,7 +3,7 @@ class_name DeathEventDefinition
 
 const PICKUP_DEFINITION_SCRIPT = preload("res://scripts/gameplay/pickup_definition.gd")
 
-enum EventType { DROP_ITEM, ENHANCEMENT, DROP_MATERIAL }
+enum EventType { DROP_ITEM, DROP_MATERIAL, ENHANCEMENT }
 
 @export var event_type := EventType.DROP_ITEM
 @export_range(1, 1000000, 1) var weight := 1
