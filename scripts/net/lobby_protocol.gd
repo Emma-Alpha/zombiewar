@@ -7,7 +7,7 @@ class_name LobbyProtocol
 ##
 ## 这条规则的价值不在于兼容，恰恰在于**拒绝兼容**：把「两个仓库悄悄漂移」
 ## 从一个会在半年后以诡异同步 bug 现身的静默缺陷，变成握手当场的一次响亮失败。
-const PROTOCOL_VERSION := 3
+const PROTOCOL_VERSION := 4
 
 ## 大厅与控制消息号段。
 const OPCODE_LOBBY_MIN := 0x00

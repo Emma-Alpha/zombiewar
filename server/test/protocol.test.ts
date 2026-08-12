@@ -11,6 +11,7 @@ import {
   BIT_PRESENT,
   BIT_USE_JUST_PRESSED,
   BIT_USE_PRESSED,
+  CONTENT_ID_MAX_LENGTH,
   EDGE_BITS,
   EVENT_MELEE,
   EVENT_SHOT,
@@ -50,6 +51,7 @@ describe('protocol constants', () => {
     ['BIT_ALIVE', BIT_ALIVE],
     ['BIT_PRESENT', BIT_PRESENT],
     ['EVENT_SHOT', EVENT_SHOT],
+    ['CONTENT_ID_MAX_LENGTH', CONTENT_ID_MAX_LENGTH],
   ])('%s matches the Godot client', (name, expected) => {
     expect(readGdConstant(source, name)).toBe(expected);
   });

@@ -1,14 +1,23 @@
 /**
  * Wire protocol. Mirrored verbatim by the Godot client in
- * `res://scripts/net/lobby_protocol.gd`. Two copies, and a client-side
- * validation script that diffs them against `protocol/fixtures/`.
+ * `res://scripts/net/lobby_protocol.gd`. Two copies, diffed against each other
+ * in both directions: `server/test/protocol.test.ts` reads the GDScript file,
+ * and `tools/validation/validate_online_frame_sync.gd` reads this one.
  *
  * The handshake rejects a version mismatch instead of tolerating it: turning a
  * silent cross-repo drift into one loud failure at connect time, with both
  * version numbers in the close reason, is worth more than any compatibility
  * shim. See close code 4001 below.
  */
-export const PROTOCOL_VERSION = 3;
+export const PROTOCOL_VERSION = 4;
+
+/**
+ * Length ceiling for a cross-wire content identifier (character id, map id).
+ * The Godot client holds the same number; the two are diffed in both
+ * directions by `server/test/protocol.test.ts` and
+ * `tools/validation/validate_online_frame_sync.gd`.
+ */
+export const CONTENT_ID_MAX_LENGTH = 32;
 
 /** Lobby and control messages. */
 export const OPCODE_LOBBY_MIN = 0x00;
