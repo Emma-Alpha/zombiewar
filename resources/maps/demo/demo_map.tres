@@ -1,0 +1,129 @@
+[gd_resource type="Resource" script_class="MapDefinition" load_steps=28 format=3]
+
+[ext_resource type="Script" path="res://scripts/gameplay/map/map_definition.gd" id="1_map_definition"]
+[ext_resource type="Script" path="res://scripts/gameplay/map/map_spawn_point_definition.gd" id="2_spawn_point_definition"]
+[ext_resource type="Script" path="res://scripts/gameplay/map/fixed_item_spawn_definition.gd" id="3_fixed_item_spawn_definition"]
+[ext_resource type="Script" path="res://scripts/gameplay/map/map_wave_definition.gd" id="4_wave_definition"]
+[ext_resource type="Script" path="res://scripts/gameplay/map/wave_zombie_entry_definition.gd" id="5_wave_entry_definition"]
+[ext_resource type="Script" path="res://scripts/gameplay/map/map_zombie_death_rule_definition.gd" id="6_death_rule_definition"]
+[ext_resource type="Script" path="res://scripts/gameplay/map/death_event_group_definition.gd" id="7_death_group_definition"]
+[ext_resource type="Script" path="res://scripts/gameplay/map/death_event_definition.gd" id="8_death_event_definition"]
+[ext_resource type="PackedScene" path="res://scenes/maps/demo/DemoMapContent.tscn" id="9_content_scene"]
+[ext_resource type="Resource" path="res://resources/zombies/normal_zombie.tres" id="10_normal_zombie"]
+[ext_resource type="Resource" path="res://resources/pickups/smg_pickup.tres" id="11_smg_pickup"]
+[ext_resource type="Resource" path="res://resources/pickups/smg_ammo_pickup.tres" id="12_smg_ammo_pickup"]
+[ext_resource type="Resource" path="res://resources/pickups/oil_barrel_pickup.tres" id="13_oil_barrel_pickup"]
+
+[sub_resource type="Resource" id="Resource_spawn_north_west"]
+script = ExtResource("2_spawn_point_definition")
+spawn_id = &"01_north_west"
+position_xz = Vector2(-19, -14)
+spawn_radius = 1.75
+minimum_spacing = 1.1
+
+[sub_resource type="Resource" id="Resource_spawn_north_east"]
+script = ExtResource("2_spawn_point_definition")
+spawn_id = &"02_north_east"
+position_xz = Vector2(19, -14)
+spawn_radius = 1.75
+minimum_spacing = 1.1
+
+[sub_resource type="Resource" id="Resource_spawn_south_west"]
+script = ExtResource("2_spawn_point_definition")
+spawn_id = &"03_south_west"
+position_xz = Vector2(-19, 14)
+spawn_radius = 1.75
+minimum_spacing = 1.1
+
+[sub_resource type="Resource" id="Resource_spawn_south_east"]
+script = ExtResource("2_spawn_point_definition")
+spawn_id = &"04_south_east"
+position_xz = Vector2(19, 14)
+spawn_radius = 1.75
+minimum_spacing = 1.1
+
+[sub_resource type="Resource" id="Resource_wave_normal_entry"]
+script = ExtResource("5_wave_entry_definition")
+zombie = ExtResource("10_normal_zombie")
+count = 60
+
+[sub_resource type="Resource" id="Resource_demo_wave"]
+script = ExtResource("4_wave_definition")
+spawn_interval_ticks = 0
+zombie_entries = [SubResource("Resource_wave_normal_entry")]
+
+[sub_resource type="Resource" id="Resource_fixed_smg"]
+script = ExtResource("3_fixed_item_spawn_definition")
+spawn_id = &"01_smg"
+position_xz = Vector2(-4.5, 6)
+pickup = ExtResource("11_smg_pickup")
+amount = 60
+respawn_delay_ticks = 60
+
+[sub_resource type="Resource" id="Resource_fixed_smg_ammo"]
+script = ExtResource("3_fixed_item_spawn_definition")
+spawn_id = &"02_smg_ammo"
+position_xz = Vector2(0, 9)
+pickup = ExtResource("12_smg_ammo_pickup")
+amount = 90
+respawn_delay_ticks = 60
+
+[sub_resource type="Resource" id="Resource_fixed_oil"]
+script = ExtResource("3_fixed_item_spawn_definition")
+spawn_id = &"03_oil"
+position_xz = Vector2(4.5, 6)
+pickup = ExtResource("13_oil_barrel_pickup")
+amount = 30
+respawn_delay_ticks = 60
+
+[sub_resource type="Resource" id="Resource_drop_smg"]
+script = ExtResource("8_death_event_definition")
+event_type = 0
+weight = 1
+pickup = ExtResource("11_smg_pickup")
+amount = 60
+
+[sub_resource type="Resource" id="Resource_drop_smg_ammo"]
+script = ExtResource("8_death_event_definition")
+event_type = 0
+weight = 1
+pickup = ExtResource("12_smg_ammo_pickup")
+amount = 90
+
+[sub_resource type="Resource" id="Resource_drop_oil"]
+script = ExtResource("8_death_event_definition")
+event_type = 0
+weight = 1
+pickup = ExtResource("13_oil_barrel_pickup")
+amount = 30
+
+[sub_resource type="Resource" id="Resource_common_drop_group"]
+script = ExtResource("7_death_group_definition")
+group_id = &"common_drop"
+trigger_chance_per_10000 = 2000
+events = [SubResource("Resource_drop_smg"), SubResource("Resource_drop_smg_ammo"), SubResource("Resource_drop_oil")]
+
+[sub_resource type="Resource" id="Resource_normal_death_rule"]
+script = ExtResource("6_death_rule_definition")
+zombie = ExtResource("10_normal_zombie")
+groups = [SubResource("Resource_common_drop_group")]
+
+[resource]
+script = ExtResource("1_map_definition")
+map_id = &"demo"
+display_name = "Demo 检查站"
+content_scene = ExtResource("9_content_scene")
+end_mode = 1
+grid_origin = Vector2(-24.5, -19.5)
+grid_cell_size = 1.0
+grid_width = 49
+grid_height = 39
+camera_bounds = Rect2(-10, -7, 20, 14)
+maximum_active_zombies = 300
+zombie_perception_range = 60.0
+inter_wave_delay_ticks = 30
+player_spawn_positions = [Vector3(-1.2, 0, 6.2), Vector3(1.2, 0, 6.2), Vector3(-1.2, 0, 4.2), Vector3(1.2, 0, 4.2)]
+spawn_points = [SubResource("Resource_spawn_north_west"), SubResource("Resource_spawn_north_east"), SubResource("Resource_spawn_south_west"), SubResource("Resource_spawn_south_east")]
+waves = [SubResource("Resource_demo_wave")]
+fixed_item_spawns = [SubResource("Resource_fixed_smg"), SubResource("Resource_fixed_smg_ammo"), SubResource("Resource_fixed_oil")]
+zombie_death_rules = [SubResource("Resource_normal_death_rule")]

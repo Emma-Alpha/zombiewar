@@ -3,7 +3,8 @@ class_name PlaceItemService
 
 signal placement_rejected(reason: StringName)
 ## 运行时放置的物件是新的阻挡几何，必须标脏对应 cell；
-## 若它是爆炸桶，还要注册成模拟层实体（见 DemoArena._on_item_placed()）。
+## 若它是爆炸桶，还要由 GameplayArena 注册成模拟层实体
+## （见 GameplayArena._on_item_placed()）。
 signal item_placed(item: Node3D)
 ## 移除时把节点与消失前采集的世界 AABB 一起广播：
 ## 爆炸桶要靠节点本身拿到模拟层 id，光有 AABB 不够。

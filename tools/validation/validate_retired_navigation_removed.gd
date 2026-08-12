@@ -14,6 +14,11 @@ const SCAN_ROOTS: PackedStringArray = [
 
 const SCAN_EXTENSIONS: PackedStringArray = ["gd", "tscn"]
 
+const REQUIRED_SCAN_PREFIXES: PackedStringArray = [
+	"res://scripts/gameplay/map",
+	"res://scenes/maps",
+]
+
 const REMOVED_TOKENS: PackedStringArray = [
 	"NavigationWorldManager",
 	"NavigationChunk3D",
@@ -38,11 +43,24 @@ func _run() -> void:
 	var files: Array[String] = []
 	for root_path in SCAN_ROOTS:
 		_collect_files(root_path, files)
+	_check_required_scan_prefixes(files, failures)
 	files.append("res://AGENTS.md")
 	files.sort()
 	for path in files:
 		_scan_file(path, failures)
 	_finish(failures)
+
+func _check_required_scan_prefixes(
+	files: Array[String], failures: Array[String]
+) -> void:
+	for prefix in REQUIRED_SCAN_PREFIXES:
+		var covered := false
+		for path in files:
+			if path.begins_with(prefix + "/"):
+				covered = true
+				break
+		if not covered:
+			failures.append("navigation scan must cover current runtime path: %s" % prefix)
 
 func _collect_files(path: String, files: Array[String]) -> void:
 	var directory := DirAccess.open(path)

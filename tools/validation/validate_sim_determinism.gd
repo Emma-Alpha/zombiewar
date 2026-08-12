@@ -4,6 +4,7 @@ const SimClockScript = preload("res://scripts/sim/sim_clock.gd")
 const SimWorldScript = preload("res://scripts/sim/sim_world.gd")
 const SimHasherScript = preload("res://scripts/sim/sim_hasher.gd")
 const DeterministicRngScript = preload("res://scripts/sim/deterministic_rng.gd")
+const SimWaveDirectorScript = preload("res://scripts/sim/sim_wave_director.gd")
 
 const TICK_COUNT := 3000
 const ZOMBIE_COUNT := 300
@@ -17,7 +18,7 @@ const PLAYER_SLOT_COUNT := 4
 const SHOT_INTERVAL_TICKS := 25
 const MUZZLE_HEIGHT := 1.1
 
-# 与 DemoArena 一致的静态阻挡近似：四面边界墙 + 两个集装箱 + 一段路障。
+# 与 DemoMap 一致的静态阻挡近似：四面边界墙 + 两个集装箱 + 一段路障。
 const BLOCKER_RECTS: Array[Rect2] = [
 	Rect2(Vector2(-24.5, -19.5), Vector2(49.0, 1.0)),
 	Rect2(Vector2(-24.5, 18.5), Vector2(49.0, 1.0)),
@@ -120,7 +121,8 @@ func _run_scenario(
 		world.set_blocker_world_rect(rect.position, rect.end, true)
 	world.reset(room_seed)
 	world.set_default_move_speed(1.30)
-	world.set_perception_range(60.0)   # 与 DemoArena.wave_perception_range 的默认值一致
+	world.configure_zombie_profile(0, 50, 1.30)
+	world.set_perception_range(60.0)   # 与 Demo MapDefinition 的默认值一致
 	world.configure_weapon_profile(
 		RIFLE_PROFILE,
 		RIFLE_DAMAGE,
@@ -132,21 +134,20 @@ func _run_scenario(
 		0,
 		0.0
 	)
-	var per_corner := ZOMBIE_COUNT / 4
-	world.queue_spawn_wave(
-		PackedVector2Array([
-			Vector2(-19.0, -14.0),
-			Vector2(19.0, -14.0),
-			Vector2(-19.0, 14.0),
-			Vector2(19.0, 14.0),
-		]),
-		per_corner,
-		per_corner,
-		ZOMBIE_COUNT,
-		6.0,
-		0.9,
-		50.0
+	var waves: Array[Dictionary] = [{
+		"spawn_interval_ticks": 0,
+		"entries": [{"profile_index": 0, "count": ZOMBIE_COUNT}],
+	}]
+	var spawn_points: Array[Dictionary] = [
+		{"spawn_id": &"north_east", "position": Vector2(19.0, -14.0), "radius": 6.0, "spacing": 0.9},
+		{"spawn_id": &"north_west", "position": Vector2(-19.0, -14.0), "radius": 6.0, "spacing": 0.9},
+		{"spawn_id": &"south_east", "position": Vector2(19.0, 14.0), "radius": 6.0, "spacing": 0.9},
+		{"spawn_id": &"south_west", "position": Vector2(-19.0, 14.0), "radius": 6.0, "spacing": 0.9},
+	]
+	world.configure_wave_schedule(
+		waves, spawn_points, SimWaveDirectorScript.EndMode.COMPLETE, 0, ZOMBIE_COUNT
 	)
+	world.start_wave_schedule()
 	var hashes := PackedStringArray()
 	var applied := 0
 	while applied < table.size():

@@ -79,17 +79,20 @@ func _run() -> void:
 	controls.queue_free()
 	await process_frame
 
-	var demo_scene := load("res://scenes/gameplay/DemoArena.tscn") as PackedScene
-	_expect(demo_scene != null, "DemoArena scene must load", failures)
+	var demo_scene := load("res://scenes/maps/demo/DemoMap.tscn") as PackedScene
+	_expect(demo_scene != null, "DemoMap scene must load", failures)
 	if demo_scene != null:
 		var demo = demo_scene.instantiate()
 		var demo_controls = demo.get_node("MobileControls")
 		_expect(
 			demo.single_player_input.touch_source == demo_controls.get_input_source(),
-			"DemoArena must inject the MobileControls touch source into single-player input",
+			"GameplayArena must inject the MobileControls touch source into single-player input",
 			failures
 		)
+		var detached_team_state := demo.get("local_team_state") as Node
 		demo.free()
+		if detached_team_state != null and is_instance_valid(detached_team_state):
+			detached_team_state.free()
 	_finish(failures)
 
 func _finish(failures: Array[String]) -> void:

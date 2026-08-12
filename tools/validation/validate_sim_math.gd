@@ -29,6 +29,7 @@ const SIM_REACHABLE_FILES := [
 	"res://scripts/sim/sim_combat.gd",
 	"res://scripts/sim/sim_collision.gd",
 	"res://scripts/sim/sim_hit_geometry.gd",
+	"res://scripts/sim/sim_wave_director.gd",
 	"res://scripts/sim/flow_field.gd",
 	"res://scripts/sim/flow_field_grid.gd",
 	"res://scripts/sim/deterministic_rng.gd",

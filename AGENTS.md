@@ -4,6 +4,18 @@
 
 This is a Godot 4.7.1 2.5D game prototype. Keep runtime code in `scripts/`, grouped by feature (`player/`, `combat/`, `gameplay/`, `fx/`, `menu/`, and `ui/`). Matching reusable scenes belong in `scenes/`; data-driven configuration such as weapon and difficulty definitions belongs in `resources/`. Source models, textures, fonts, and audio live under `assets/`. Treat `addons/` as third-party or plugin code; avoid modifying it unless the change specifically targets that dependency. Design notes and implementation plans live in `docs/`.
 
+## Map Runtime Architecture
+
+Gameplay map data comes from `MapDefinition`; `GameplayArena` is the generic
+host, and `DemoMap` is the default map wrapper scene. The map runtime assembly
+may bake `place_item_obstacle` geometry into `SimWorld` only when it is inside
+the current map content root. `ExplosiveBarrel` is excluded because the
+simulation owns barrel blockers for their complete lifecycle.
+
+Wave scheduling, zombie death events, and fixed pickup respawns advance only
+by simulation tick. Do not use a `Timer` or presentation-layer RNG for any of
+these gameplay-state transitions.
+
 ## Build, Test, and Development Commands
 
 - `/Applications/Godot.app/Contents/MacOS/Godot --path .` launches the configured main scene.
@@ -93,7 +105,7 @@ were broadcast**: `pumpFrame` strips edges off the command objects a frame
 references immediately after sending it, so holding the object replays a frame
 that never went out. Two consequences for anything touching this path: the
 client's frame queue must stay at least `FRAME_HISTORY_LIMIT` deep or a full
-replay is clipped at enqueue time, and `DemoArena`'s catch-up loop must stay
+replay is clipped at enqueue time, and `GameplayArena`'s catch-up loop must stay
 wall-clock budgeted or several hundred replayed ticks freeze the frame. Verify
 with `tools/validation/validate_online_reconnect_resume.gd`.
 
@@ -108,11 +120,11 @@ Anything that changes gameplay state in online mode must reach the simulation
 through a frame, never directly:
 
 - Weapon fire, melee, and spread resets are buffered by
-  `DemoArena._buffer_local_sim_request()` and applied when they come back.
+  `GameplayArena._buffer_local_sim_request()` and applied when they come back.
 - A manual wave request sets `pending_wave_request`; the server ORs it into a
   frame so every client queues the wave on the same tick.
-- The auto-wave rule is counted in **ticks** (`_tick_online_auto_wave`), never on
-  the wall-clock `AutoWaveTimer`, which is stopped in online mode.
+- Automatic wave progression is owned by `SimWaveDirector` and counted in
+  simulation ticks; `GameplayArena` must not add a wall-clock wave timer.
 - The room seed comes from the room. A client that picks its own desyncs by
   construction.
 

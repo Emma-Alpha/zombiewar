@@ -4,8 +4,6 @@ class_name PickupChest
 const PickupDefinition = preload("res://scripts/gameplay/pickup_definition.gd")
 const PICKUP_SOUND := preload("res://assets/sfx/boxhead/pickup.mp3")
 
-signal collected(pickup: PickupChest)
-
 @export var definition: PickupDefinition
 
 @onready var claim_area: Area3D = $ClaimArea
@@ -15,6 +13,7 @@ signal collected(pickup: PickupChest)
 
 var claim_locked := false
 var spatial_sfx_pool: SpatialSfxPool
+var reward_amount := -1
 ## 模拟层实体 id。0 表示还没注册（例如大厅预览里的箱子）。
 var sim_chest_id := 0
 
@@ -27,8 +26,9 @@ func _ready() -> void:
 	claim_area.monitoring = false
 	_apply_reward_visuals()
 
-func configure(value: PickupDefinition) -> void:
+func configure(value: PickupDefinition, amount_override: int = -1) -> void:
 	definition = value
+	reward_amount = amount_override
 	if is_node_ready():
 		_apply_reward_visuals()
 
@@ -37,12 +37,6 @@ func bind_sim_chest(chest_id_value: int) -> void:
 
 func get_sim_chest_id() -> int:
 	return sim_chest_id
-
-func get_claim_radius() -> float:
-	var shape := claim_area.get_node_or_null("CollisionShape3D") as CollisionShape3D
-	if shape != null and shape.shape is CylinderShape3D:
-		return (shape.shape as CylinderShape3D).radius
-	return SimWorld.CHEST_CLAIM_RADIUS
 
 ## 由竞技场在模拟层判定领取之后调用——「谁碰到了」已经判完，这里只兑现与演出。
 ##
@@ -55,10 +49,9 @@ func claim_by(player: PlayerController) -> void:
 		return
 	claim_locked = true
 	if player != null and definition != null:
-		definition.grant_to(player)
+		definition.grant_to(player, reward_amount)
 	if spatial_sfx_pool != null:
 		spatial_sfx_pool.play_at(PICKUP_SOUND, global_position, -5.0, 1.0, 24.0)
-	collected.emit(self)
 	queue_free()
 
 func _apply_reward_visuals() -> void:
@@ -77,4 +70,4 @@ func _apply_reward_visuals() -> void:
 	reward_label.modulate = color
 
 func get_reward_label_text() -> String:
-	return definition.get_label_text() if definition != null else "未配置补给"
+	return definition.get_label_text(reward_amount) if definition != null else "未配置补给"

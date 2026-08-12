@@ -11,7 +11,8 @@ class_name ExplosiveBarrel
 ## 因此这段注释里不能出现那几个关键字的字面写法。
 ##
 ## 本节点只做四件事：
-##   1. 把自己的导出参数交给装配方注册进模拟层（DemoArena._register_barrel()）；
+##   1. 把自己的导出参数交给地图运行时装配层注册进模拟层
+##      （GameplayArena._register_barrel()）；
 ##   2. 收到模拟层的「受损」事件时切换外观；
 ##   3. 收到模拟层的「引爆」事件时播特效，并对**玩家**结算爆炸伤害；
 ##   4. 引爆表现完成后释放节点。
@@ -37,7 +38,7 @@ const AIM_POINT_HEIGHT := 0.72
 @onready var damage_smoke: Node3D = $DamageSmoke
 @onready var collision_shape: CollisionShape3D = $CollisionShape3D
 
-## 模拟层实体 id，由 DemoArena 在注册后回填。0 表示尚未注册。
+## 模拟层实体 id，由 GameplayArena 在注册后回填。0 表示尚未注册。
 var sim_barrel_id := 0
 var exploded := false
 

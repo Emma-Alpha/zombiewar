@@ -53,6 +53,17 @@ func _make_world():
 	world.reset(ROOM_SEED)
 	return world
 
+func _spawn_one_shot_chest(world, position: Vector2) -> int:
+	return world.spawn_chest(
+		position,
+		0,
+		1,
+		-1,
+		position - SimWorldScript.CHEST_BLOCKER_HALF_SIZE,
+		position + SimWorldScript.CHEST_BLOCKER_HALF_SIZE,
+		SimWorldScript.CHEST_CLAIM_RADIUS
+	)
+
 func _claims(world) -> Array:
 	var result: Array = []
 	for event in world.tick_chest_events:
@@ -65,7 +76,7 @@ func _claims(world) -> Array:
 func _check_claim_requires_range() -> Array[String]:
 	var failures: Array[String] = []
 	var world = _make_world()
-	var chest := world.spawn_chest(Vector2(5.0, 0.0), SimWorldScript.CHEST_CLAIM_RADIUS)
+	var chest := _spawn_one_shot_chest(world, Vector2(5.0, 0.0))
 	var reach: float = SimWorldScript.CHEST_CLAIM_RADIUS + SimWorldScript.PLAYER_RADIUS
 
 	world.set_player_snapshot(0, Vector2(5.0 + reach + 0.05, 0.0), true, true)
@@ -88,7 +99,7 @@ func _check_tie_break_is_lowest_slot() -> Array[String]:
 	var failures: Array[String] = []
 	for attempt in range(2):
 		var world = _make_world()
-		world.spawn_chest(Vector2(0.0, 0.0), SimWorldScript.CHEST_CLAIM_RADIUS)
+		_spawn_one_shot_chest(world, Vector2.ZERO)
 		# 两个玩家到箱子的距离完全相同，只是方向相反。
 		world.set_player_snapshot(2, Vector2(0.5, 0.0), true, true)
 		world.set_player_snapshot(1, Vector2(-0.5, 0.0), true, true)
@@ -110,7 +121,7 @@ func _check_tie_break_is_lowest_slot() -> Array[String]:
 func _check_dead_and_absent_players_cannot_claim() -> Array[String]:
 	var failures: Array[String] = []
 	var world = _make_world()
-	world.spawn_chest(Vector2(0.0, 0.0), SimWorldScript.CHEST_CLAIM_RADIUS)
+	_spawn_one_shot_chest(world, Vector2.ZERO)
 	# 倒地的玩家站在箱子上
 	world.set_player_snapshot(0, Vector2(0.0, 0.0), false, true)
 	world.step_tick()
@@ -132,7 +143,7 @@ func _check_dead_and_absent_players_cannot_claim() -> Array[String]:
 func _check_claim_is_once_only() -> Array[String]:
 	var failures: Array[String] = []
 	var world = _make_world()
-	world.spawn_chest(Vector2(0.0, 0.0), SimWorldScript.CHEST_CLAIM_RADIUS)
+	_spawn_one_shot_chest(world, Vector2.ZERO)
 	world.set_player_snapshot(0, Vector2(0.0, 0.0), true, true)
 	var total := 0
 	for _tick in range(10):
@@ -151,7 +162,7 @@ func _check_claim_is_once_only() -> Array[String]:
 ## 最终表现为「他捡走了我这边还看得见」与「两边血量对不上」。
 ##
 ## 所以这里守的不是某个函数的行为，而是一条边界：模拟层的箱子状态只能由
-## 模拟层自己写。任何让表现层把 CLAIMED 改回 ACTIVE 的入口都必须让这条失败。
+## 模拟层自己写。任何让表现层把 CONSUMED 改回 ACTIVE 的入口都必须让这条失败。
 func _check_presentation_cannot_move_chest_state() -> Array[String]:
 	var failures: Array[String] = []
 	var world = _make_world()
@@ -160,16 +171,16 @@ func _check_presentation_cannot_move_chest_state() -> Array[String]:
 			"SimWorld 又出现了 release_chest()：表现层一旦能把箱子放回地上，" +
 			"各端就会因为弹药状态不同步而分叉（见本函数上方说明）"
 		)
-	var chest := world.spawn_chest(Vector2(0.0, 0.0), SimWorldScript.CHEST_CLAIM_RADIUS)
+	var chest := _spawn_one_shot_chest(world, Vector2.ZERO)
 	world.set_player_snapshot(0, Vector2(0.0, 0.0), true, true)
 	world.step_tick()
 	var index := world.index_of_chest(chest)
-	if world.get_chest_state(index) != SimWorldScript.CHEST_STATE_CLAIMED:
-		failures.append("箱子被领取后状态应为 CLAIMED")
-	# 领取后玩家继续站在原地：状态必须一直是 CLAIMED，不能被任何路径翻回去。
+	if world.get_chest_state(index) != SimWorldScript.CHEST_STATE_CONSUMED:
+		failures.append("一次性箱子被领取后状态应为 CONSUMED")
+	# 领取后玩家继续站在原地：状态必须一直是 CONSUMED，不能被任何路径翻回去。
 	for _tick in range(20):
 		world.step_tick()
-		if world.get_chest_state(index) != SimWorldScript.CHEST_STATE_CLAIMED:
+		if world.get_chest_state(index) != SimWorldScript.CHEST_STATE_CONSUMED:
 			failures.append("已领取的箱子在后续 tick 被改回了可领取状态")
 			break
 	return failures
@@ -196,9 +207,7 @@ func _check_replay_determinism() -> Array[String]:
 func _replay() -> Dictionary:
 	var world = _make_world()
 	for index in range(4):
-		world.spawn_chest(
-			Vector2(-6.0 + float(index) * 4.0, 2.0), SimWorldScript.CHEST_CLAIM_RADIUS
-		)
+		_spawn_one_shot_chest(world, Vector2(-6.0 + float(index) * 4.0, 2.0))
 	var hashes: Array = []
 	var claim_ticks: Array = []
 	for tick in range(TICK_COUNT):

@@ -1,0 +1,313 @@
+[gd_scene load_steps=21 format=3]
+
+[ext_resource type="Script" path="res://scripts/gameplay/gameplay_arena.gd" id="1_arena"]
+[ext_resource type="Script" path="res://scripts/gameplay/local_player_spawner.gd" id="2_player_spawner"]
+[ext_resource type="PackedScene" path="res://scenes/camera/FollowCamera.tscn" id="3_camera"]
+[ext_resource type="Script" path="res://scripts/fx/ground_blood_manager.gd" id="7_ground_blood"]
+[ext_resource type="Resource" path="res://resources/difficulty/zombie_normal.tres" id="8_zombie_difficulty"]
+[ext_resource type="PackedScene" path="res://scenes/ui/MobileControls.tscn" id="9_mobile_controls"]
+[ext_resource type="FontFile" path="res://assets/fonts/NotoSansSC-UI.ttf" id="10_cjk_font"]
+[ext_resource type="PackedScene" path="res://scenes/ui/MobileOrientationGuard.tscn" id="11_orientation_guard"]
+[ext_resource type="Script" path="res://scripts/fx/combat_fx_prewarmer.gd" id="12_fx_prewarmer"]
+[ext_resource type="PackedScene" path="res://scenes/props/ExplosiveBarrel.tscn" id="15_explosive_barrel"]
+[ext_resource type="Script" path="res://scripts/gameplay/place_item_grid.gd" id="16_place_grid"]
+[ext_resource type="Script" path="res://scripts/gameplay/place_item_service.gd" id="17_place_service"]
+[ext_resource type="Script" path="res://scripts/gameplay/player_registry.gd" id="23_player_registry"]
+[ext_resource type="Script" path="res://scripts/render/zombie_renderer.gd" id="28_zombie_renderer"]
+[ext_resource type="Script" path="res://scripts/fx/spatial_sfx_pool.gd" id="29_spatial_sfx_pool"]
+[ext_resource type="AudioStream" path="res://assets/sfx/boxhead/world_end.mp3" id="30_world_end_audio"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_controls"]
+bg_color = Color(0.0627451, 0.0784314, 0.0980392, 0.82)
+content_margin_left = 14.0
+content_margin_top = 10.0
+content_margin_right = 14.0
+content_margin_bottom = 10.0
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_command_normal"]
+bg_color = Color(0.0627451, 0.0784314, 0.0980392, 0.9)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(1, 0.72, 0.12, 0.9)
+corner_radius_top_left = 10
+corner_radius_top_right = 10
+corner_radius_bottom_right = 10
+corner_radius_bottom_left = 10
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_command_hover"]
+bg_color = Color(0.22, 0.14, 0.06, 0.96)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(1, 0.82, 0.34, 1)
+corner_radius_top_left = 10
+corner_radius_top_right = 10
+corner_radius_bottom_right = 10
+corner_radius_bottom_left = 10
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_command_pressed"]
+bg_color = Color(0.72, 0.18, 0.08, 0.98)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(1, 0.9, 0.55, 1)
+corner_radius_top_left = 10
+corner_radius_top_right = 10
+corner_radius_bottom_right = 10
+corner_radius_bottom_left = 10
+
+[node name="GameplayArena" type="Node3D"]
+script = ExtResource("1_arena")
+zombie_difficulty = ExtResource("8_zombie_difficulty")
+
+[node name="SpatialSfxPool" type="Node3D" parent="." groups=["spatial_sfx_pool"]]
+script = ExtResource("29_spatial_sfx_pool")
+capacity = 16
+
+[node name="GameOverAudio" type="AudioStreamPlayer" parent="."]
+stream = ExtResource("30_world_end_audio")
+
+[node name="World" type="Node3D" parent="."]
+
+[node name="MapContent" type="Node3D" parent="World"]
+
+[node name="Placement" type="Node3D" parent="World"]
+
+[node name="PlaceItemGrid" type="Node3D" parent="World/Placement"]
+script = ExtResource("16_place_grid")
+cell_size = 1.0
+grid_origin = Vector3(0, 0, 0)
+obstacle_root_path = NodePath("../../MapContent")
+dynamic_blocker_mask = 6
+
+[node name="Pickups" type="Node3D" parent="World"]
+
+[node name="PlacedItems" type="Node3D" parent="World"]
+
+[node name="Targets" type="Node3D" parent="World"]
+
+[node name="ZombieRenderer" type="Node3D" parent="World/Targets"]
+script = ExtResource("28_zombie_renderer")
+
+[node name="Players" type="Node3D" parent="."]
+
+[node name="PlayerRegistry" type="Node" parent="."]
+script = ExtResource("23_player_registry")
+
+[node name="LocalPlayerSpawner" type="Node" parent="."]
+script = ExtResource("2_player_spawner")
+
+[node name="PlaceItemService" type="Node" parent="."]
+script = ExtResource("17_place_service")
+default_item_scene = ExtResource("15_explosive_barrel")
+grid_path = NodePath("../World/Placement/PlaceItemGrid")
+placed_items_path = NodePath("../World/PlacedItems")
+
+[node name="GroundBloodManager" type="Node3D" parent="."]
+script = ExtResource("7_ground_blood")
+max_splats = 192
+surface_collision_mask = 1
+
+[node name="CombatFxPrewarmer" type="Node3D" parent="."]
+script = ExtResource("12_fx_prewarmer")
+
+[node name="FollowCamera" parent="." instance=ExtResource("3_camera")]
+position = Vector3(0, 0, 6)
+
+[node name="HUD" type="CanvasLayer" parent="."]
+
+[node name="SpawnWaveButton" type="Button" parent="HUD"]
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -200.0
+offset_top = 92.0
+offset_right = -24.0
+offset_bottom = 148.0
+grow_horizontal = 0
+theme_override_fonts/font = ExtResource("10_cjk_font")
+theme_override_font_sizes/font_size = 20
+theme_override_styles/normal = SubResource("StyleBoxFlat_command_normal")
+theme_override_styles/hover = SubResource("StyleBoxFlat_command_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_command_pressed")
+text = "跳过等待"
+
+[node name="RestartButton" type="Button" parent="HUD"]
+visible = false
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -120.0
+offset_top = 84.0
+offset_right = 120.0
+offset_bottom = 156.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_fonts/font = ExtResource("10_cjk_font")
+theme_override_font_sizes/font_size = 24
+theme_override_colors/font_color = Color(1, 0.92, 0.72, 1)
+theme_override_styles/normal = SubResource("StyleBoxFlat_command_normal")
+theme_override_styles/hover = SubResource("StyleBoxFlat_command_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_command_pressed")
+text = "重新开始"
+
+[node name="MobileControls" parent="." instance=ExtResource("9_mobile_controls")]
+desktop_help_path = NodePath("../HUD/ControlsPanel")
+
+[node name="MobileOrientationGuard" parent="." instance=ExtResource("11_orientation_guard")]
+input_cancel_target_path = NodePath("../MobileControls")
+
+[node name="DamageFlash" type="ColorRect" parent="HUD"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0.8, 0.03, 0.02, 0)
+
+[node name="Title" type="Label" parent="HUD"]
+offset_left = 24.0
+offset_top = 20.0
+offset_right = 390.0
+offset_bottom = 48.0
+theme_override_colors/font_color = Color(0.952941, 0.933333, 0.894118, 1)
+theme_override_font_sizes/font_size = 20
+text = "ZOMBIE WAR — CONTROL DEMO"
+
+[node name="HitConfirm" type="Label" parent="HUD"]
+anchors_preset = 10
+anchor_right = 1.0
+offset_top = 82.0
+offset_bottom = 112.0
+mouse_filter = 2
+theme_override_font_sizes/font_size = 20
+text = ""
+horizontal_alignment = 1
+modulate = Color(1, 1, 1, 0)
+
+[node name="ControlsPanel" type="PanelContainer" parent="HUD"]
+anchors_preset = 2
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_left = 24.0
+offset_top = -94.0
+offset_right = 1180.0
+offset_bottom = -20.0
+grow_vertical = 0
+theme_override_styles/panel = SubResource("StyleBoxFlat_controls")
+
+[node name="Controls" type="Label" parent="HUD/ControlsPanel"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.952941, 0.933333, 0.894118, 1)
+theme_override_font_sizes/font_size = 15
+text = "键盘：WASD 移动 / Q E 切换 / Space 使用 | 方向键移动 / < > 切换 / / 使用\n手柄：LS 移动 / LB RB 切换 / RT 使用"
+
+[node name="GameOver" type="Label" parent="HUD"]
+visible = false
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -220.0
+offset_top = -64.0
+offset_right = 220.0
+offset_bottom = 64.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_colors/font_color = Color(1, 0.25, 0.18, 1)
+theme_override_colors/font_shadow_color = Color(0, 0, 0, 0.9)
+theme_override_constants/shadow_offset_x = 3
+theme_override_constants/shadow_offset_y = 3
+theme_override_font_sizes/font_size = 42
+text = "PLAYER DOWN"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="Ping" type="Label" parent="HUD"]
+visible = false
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -448.0
+offset_top = 20.0
+offset_right = -24.0
+offset_bottom = 42.0
+grow_horizontal = 0
+theme_override_colors/font_color = Color(0.42, 0.9, 0.48, 1)
+theme_override_font_sizes/font_size = 16
+text = "0ms"
+horizontal_alignment = 2
+
+[node name="Objective" type="Label" parent="HUD"]
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -448.0
+offset_top = 46.0
+offset_right = -24.0
+offset_bottom = 74.0
+grow_horizontal = 0
+theme_override_colors/font_color = Color(0.952941, 0.933333, 0.894118, 1)
+theme_override_font_sizes/font_size = 18
+text = "WAVE 0    ALIVE 0"
+horizontal_alignment = 2
+
+[node name="WaveStatus" type="Label" parent="HUD"]
+visible = false
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -448.0
+offset_top = 80.0
+offset_right = -24.0
+offset_bottom = 108.0
+grow_horizontal = 0
+theme_override_colors/font_color = Color(1, 0.78, 0.26, 1)
+theme_override_fonts/font = ExtResource("10_cjk_font")
+theme_override_font_sizes/font_size = 18
+text = ""
+horizontal_alignment = 2
+
+[node name="WaveStatusTimer" type="Timer" parent="."]
+wait_time = 1.2
+one_shot = true
+
+[node name="WarmupLayer" type="CanvasLayer" parent="."]
+layer = 100
+
+[node name="Overlay" type="ColorRect" parent="WarmupLayer"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 0
+color = Color(0.025, 0.031, 0.04, 1)
+
+[node name="Label" type="Label" parent="WarmupLayer/Overlay"]
+layout_mode = 0
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -180.0
+offset_top = -24.0
+offset_right = 180.0
+offset_bottom = 24.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_override_fonts/font = ExtResource("10_cjk_font")
+theme_override_font_sizes/font_size = 24
+text = "正在准备战斗…"
+horizontal_alignment = 1
+vertical_alignment = 1

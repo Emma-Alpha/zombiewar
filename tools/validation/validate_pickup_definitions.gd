@@ -52,11 +52,71 @@ func _run() -> void:
 	if definition_script == null or chest_scene == null:
 		_finish(failures)
 		return
+	_test_amount_override_contract(definition_script, chest_scene, failures)
 	_test_equipment_definition_grants_configured_reward(definition_script, failures)
 	_test_ammo_definition_grants_configured_reward(definition_script, failures)
 	await _test_chest_configuration_and_empty_definition(definition_script, chest_scene, failures)
-	await _test_chest_claim_signal_lifecycle(definition_script, chest_scene, failures)
+	await _test_chest_view_claim_lifecycle(definition_script, chest_scene, failures)
 	_finish(failures)
+
+func _test_amount_override_contract(
+	definition_script,
+	chest_scene: PackedScene,
+	failures: Array[String]
+) -> void:
+	var definition = definition_script.new()
+	definition.reward_mode = definition.RewardMode.EQUIPMENT
+	definition.item_id = &"oil_barrel"
+	definition.amount = 30
+	definition.display_name = "油桶"
+	var player := RecordingPlayer.new()
+	if _method_argument_count(definition, &"grant_to") != 2:
+		failures.append("PickupDefinition.grant_to must accept an amount override")
+	elif _method_argument_count(definition, &"get_label_text") != 1:
+		failures.append("PickupDefinition.get_label_text must accept an amount override")
+	else:
+		_expect(
+			bool(definition.callv(&"grant_to", [player, 7])),
+			"amount override must remain grantable",
+			failures
+		)
+		_expect(
+			player.equipment_calls == [{
+				"item_id": &"oil_barrel",
+				"amount": 7,
+				"auto_equip": false,
+			}],
+			"amount override must replace the Definition amount",
+			failures
+		)
+		_expect(
+			definition.callv(&"get_label_text", [7]) == "油桶 +7",
+			"amount override must replace the label amount",
+			failures
+		)
+	var chest = chest_scene.instantiate()
+	if _method_argument_count(chest, &"configure") != 2:
+		failures.append("PickupChest.configure must accept an amount override")
+	else:
+		chest.callv(&"configure", [definition, 7])
+		_expect(
+			"reward_amount" in chest and chest.reward_amount == 7,
+			"PickupChest must retain the simulated reward amount",
+			failures
+		)
+		_expect(
+			chest.get_reward_label_text() == "油桶 +7",
+			"PickupChest label must use the simulated reward amount",
+			failures
+		)
+	chest.free()
+	player.free()
+
+func _method_argument_count(object: Object, method_name: StringName) -> int:
+	for method in object.get_method_list():
+		if method.get("name") == method_name:
+			return (method.get("args", []) as Array).size()
+	return -1
 
 func _test_equipment_definition_grants_configured_reward(
 	definition_script,
@@ -144,23 +204,16 @@ func _test_chest_configuration_and_empty_definition(
 		failures
 	)
 	var empty_chest = chest_scene.instantiate()
-	var player := RecordingPlayer.new()
-	_expect(
-		not empty_chest._grant_reward(player),
-		"chest without a Definition must reject collection",
-		failures
-	)
 	_expect(
 		empty_chest.get_reward_label_text() == "未配置补给",
 		"unconfigured chest must show an explicit label",
 		failures
 	)
 	empty_chest.free()
-	player.free()
 	chest.queue_free()
 	await process_frame
 
-func _test_chest_claim_signal_lifecycle(
+func _test_chest_view_claim_lifecycle(
 	definition_script,
 	chest_scene: PackedScene,
 	failures: Array[String]
@@ -170,16 +223,19 @@ func _test_chest_claim_signal_lifecycle(
 	definition.amount = 1
 	definition.auto_equip = true
 	var chest = chest_scene.instantiate()
-	chest.configure(definition)
+	chest.configure(definition, 4)
 	root.add_child(chest)
 	await process_frame
 	var player := RecordingPlayer.new()
-	var collection_count := [0]
 	var monitoring_disabled_on_exit := [false]
 	var claim_area: Area3D = chest.claim_area
-	chest.collected.connect(func(_pickup) -> void: collection_count[0] += 1)
 	claim_area.tree_exiting.connect(
 		func() -> void: monitoring_disabled_on_exit[0] = not claim_area.monitoring
+	)
+	_expect(
+		not claim_area.monitoring,
+		"PickupChest view must not decide claims from physics overlaps",
+		failures
 	)
 	# 连调两次：第二次必须是空操作（claim_locked），否则一个箱子能被领两回。
 	chest.claim_by(player)
@@ -187,32 +243,27 @@ func _test_chest_claim_signal_lifecycle(
 	_expect(
 		player.equipment_calls == [{
 			"item_id": &"smg",
-			"amount": 1,
+			"amount": 4,
 			"auto_equip": true,
 		}],
-		"ClaimArea body_entered must grant the configured reward exactly once",
+		"simulated claim must grant the overridden reward exactly once",
 		failures
 	)
-	_expect(chest.claim_locked, "successful ClaimArea entry must lock the chest", failures)
-	_expect(
-		collection_count[0] == 1,
-		"successful ClaimArea entry must emit collected exactly once",
-		failures
-	)
+	_expect(chest.claim_locked, "simulated claim must lock the view", failures)
 	_expect(
 		chest.is_queued_for_deletion(),
-		"successful ClaimArea entry must queue the chest for deletion",
+		"simulated claim must queue the view for deletion",
 		failures
 	)
 	await process_frame
 	_expect(
 		not is_instance_valid(chest),
-		"claimed chest must be freed after the ClaimArea lifecycle completes",
+		"claimed chest view must be freed after the presentation lifecycle completes",
 		failures
 	)
 	_expect(
 		monitoring_disabled_on_exit[0],
-		"successful ClaimArea entry must disable claim-area monitoring",
+		"claimed view must keep claim-area monitoring disabled through cleanup",
 		failures
 	)
 	player.free()

@@ -14,11 +14,16 @@ const FACING_STEPS: Array[Vector2i] = [
 
 @export_range(0.25, 4.0, 0.25) var cell_size := 1.0
 @export var grid_origin := Vector3.ZERO
+@export_node_path("Node") var obstacle_root_path: NodePath
 @export_flags_3d_physics var dynamic_blocker_mask := 6
 @export_range(0.2, 4.0, 0.1) var dynamic_query_height := 1.8
 
 var cell_owners: Dictionary = {}
 var owner_cells: Dictionary = {}
+## 固定/掉落补给可能落在同一批格子上。它们需要多 owner 计数；普通运行时
+## 放置物仍使用上面的单 owner 表，避免改变 PlaceItemService 的占格合同。
+var shared_cell_owners: Dictionary = {}
+var shared_owner_cells: Dictionary = {}
 
 func _ready() -> void:
 	call_deferred("register_initial_obstacles")
@@ -57,7 +62,10 @@ func reserve_cells(owner: Node, cells: Array[Vector2i]) -> bool:
 		return false
 	var owner_id := owner.get_instance_id()
 	for cell in cells:
-		if cell_owners.has(cell) and cell_owners[cell] != owner_id:
+		if (
+			(cell_owners.has(cell) and cell_owners[cell] != owner_id) or
+			shared_cell_owners.has(cell)
+		):
 			return false
 	for cell in cells:
 		cell_owners[cell] = owner_id
@@ -68,16 +76,27 @@ func release_owner(owner: Node) -> bool:
 	if owner == null:
 		return false
 	var owner_id := owner.get_instance_id()
-	if not owner_cells.has(owner_id):
-		return false
-	for cell in owner_cells[owner_id]:
-		if cell_owners.get(cell) == owner_id:
-			cell_owners.erase(cell)
-	owner_cells.erase(owner_id)
-	return true
+	var released := false
+	if owner_cells.has(owner_id):
+		for cell in owner_cells[owner_id]:
+			if cell_owners.get(cell) == owner_id:
+				cell_owners.erase(cell)
+		owner_cells.erase(owner_id)
+		released = true
+	if shared_owner_cells.has(owner_id):
+		for cell in shared_owner_cells[owner_id]:
+			var shared_owners: Dictionary = shared_cell_owners.get(cell, {})
+			shared_owners.erase(owner_id)
+			if shared_owners.is_empty():
+				shared_cell_owners.erase(cell)
+			else:
+				shared_cell_owners[cell] = shared_owners
+		shared_owner_cells.erase(owner_id)
+		released = true
+	return released
 
 func is_cell_reserved(cell: Vector2i) -> bool:
-	return cell_owners.has(cell)
+	return cell_owners.has(cell) or shared_cell_owners.has(cell)
 
 func cells_for_collision_object(
 	obstacle: CollisionObject3D
@@ -97,6 +116,8 @@ func cells_for_collision_object(
 			collision_shape == null or collision_shape.disabled or
 			collision_shape.shape == null
 		):
+			continue
+		if not _collision_shape_belongs_to(collision_shape, obstacle):
 			continue
 		var local_aabb := _shape_local_aabb(collision_shape.shape)
 		if local_aabb.size == Vector3.ZERO:
@@ -118,20 +139,54 @@ func register_obstacle(obstacle: CollisionObject3D) -> bool:
 	var cells := cells_for_collision_object(obstacle)
 	if cells.is_empty() or not reserve_cells(obstacle, cells):
 		return false
+	_connect_obstacle_exit(obstacle)
+	return true
+
+## 补给箱专用的多 owner 登记。共享 owner 之间、以及已存在的普通 owner 与
+## 新共享 owner 之间都可重叠；之后普通放置请求仍会被 is/reserve 拒绝。
+func register_shared_obstacle(obstacle: CollisionObject3D) -> bool:
+	if obstacle == null:
+		return false
+	var cells := cells_for_collision_object(obstacle)
+	if cells.is_empty() or not _reserve_shared_cells(obstacle, cells):
+		return false
+	_connect_obstacle_exit(obstacle)
+	return true
+
+func _reserve_shared_cells(owner: Node, cells: Array[Vector2i]) -> bool:
+	if owner == null or cells.is_empty():
+		return false
+	var owner_id := owner.get_instance_id()
+	if shared_owner_cells.has(owner_id):
+		return false
+	for cell in cells:
+		var shared_owners: Dictionary = shared_cell_owners.get(cell, {})
+		shared_owners[owner_id] = true
+		shared_cell_owners[cell] = shared_owners
+	shared_owner_cells[owner_id] = cells.duplicate()
+	return true
+
+func _connect_obstacle_exit(obstacle: CollisionObject3D) -> void:
 	var exit_callback := Callable(
 		self,
 		"_on_registered_obstacle_exiting"
 	).bind(obstacle)
 	if not obstacle.tree_exiting.is_connected(exit_callback):
 		obstacle.tree_exiting.connect(exit_callback, CONNECT_ONE_SHOT)
-	return true
 
 func register_initial_obstacles() -> void:
 	if not is_inside_tree():
 		return
-	for node in get_tree().get_nodes_in_group(&"place_item_obstacle"):
-		if node is CollisionObject3D:
-			register_obstacle(node as CollisionObject3D)
+	var obstacle_root := get_node_or_null(obstacle_root_path)
+	if obstacle_root == null:
+		return
+	_register_obstacles_in_subtree(obstacle_root)
+
+func _register_obstacles_in_subtree(node: Node) -> void:
+	if node is CollisionObject3D and node.is_in_group(&"place_item_obstacle"):
+		register_obstacle(node as CollisionObject3D)
+	for child in node.get_children():
+		_register_obstacles_in_subtree(child)
 
 func has_dynamic_blocker(
 	world: World3D,
@@ -188,6 +243,8 @@ static func collision_object_world_aabb(obstacle: CollisionObject3D) -> AABB:
 			collision_shape.shape == null
 		):
 			continue
+		if not _collision_shape_belongs_to(collision_shape, obstacle):
+			continue
 		var local_aabb := shape_local_aabb(collision_shape.shape)
 		if local_aabb.size == Vector3.ZERO:
 			continue
@@ -195,6 +252,17 @@ static func collision_object_world_aabb(obstacle: CollisionObject3D) -> AABB:
 		combined = world_aabb if not has_bounds else combined.merge(world_aabb)
 		has_bounds = true
 	return combined if has_bounds else AABB()
+
+static func _collision_shape_belongs_to(
+	collision_shape: CollisionShape3D,
+	obstacle: CollisionObject3D
+) -> bool:
+	var ancestor := collision_shape.get_parent()
+	while ancestor != null:
+		if ancestor is CollisionObject3D:
+			return ancestor == obstacle
+		ancestor = ancestor.get_parent()
+	return false
 
 func _shape_local_aabb(shape: Shape3D) -> AABB:
 	return shape_local_aabb(shape)
