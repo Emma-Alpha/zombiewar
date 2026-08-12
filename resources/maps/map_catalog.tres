@@ -1,0 +1,8 @@
+[gd_resource type="Resource" script_class="MapCatalog" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/gameplay/map/map_catalog.gd" id="1_catalog"]
+[ext_resource type="Resource" path="res://resources/maps/demo/demo_map.tres" id="2_demo"]
+
+[resource]
+script = ExtResource("1_catalog")
+entries = [ExtResource("2_demo")]

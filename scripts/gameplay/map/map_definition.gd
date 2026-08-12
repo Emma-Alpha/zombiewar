@@ -10,6 +10,11 @@ enum EndMode { COMPLETE, LOOP }
 
 @export var map_id: StringName
 @export var display_name := "地图"
+## 地图卡上的缩略图。允许为空——空时地图卡画一块用 display_name 打底的占位色块，
+## 而不是留一个空洞。真实缩略图需要人进游戏俯视截图，不该阻塞这条链路。
+@export var thumbnail: Texture2D
+## 地图卡上的难度星级，1..5。
+@export_range(1, 5, 1) var difficulty := 3
 @export var content_scene: PackedScene
 @export var end_mode := EndMode.COMPLETE
 @export var grid_origin := Vector2.ZERO
