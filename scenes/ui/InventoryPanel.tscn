@@ -3,16 +3,32 @@
 [ext_resource type="Script" path="res://scripts/ui/inventory_panel.gd" id="1_script"]
 [ext_resource type="FontFile" path="res://assets/fonts/NotoSansSC-UI.ttf" id="2_font"]
 
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_inventory"]
+bg_color = Color(0.035, 0.043, 0.045, 0.98)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.72, 0.2, 0.14, 1)
+corner_radius_top_left = 6
+corner_radius_top_right = 6
+corner_radius_bottom_right = 6
+corner_radius_bottom_left = 6
+content_margin_left = 20.0
+content_margin_top = 16.0
+content_margin_right = 20.0
+content_margin_bottom = 16.0
+
 [node name="InventoryPanel" type="Control"]
 visible = false
 anchor_right = 1.0
 anchor_bottom = 1.0
 script = ExtResource("1_script")
 
-[node name="Background" type="ColorRect" parent="."]
+[node name="Scrim" type="ColorRect" parent="."]
 anchor_right = 1.0
 anchor_bottom = 1.0
-color = Color(0, 0, 0, 0.5)
+color = Color(0, 0, 0, 0.72)
 
 [node name="Margin" type="MarginContainer" parent="."]
 anchors_preset = 8
@@ -20,22 +36,31 @@ anchor_left = 0.5
 anchor_top = 0.5
 anchor_right = 0.5
 anchor_bottom = 0.5
-offset_left = -200.0
-offset_top = -180.0
-offset_right = 200.0
-offset_bottom = 180.0
+offset_left = -360.0
+offset_top = -260.0
+offset_right = 360.0
+offset_bottom = 260.0
 grow_horizontal = 2
 grow_vertical = 2
 
-[node name="VBox" type="VBoxContainer" parent="Margin"]
+[node name="Panel" type="PanelContainer" parent="Margin"]
+theme_override_styles/panel = SubResource("StyleBoxFlat_inventory")
 
-[node name="TitleLabel" type="Label" parent="Margin/VBox"]
+[node name="VBox" type="VBoxContainer" parent="Margin/Panel"]
+
+[node name="TitleLabel" type="Label" parent="Margin/Panel/VBox"]
 theme_override_fonts/font = ExtResource("2_font")
-theme_override_font_sizes/font_size = 22
+theme_override_font_sizes/font_size = 26
+theme_override_colors/font_color = Color(0.95, 0.93, 0.89, 1)
 text = "背包"
 horizontal_alignment = 1
 
-[node name="Grid" type="GridContainer" parent="Margin/VBox"]
-theme_override_constants/h_separation = 8
-theme_override_constants/v_separation = 8
-columns = 4
+[node name="MaterialLabel" type="Label" parent="Margin/Panel/VBox"]
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 18
+theme_override_colors/font_color = Color(0.95, 0.66, 0.0, 1)
+text = "材料 0"
+horizontal_alignment = 1
+
+[node name="Sections" type="VBoxContainer" parent="Margin/Panel/VBox"]
+theme_override_constants/separation = 16
