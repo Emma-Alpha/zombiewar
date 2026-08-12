@@ -26,6 +26,7 @@ const CAMERA_ELEVATION_RATIO := 0.16
 @onready var next_button: Button = %NextButton
 @onready var accent_rule: ColorRect = %AccentRule
 @onready var camera: Camera3D = %CharacterCamera
+@onready var viewport: SubViewport = %CharacterViewport
 
 func _ready() -> void:
 	previous_button.pressed.connect(func(): character_step_requested.emit(-1))
@@ -69,6 +70,9 @@ func _on_stage_resized() -> void:
 
 func set_empty() -> void:
 	viewport_container.visible = false
+	# 空位卡不渲染：SubViewportContainer 会把子 viewport 顶成 UPDATE_ALWAYS，
+	# 不显式关掉的话，四个空座位也在每帧各渲染一遍 3D。
+	viewport.render_target_update_mode = SubViewport.UPDATE_DISABLED
 	name_label.text = EMPTY_TEXT
 	name_label.modulate = EMPTY_NAME_COLOR
 	host_badge.visible = false
@@ -85,6 +89,7 @@ func set_occupied(
 	is_local: bool
 ) -> void:
 	viewport_container.visible = true
+	viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 	name_label.text = nickname
 	name_label.modulate = Color.WHITE
 	host_badge.visible = is_host

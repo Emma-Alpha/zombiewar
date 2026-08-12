@@ -70,6 +70,8 @@ unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 3
+focus_mode = 0
+mouse_filter = 2
 stretch = true
 
 [node name="CharacterViewport" type="SubViewport" parent="Body/Stage/CharacterViewportContainer"]
