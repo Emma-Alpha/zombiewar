@@ -147,7 +147,7 @@ func _test_definition_values(definition, failures: Array[String]) -> void:
 		"perception range",
 		failures
 	)
-	_expect(definition.inter_wave_delay_ticks == 30, "inter-wave ticks", failures)
+	_expect(definition.inter_wave_delay_ticks == 60, "inter-wave ticks", failures)
 	_expect(
 		definition.player_spawn_positions == [
 			Vector3(-1.2, 0.0, 6.2),
@@ -181,35 +181,31 @@ func _test_definition_values(definition, failures: Array[String]) -> void:
 			failures
 		)
 
-	_expect(definition.waves.size() == 1, "one authored demo wave", failures)
-	if definition.waves.size() == 1:
-		var wave = definition.waves[0]
-		_expect(wave.spawn_interval_ticks == 0, "demo wave spawns without interval", failures)
-		_expect(wave.zombie_entries.size() == 1, "one zombie entry", failures)
-		if wave.zombie_entries.size() == 1:
-			_expect(wave.zombie_entries[0].count == 60, "normal x60", failures)
-			_expect(
-				wave.zombie_entries[0].zombie.type_id == &"normal",
-				"normal zombie entry",
-				failures
-			)
+	_test_wave_curve(definition, failures)
 
-	_expect(definition.fixed_item_spawns.size() == 3, "three fixed pickups", failures)
+	_expect(definition.fixed_item_spawns.size() == 4, "four fixed pickups", failures)
+	# 最后一列是 respawn_delay_ticks：霰弹枪刻意比其余三件稀缺得多，
+	# 一并锁进期望值，免得有人「统一」成同一个数字时把稀缺性调没了。
 	var expected_fixed := [
 		[
 			&"01_smg", Vector2(-4.5, 6.0),
 			"res://resources/pickups/smg_pickup.tres", 60,
-			PickupDefinition.RewardMode.EQUIPMENT, &"smg", 60, true,
+			PickupDefinition.RewardMode.EQUIPMENT, &"smg", 60, true, 60,
 		],
 		[
 			&"02_smg_ammo", Vector2(0.0, 9.0),
 			"res://resources/pickups/smg_ammo_pickup.tres", 90,
-			PickupDefinition.RewardMode.AMMO, &"smg", 90, false,
+			PickupDefinition.RewardMode.AMMO, &"smg", 90, false, 60,
 		],
 		[
 			&"03_oil", Vector2(4.5, 6.0),
 			"res://resources/pickups/oil_barrel_pickup.tres", 30,
-			PickupDefinition.RewardMode.EQUIPMENT, &"oil_barrel", 30, false,
+			PickupDefinition.RewardMode.EQUIPMENT, &"oil_barrel", 30, false, 60,
+		],
+		[
+			&"04_shotgun", Vector2(0.0, -6.0),
+			"res://resources/pickups/shotgun_pickup.tres", 16,
+			PickupDefinition.RewardMode.EQUIPMENT, &"shotgun", 16, true, 600,
 		],
 	]
 	for index in mini(definition.fixed_item_spawns.size(), expected_fixed.size()):
@@ -219,7 +215,11 @@ func _test_definition_values(definition, failures: Array[String]) -> void:
 		_expect(fixed_spawn.position_xz == expected[1], "fixed spawn position %d" % index, failures)
 		_expect(fixed_spawn.pickup.resource_path == expected[2], "fixed pickup %d" % index, failures)
 		_expect(fixed_spawn.amount == expected[3], "fixed amount %d" % index, failures)
-		_expect(fixed_spawn.respawn_delay_ticks == 60, "fixed respawn %d" % index, failures)
+		_expect(
+			fixed_spawn.respawn_delay_ticks == int(expected[8]),
+			"fixed respawn %d" % index,
+			failures
+		)
 		_expect_pickup_semantics(
 			fixed_spawn.pickup,
 			expected[2],
@@ -231,16 +231,38 @@ func _test_definition_values(definition, failures: Array[String]) -> void:
 			failures
 		)
 
-	_expect(definition.zombie_death_rules.size() == 1, "one normal death rule", failures)
-	if definition.zombie_death_rules.size() == 1:
-		var death_rule = definition.zombie_death_rules[0]
-		_expect(death_rule.zombie.type_id == &"normal", "normal death rule", failures)
+	_expect(definition.zombie_death_rules.size() == 3, "one death rule per zombie type", failures)
+	var death_rules_by_type := {}
+	for rule in definition.zombie_death_rules:
+		if rule != null and rule.zombie != null:
+			death_rules_by_type[rule.zombie.type_id] = rule
+	_expect(
+		death_rules_by_type.has(&"normal")
+			and death_rules_by_type.has(&"runner")
+			and death_rules_by_type.has(&"tank"),
+		"every authored zombie type must have a death rule",
+		failures
+	)
+	if death_rules_by_type.has(&"tank"):
+		# 壮硕僵尸血量是普通僵尸的五倍以上，击杀成本高，因此掉落必须是确定的：
+		# 让一个需要专门集火的目标掉不出东西，玩家下次就直接绕开它了。
+		var tank_rule = death_rules_by_type[&"tank"]
+		_expect(tank_rule.groups.size() == 1, "one tank drop group", failures)
+		if tank_rule.groups.size() == 1:
+			_expect(tank_rule.groups[0].group_id == &"tank_drop", "tank drop group id", failures)
+			_expect(
+				tank_rule.groups[0].trigger_chance_per_10000 == 10000,
+				"a tank kill must always drop",
+				failures
+			)
+	if death_rules_by_type.has(&"normal"):
+		var death_rule = death_rules_by_type[&"normal"]
 		_expect(death_rule.groups.size() == 1, "one common drop group", failures)
 		if death_rule.groups.size() == 1:
 			var group = death_rule.groups[0]
 			_expect(group.group_id == &"common_drop", "common drop id", failures)
 			_expect(group.trigger_chance_per_10000 == 2000, "common drop chance", failures)
-			_expect(group.events.size() == 3, "three common drops", failures)
+			_expect(group.events.size() == 4, "four common drops", failures)
 			var expected_drops := [
 				[
 					"res://resources/pickups/smg_pickup.tres",
@@ -253,6 +275,10 @@ func _test_definition_values(definition, failures: Array[String]) -> void:
 				[
 					"res://resources/pickups/oil_barrel_pickup.tres",
 					PickupDefinition.RewardMode.EQUIPMENT, &"oil_barrel", 30, false,
+				],
+				[
+					"res://resources/pickups/shotgun_ammo_pickup.tres",
+					PickupDefinition.RewardMode.AMMO, &"shotgun", 12, false,
 				],
 			]
 			for index in mini(group.events.size(), expected_drops.size()):
@@ -275,6 +301,58 @@ func _test_definition_values(definition, failures: Array[String]) -> void:
 					"death drop %d" % index,
 					failures
 				)
+
+## 波次曲线契约。这里刻意不锁死具体数值——那是频繁调整的手感参数——而是锁死
+## 「难度必须真的递增」这个设计意图：地图是 LOOP 的，排行榜排的是 team_wave，
+## 一旦波次退回成同一波无限重复，「打到第 30 波」就重新变成熬时间而不是变强。
+## 难度代理取每波总血量而不是僵尸数量：一只 260 血的壮硕僵尸比三只普通僵尸更难，
+## 按个数比会把「换成更少但更硬的敌人」误判为降低难度。
+func _test_wave_curve(definition, failures: Array[String]) -> void:
+	_expect(definition.waves.size() >= 8, "demo must author a multi-wave curve", failures)
+	if definition.waves.size() < 2:
+		return
+	var wave_threats: Array[int] = []
+	var previous_interval := 1 << 30
+	var seen_types := {}
+	for index in definition.waves.size():
+		var wave = definition.waves[index]
+		_expect(
+			wave.spawn_interval_ticks > 0,
+			"wave %d must stream its spawns, not land the whole wave on one tick" % index,
+			failures
+		)
+		_expect(
+			wave.spawn_interval_ticks <= previous_interval,
+			"wave %d must not spawn slower than the wave before it" % index,
+			failures
+		)
+		previous_interval = wave.spawn_interval_ticks
+		var threat := 0
+		for entry in wave.zombie_entries:
+			if entry.zombie == null:
+				continue
+			threat += entry.count * entry.zombie.max_health
+			seen_types[entry.zombie.type_id] = true
+		wave_threats.append(threat)
+	for index in range(1, wave_threats.size()):
+		_expect(
+			wave_threats[index] > wave_threats[index - 1],
+			"wave %d must be harder than wave %d (threat %d vs %d)" % [
+				index, index - 1, wave_threats[index], wave_threats[index - 1]
+			],
+			failures
+		)
+	if not wave_threats.is_empty():
+		_expect(
+			wave_threats[wave_threats.size() - 1] >= wave_threats[0] * 4,
+			"the final wave must be several times the opening wave, not a slow drift",
+			failures
+		)
+	_expect(
+		seen_types.has(&"normal") and seen_types.has(&"runner") and seen_types.has(&"tank"),
+		"the wave curve must introduce every authored zombie type",
+		failures
+	)
 
 func _expect_pickup_semantics(
 	pickup,
@@ -404,20 +482,29 @@ func _test_runtime_assembly(definition, failures: Array[String]) -> void:
 	_expect(errors.is_empty(), "; ".join(errors), failures)
 	if errors.is_empty():
 		_expect(runtime.content_root != null, "runtime content root", failures)
-		_expect(runtime.zombie_definitions.size() == 1, "one runtime zombie profile", failures)
-		_expect(runtime.zombie_definitions[0].type_id == &"normal", "sorted zombie profile", failures)
-		_expect(runtime.reward_definitions.size() == 3, "three runtime reward profiles", failures)
+		_expect(runtime.zombie_definitions.size() == 3, "three runtime zombie profiles", failures)
+		var profile_type_ids: Array[StringName] = []
+		for zombie_definition in runtime.zombie_definitions:
+			profile_type_ids.append(zombie_definition.type_id)
+		_expect(
+			profile_type_ids == [&"normal", &"runner", &"tank"],
+			"zombie profiles sorted by type id",
+			failures
+		)
+		_expect(runtime.reward_definitions.size() == 5, "five runtime reward profiles", failures)
 		var reward_paths: Array[String] = []
 		for reward in runtime.reward_definitions:
 			reward_paths.append(reward.resource_path)
 		_expect(reward_paths == [
 			"res://resources/pickups/oil_barrel_pickup.tres",
+			"res://resources/pickups/shotgun_ammo_pickup.tres",
+			"res://resources/pickups/shotgun_pickup.tres",
 			"res://resources/pickups/smg_ammo_pickup.tres",
 			"res://resources/pickups/smg_pickup.tres",
 		], "reward profiles sorted by resource path", failures)
-		_expect(runtime.initial_chest_events.size() == 3, "three initial chest events", failures)
+		_expect(runtime.initial_chest_events.size() == 4, "four initial chest events", failures)
 		_expect(runtime.scene_barrels().size() == 3, "three sorted scene barrels", failures)
-		_expect(world.get_chest_count() == 3, "three simulated fixed chests", failures)
+		_expect(world.get_chest_count() == 4, "four simulated fixed chests", failures)
 		_expect(world.grid.origin == definition.grid_origin, "world grid configured", failures)
 		_test_failed_reload_is_atomic(
 			definition,

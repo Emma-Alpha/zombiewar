@@ -1,4 +1,4 @@
-[gd_resource type="Resource" script_class="MapDefinition" load_steps=28 format=3]
+[gd_resource type="Resource" script_class="MapDefinition" load_steps=62 format=3]
 
 [ext_resource type="Script" path="res://scripts/gameplay/map/map_definition.gd" id="1_map_definition"]
 [ext_resource type="Script" path="res://scripts/gameplay/map/map_spawn_point_definition.gd" id="2_spawn_point_definition"]
@@ -13,6 +13,10 @@
 [ext_resource type="Resource" path="res://resources/pickups/smg_pickup.tres" id="11_smg_pickup"]
 [ext_resource type="Resource" path="res://resources/pickups/smg_ammo_pickup.tres" id="12_smg_ammo_pickup"]
 [ext_resource type="Resource" path="res://resources/pickups/oil_barrel_pickup.tres" id="13_oil_barrel_pickup"]
+[ext_resource type="Resource" path="res://resources/zombies/runner_zombie.tres" id="14_runner_zombie"]
+[ext_resource type="Resource" path="res://resources/zombies/tank_zombie.tres" id="15_tank_zombie"]
+[ext_resource type="Resource" path="res://resources/pickups/shotgun_pickup.tres" id="16_shotgun_pickup"]
+[ext_resource type="Resource" path="res://resources/pickups/shotgun_ammo_pickup.tres" id="17_shotgun_ammo_pickup"]
 
 [sub_resource type="Resource" id="Resource_spawn_north_west"]
 script = ExtResource("2_spawn_point_definition")
@@ -42,15 +46,130 @@ position_xz = Vector2(19, 14)
 spawn_radius = 1.75
 minimum_spacing = 1.1
 
-[sub_resource type="Resource" id="Resource_wave_normal_entry"]
+[sub_resource type="Resource" id="Resource_w1_normal"]
 script = ExtResource("5_wave_entry_definition")
 zombie = ExtResource("10_normal_zombie")
-count = 60
+count = 12
 
-[sub_resource type="Resource" id="Resource_demo_wave"]
+[sub_resource type="Resource" id="Resource_wave_01"]
 script = ExtResource("4_wave_definition")
-spawn_interval_ticks = 0
-zombie_entries = [SubResource("Resource_wave_normal_entry")]
+spawn_interval_ticks = 10
+zombie_entries = [SubResource("Resource_w1_normal")]
+
+[sub_resource type="Resource" id="Resource_w2_normal"]
+script = ExtResource("5_wave_entry_definition")
+zombie = ExtResource("10_normal_zombie")
+count = 20
+
+[sub_resource type="Resource" id="Resource_wave_02"]
+script = ExtResource("4_wave_definition")
+spawn_interval_ticks = 8
+zombie_entries = [SubResource("Resource_w2_normal")]
+
+[sub_resource type="Resource" id="Resource_w3_normal"]
+script = ExtResource("5_wave_entry_definition")
+zombie = ExtResource("10_normal_zombie")
+count = 18
+
+[sub_resource type="Resource" id="Resource_w3_runner"]
+script = ExtResource("5_wave_entry_definition")
+zombie = ExtResource("14_runner_zombie")
+count = 6
+
+[sub_resource type="Resource" id="Resource_wave_03"]
+script = ExtResource("4_wave_definition")
+spawn_interval_ticks = 7
+zombie_entries = [SubResource("Resource_w3_normal"), SubResource("Resource_w3_runner")]
+
+[sub_resource type="Resource" id="Resource_w4_normal"]
+script = ExtResource("5_wave_entry_definition")
+zombie = ExtResource("10_normal_zombie")
+count = 26
+
+[sub_resource type="Resource" id="Resource_w4_runner"]
+script = ExtResource("5_wave_entry_definition")
+zombie = ExtResource("14_runner_zombie")
+count = 8
+
+[sub_resource type="Resource" id="Resource_wave_04"]
+script = ExtResource("4_wave_definition")
+spawn_interval_ticks = 6
+zombie_entries = [SubResource("Resource_w4_normal"), SubResource("Resource_w4_runner")]
+
+[sub_resource type="Resource" id="Resource_w5_normal"]
+script = ExtResource("5_wave_entry_definition")
+zombie = ExtResource("10_normal_zombie")
+count = 20
+
+[sub_resource type="Resource" id="Resource_w5_runner"]
+script = ExtResource("5_wave_entry_definition")
+zombie = ExtResource("14_runner_zombie")
+count = 10
+
+[sub_resource type="Resource" id="Resource_w5_tank"]
+script = ExtResource("5_wave_entry_definition")
+zombie = ExtResource("15_tank_zombie")
+count = 1
+
+[sub_resource type="Resource" id="Resource_wave_05"]
+script = ExtResource("4_wave_definition")
+spawn_interval_ticks = 6
+zombie_entries = [SubResource("Resource_w5_normal"), SubResource("Resource_w5_runner"), SubResource("Resource_w5_tank")]
+
+[sub_resource type="Resource" id="Resource_w6_normal"]
+script = ExtResource("5_wave_entry_definition")
+zombie = ExtResource("10_normal_zombie")
+count = 34
+
+[sub_resource type="Resource" id="Resource_w6_runner"]
+script = ExtResource("5_wave_entry_definition")
+zombie = ExtResource("14_runner_zombie")
+count = 14
+
+[sub_resource type="Resource" id="Resource_wave_06"]
+script = ExtResource("4_wave_definition")
+spawn_interval_ticks = 5
+zombie_entries = [SubResource("Resource_w6_normal"), SubResource("Resource_w6_runner")]
+
+[sub_resource type="Resource" id="Resource_w7_normal"]
+script = ExtResource("5_wave_entry_definition")
+zombie = ExtResource("10_normal_zombie")
+count = 30
+
+[sub_resource type="Resource" id="Resource_w7_runner"]
+script = ExtResource("5_wave_entry_definition")
+zombie = ExtResource("14_runner_zombie")
+count = 16
+
+[sub_resource type="Resource" id="Resource_w7_tank"]
+script = ExtResource("5_wave_entry_definition")
+zombie = ExtResource("15_tank_zombie")
+count = 3
+
+[sub_resource type="Resource" id="Resource_wave_07"]
+script = ExtResource("4_wave_definition")
+spawn_interval_ticks = 4
+zombie_entries = [SubResource("Resource_w7_normal"), SubResource("Resource_w7_runner"), SubResource("Resource_w7_tank")]
+
+[sub_resource type="Resource" id="Resource_w8_normal"]
+script = ExtResource("5_wave_entry_definition")
+zombie = ExtResource("10_normal_zombie")
+count = 44
+
+[sub_resource type="Resource" id="Resource_w8_runner"]
+script = ExtResource("5_wave_entry_definition")
+zombie = ExtResource("14_runner_zombie")
+count = 22
+
+[sub_resource type="Resource" id="Resource_w8_tank"]
+script = ExtResource("5_wave_entry_definition")
+zombie = ExtResource("15_tank_zombie")
+count = 5
+
+[sub_resource type="Resource" id="Resource_wave_08"]
+script = ExtResource("4_wave_definition")
+spawn_interval_ticks = 3
+zombie_entries = [SubResource("Resource_w8_normal"), SubResource("Resource_w8_runner"), SubResource("Resource_w8_tank")]
 
 [sub_resource type="Resource" id="Resource_fixed_smg"]
 script = ExtResource("3_fixed_item_spawn_definition")
@@ -76,6 +195,14 @@ pickup = ExtResource("13_oil_barrel_pickup")
 amount = 30
 respawn_delay_ticks = 60
 
+[sub_resource type="Resource" id="Resource_fixed_shotgun"]
+script = ExtResource("3_fixed_item_spawn_definition")
+spawn_id = &"04_shotgun"
+position_xz = Vector2(0, -6)
+pickup = ExtResource("16_shotgun_pickup")
+amount = 16
+respawn_delay_ticks = 600
+
 [sub_resource type="Resource" id="Resource_drop_smg"]
 script = ExtResource("8_death_event_definition")
 event_type = 0
@@ -97,16 +224,53 @@ weight = 1
 pickup = ExtResource("13_oil_barrel_pickup")
 amount = 30
 
+[sub_resource type="Resource" id="Resource_drop_shotgun_ammo"]
+script = ExtResource("8_death_event_definition")
+event_type = 0
+weight = 1
+pickup = ExtResource("17_shotgun_ammo_pickup")
+amount = 12
+
+[sub_resource type="Resource" id="Resource_tank_drop_ammo"]
+script = ExtResource("8_death_event_definition")
+event_type = 0
+weight = 1
+pickup = ExtResource("12_smg_ammo_pickup")
+amount = 90
+
+[sub_resource type="Resource" id="Resource_tank_drop_shotgun_ammo"]
+script = ExtResource("8_death_event_definition")
+event_type = 0
+weight = 1
+pickup = ExtResource("17_shotgun_ammo_pickup")
+amount = 12
+
 [sub_resource type="Resource" id="Resource_common_drop_group"]
 script = ExtResource("7_death_group_definition")
 group_id = &"common_drop"
 trigger_chance_per_10000 = 2000
-events = [SubResource("Resource_drop_smg"), SubResource("Resource_drop_smg_ammo"), SubResource("Resource_drop_oil")]
+events = [SubResource("Resource_drop_smg"), SubResource("Resource_drop_smg_ammo"), SubResource("Resource_drop_oil"), SubResource("Resource_drop_shotgun_ammo")]
+
+[sub_resource type="Resource" id="Resource_tank_drop_group"]
+script = ExtResource("7_death_group_definition")
+group_id = &"tank_drop"
+trigger_chance_per_10000 = 10000
+events = [SubResource("Resource_tank_drop_ammo"), SubResource("Resource_tank_drop_shotgun_ammo")]
 
 [sub_resource type="Resource" id="Resource_normal_death_rule"]
 script = ExtResource("6_death_rule_definition")
 zombie = ExtResource("10_normal_zombie")
 groups = [SubResource("Resource_common_drop_group")]
+
+[sub_resource type="Resource" id="Resource_runner_death_rule"]
+script = ExtResource("6_death_rule_definition")
+zombie = ExtResource("14_runner_zombie")
+groups = [SubResource("Resource_common_drop_group")]
+
+[sub_resource type="Resource" id="Resource_tank_death_rule"]
+script = ExtResource("6_death_rule_definition")
+zombie = ExtResource("15_tank_zombie")
+groups = [SubResource("Resource_tank_drop_group")]
 
 [resource]
 script = ExtResource("1_map_definition")
@@ -121,9 +285,9 @@ grid_height = 39
 camera_bounds = Rect2(-10, -7, 20, 14)
 maximum_active_zombies = 300
 zombie_perception_range = 60.0
-inter_wave_delay_ticks = 30
+inter_wave_delay_ticks = 60
 player_spawn_positions = [Vector3(-1.2, 0, 6.2), Vector3(1.2, 0, 6.2), Vector3(-1.2, 0, 4.2), Vector3(1.2, 0, 4.2)]
 spawn_points = [SubResource("Resource_spawn_north_west"), SubResource("Resource_spawn_north_east"), SubResource("Resource_spawn_south_west"), SubResource("Resource_spawn_south_east")]
-waves = [SubResource("Resource_demo_wave")]
-fixed_item_spawns = [SubResource("Resource_fixed_smg"), SubResource("Resource_fixed_smg_ammo"), SubResource("Resource_fixed_oil")]
-zombie_death_rules = [SubResource("Resource_normal_death_rule")]
+waves = [SubResource("Resource_wave_01"), SubResource("Resource_wave_02"), SubResource("Resource_wave_03"), SubResource("Resource_wave_04"), SubResource("Resource_wave_05"), SubResource("Resource_wave_06"), SubResource("Resource_wave_07"), SubResource("Resource_wave_08")]
+fixed_item_spawns = [SubResource("Resource_fixed_smg"), SubResource("Resource_fixed_smg_ammo"), SubResource("Resource_fixed_oil"), SubResource("Resource_fixed_shotgun")]
+zombie_death_rules = [SubResource("Resource_normal_death_rule"), SubResource("Resource_runner_death_rule"), SubResource("Resource_tank_death_rule")]
