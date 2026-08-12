@@ -103,6 +103,9 @@ static func hash_world(world: SimWorld) -> String:
 	hasher.mix_bytes(world.player_signature_scale.to_byte_array())
 	# 材料是商店购买力，各端必须一致；不一致会在金钱数上立刻暴露。
 	hasher.mix_bytes(world.player_material.to_byte_array())
+	# 属性成长决定每名玩家的伤害/生命/移速，不混进哈希的话两端成长状态分叉后
+	# 要等到打出不同伤害才被间接发现。
+	hasher.mix_bytes(world.player_upgrade_scale.to_byte_array())
 	for state_word in world.get_wave_state_words():
 		hasher.mix_uint32(state_word)
 	hasher.mix_uint32(world.pending_spawn_requests.size())

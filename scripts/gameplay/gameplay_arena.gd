@@ -294,6 +294,17 @@ func _queue_online_event(slot: int, event: Dictionary) -> void:
 		return
 	if kind == LobbyProtocolScript.EVENT_SPREAD_RESET:
 		sim_world.queue_spread_reset(slot, int(event.get("w", -1)))
+		return
+	if kind == LobbyProtocolScript.EVENT_SHOP_PURCHASE:
+		# 联机商店购买落地：各端从同一份确定性 _shop_offers 反查商品，应用同一效果。
+		# 属性/回血购买不走这里（它们进模拟命令）；这里只处理武器/被动/弹药。
+		var offer_index := int(event.get("si", -1))
+		if offer_index >= 0 and offer_index < _shop_offers.size():
+			var offer := _shop_offers[offer_index]
+			if offer.offer_type == ShopOfferDefinition.OfferType.WEAPON \
+					or offer.offer_type == ShopOfferDefinition.OfferType.PASSIVE \
+					or offer.offer_type == ShopOfferDefinition.OfferType.AMMO:
+				_buy_equipment_local(slot, offer)
 
 ## 击杀归属取射击事件的 slot。带穿透的一枪可能带走多个目标而这里只记一次，
 ## 是刻意的取舍：所有客户端读的是同一批事件，因此少算得**一模一样**，
@@ -930,15 +941,72 @@ func _on_shop_buy(offer_index: int) -> void:
 	else:
 		_buy_equipment(slot, offer)
 
-## 属性/回血购买：发确定性命令进模拟层（T5 实现 queue_shop_purchase + 成长表）。
+## 属性/回血购买：发确定性命令进模拟层（扣费 + 生效进帧哈希）。
+## 单机直接进模拟；联机走命令事件上行（T6 的协议层），这里统一走队列——
+## 模拟层自己保证确定性应用。
 func _buy_sim_stat(slot: int, offer: ShopOfferDefinition) -> void:
-	# T5 实现
-	pass
+	var kind: StringName
+	if offer.offer_type == ShopOfferDefinition.OfferType.HEAL:
+		kind = &"heal"
+	else:
+		kind = &"stat"
+	sim_world.queue_shop_purchase(
+		slot, kind, offer.stat_index, offer.stat_amount, offer.price
+	)
+	_refresh_shop_material(slot)
 
-## 武器/被动/弹药购买：表现层处理（T6 实现）。
+## 购买后刷新商店金钱显示。
+func _refresh_shop_material(slot: int) -> void:
+	var panel := get_node_or_null("HUD/ShopPanel") as ShopPanel
+	if panel == null:
+		return
+	panel.set_material_count(sim_world.get_player_material(slot))
+	panel.set_offers(_shop_offers)
+
+## 武器/被动/弹药购买。
+## 单机：表现层直接处理（扣费 + grant/附加）。
+## 联机：发购买事件走命令通道上行，服务端透传回各端，各端按 offer_index 反查
+## 同一份 _shop_offers（确定性生成）应用同一效果——保证扣费与 grant 各端一致。
 func _buy_equipment(slot: int, offer: ShopOfferDefinition) -> void:
-	# T6 实现
-	pass
+	if online_mode:
+		if pending_local_events.size() < 8:
+			pending_local_events.append(
+				LobbyProtocolScript.pack_shop_purchase_event(
+					int(offer.offer_type), offer.price, _offer_index_of(offer)
+				)
+			)
+		return
+	_buy_equipment_local(slot, offer)
+
+## 联机收到购买事件后的落地（由 _on_online_shop_purchase 调用）。
+func _buy_equipment_local(slot: int, offer: ShopOfferDefinition) -> void:
+	var player := _player_for_slot(slot)
+	if player == null:
+		return
+	match offer.offer_type:
+		ShopOfferDefinition.OfferType.WEAPON:
+			if not sim_world.spend_player_material(slot, offer.price):
+				return
+			var granted := player.equipment.grant_item(offer.weapon_id, 1, true)
+			if not granted:
+				sim_world.add_player_material(slot, offer.price)  # 退款
+		ShopOfferDefinition.OfferType.PASSIVE:
+			if not sim_world.spend_player_material(slot, offer.price):
+				return
+			player.set_runtime_passive(offer.passive_id)
+		ShopOfferDefinition.OfferType.AMMO:
+			if not sim_world.spend_player_material(slot, offer.price):
+				return
+			var added := player.equipment.add_ammo(offer.weapon_id, offer.ammo_amount)
+			if added <= 0:
+				sim_world.add_player_material(slot, offer.price)  # 退款
+	_refresh_shop_material(slot)
+
+func _offer_index_of(offer: ShopOfferDefinition) -> int:
+	for i in range(_shop_offers.size()):
+		if _shop_offers[i] == offer:
+			return i
+	return -1
 
 func _on_sim_hit_event(event: Dictionary) -> void:
 	var planar: Vector2 = event["position"]

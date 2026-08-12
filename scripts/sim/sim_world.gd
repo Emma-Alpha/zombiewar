@@ -248,6 +248,16 @@ var player_mod_level := PackedByteArray()
 ## reset() 只把值复位为 1.0，保留尺寸分配（profile 数在装配期才确定）。
 var player_signature_scale := PackedFloat32Array()
 
+# ---- 逐玩家属性成长表（波间商店买的属性升级） ----
+## 统计种类：0=伤害  1=最大生命  2=移速。
+const STAT_DAMAGE := 0
+const STAT_MAX_HEALTH := 1
+const STAT_MOVE_SPEED := 2
+const STAT_COUNT := 3
+## 展平为 [slot * STAT_COUNT + stat]，初始 1.0（无加成）。进帧哈希。
+## 伤害/移速是倍率（相乘）；最大生命是加值（加算，arena 应用到 max_health）。
+var player_upgrade_scale := PackedFloat32Array()
+
 # ---- 逐玩家材料（货币） ----
 ## 波间商店的购买力。僵尸死亡掉落积累。进帧哈希，各端必须一致。
 var player_material := PackedInt32Array()
@@ -282,6 +292,8 @@ func _init() -> void:
 	player_present.fill(0)
 	player_material.resize(MAX_PLAYER_SLOTS)
 	player_material.fill(0)
+	player_upgrade_scale.resize(MAX_PLAYER_SLOTS * STAT_COUNT)
+	player_upgrade_scale.fill(1.0)
 	player_spread_degrees.resize(MAX_PLAYER_SLOTS)
 	player_spread_degrees.fill(0.0)
 	player_spread_profile.resize(MAX_PLAYER_SLOTS)
@@ -371,6 +383,8 @@ func reset(room_seed: int) -> void:
 	slot_medic_strength.fill(1.0)
 	# 材料是局内货币，reset() 即开新局，清零。
 	player_material.fill(0)
+	# 属性成长表复位为 1.0（无加成）。
+	player_upgrade_scale.fill(1.0)
 	_clear_tick_events()
 	grid.mark_dirty()
 	flow_field.setup(grid)
@@ -1658,6 +1672,53 @@ func spend_player_material(slot: int, amount: int) -> bool:
 	player_material[slot] -= amount
 	return true
 
+## ---- 属性成长（波间商店买的 stat/heal 升级） ----
+
+## 读取某座位某属性的成长倍率/加值。未初始化时返回 1.0。
+func get_upgrade_scale(slot: int, stat_index: int) -> float:
+	if slot < 0 or slot >= MAX_PLAYER_SLOTS or stat_index < 0 or stat_index >= STAT_COUNT:
+		return 1.0
+	if player_upgrade_scale.size() != MAX_PLAYER_SLOTS * STAT_COUNT:
+		return 1.0
+	return player_upgrade_scale[slot * STAT_COUNT + stat_index]
+
+## 属性/回血购买命令。进 pending_events，由 _resolve_shop_purchase 确定性应用
+## （扣费 + 生效）。stat 的 amount 是倍率（伤害/移速）或加值（最大生命）：
+## 伤害/移速乘进 player_upgrade_scale；最大生命也乘进该座位自己的表，
+## 由 arena 在表现层把基准 max_health × 该加值应用到玩家血条。
+func queue_shop_purchase(
+	slot: int,
+	offer_type: StringName,
+	stat_index: int,
+	amount: float,
+	price: int
+) -> void:
+	if slot < 0 or slot >= MAX_PLAYER_SLOTS:
+		return
+	pending_events.append({
+		"kind": &"shop_purchase",
+		"slot": slot,
+		"offer_type": offer_type,
+		"stat_index": stat_index,
+		"amount": amount,
+		"price": price,
+	})
+
+func _resolve_shop_purchase(event: Dictionary) -> void:
+	var slot := int(event["slot"])
+	if not spend_player_material(slot, int(event["price"])):
+		return
+	var type: StringName = event["offer_type"]
+	if type == &"stat":
+		var stat_index := int(event["stat_index"])
+		if stat_index >= 0 and stat_index < STAT_COUNT:
+			player_upgrade_scale[slot * STAT_COUNT + stat_index] *= maxf(float(event["amount"]), 0.0)
+	elif type == &"heal":
+		tick_player_heal_events.append({
+			"slot": slot,
+			"amount": maxf(float(event["amount"]), 0.0),
+		})
+
 ## 登记某座位是否为医疗、及其光环强度。各端从同一份角色目录独立调用，
 ## 结果必然一致（无需进网络帧）；回血量取决于它，进帧哈希间接覆盖。
 func set_slot_medic(slot: int, is_medic: bool, strength: float) -> void:
@@ -1865,6 +1926,8 @@ func _resolve_pending_events() -> void:
 			_resolve_barrel_removal_event(event)
 		elif kind == &"spread_reset":
 			reset_spread(int(event["slot"]), int(event["profile_index"]))
+		elif kind == &"shop_purchase":
+			_resolve_shop_purchase(event)
 
 func _resolve_shot_event(event: Dictionary) -> void:
 	var slot := int(event["slot"])
@@ -1888,7 +1951,8 @@ func _resolve_shot_event(event: Dictionary) -> void:
 
 	var spread_degrees := player_spread_degrees[slot]
 	var pellet_count := maxi(int(profile["pellet_count"]), 1)
-	var damage_scale := get_player_signature_scale(slot, profile_index)
+	# 伤害 = 武器档案 × 本命武器加成 × 属性成长（商店买的伤害升级）。
+	var damage_scale := get_player_signature_scale(slot, profile_index) * get_upgrade_scale(slot, STAT_DAMAGE)
 	for pellet_index in range(pellet_count):
 		var pellet_direction := WeaponSpreadStateScript.spread_direction(
 			aim,
