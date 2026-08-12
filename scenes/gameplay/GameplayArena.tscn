@@ -109,7 +109,7 @@ placed_items_path = NodePath("../World/PlacedItems")
 
 [node name="GroundBloodManager" type="Node3D" parent="."]
 script = ExtResource("7_ground_blood")
-max_splats = 192
+max_splats = 256
 surface_collision_mask = 1
 
 [node name="CombatFxPrewarmer" type="Node3D" parent="."]

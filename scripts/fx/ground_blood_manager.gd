@@ -23,7 +23,15 @@ const TRAIL_TEXTURES: Array[Texture2D] = [
 @export_flags_3d_physics var surface_collision_mask := 1
 @export var spatial_cell_size := 0.45
 @export_range(1, 2, 1) var max_layers_per_cell := 2
-@export_range(1, 16, 1) var max_requests_per_frame := 2
+## 每帧落地的血迹数量。每次落地要做一次向下射线找地面，所以这是帧预算而不是
+## 「越大越好」；但它必须跟得上武器射速与同屏僵尸数，否则请求会持续积压。
+@export_range(1, 16, 1) var max_requests_per_frame := 6
+## 待处理队列的上限。超出时丢弃**最旧**的请求。
+##
+## 血迹的价值随时间衰减：一发子弹的血迹迟几帧才落地，落的仍是当时的命中点，
+## 而玩家那时往往已经转身或走开，看起来就是「明明打的是前面的僵尸，血却出现在
+## 身后」。宁可不画，也不要画在一个已经解释不通的位置上。
+@export_range(1, 128, 1) var max_pending_requests := 18
 @export_range(1, 64, 1) var impact_pool_size := 24
 
 var splats: Array[GroundBloodSplat] = []
@@ -113,6 +121,10 @@ func get_pending_request_count() -> int:
 
 func _queue_blood_request(request: Dictionary) -> void:
 	pending_requests.append(request)
+	# 积压时丢最旧的：迟到的血迹会落在玩家已经离开的位置上（见 max_pending_requests）。
+	var limit := maxi(max_pending_requests, 1)
+	while pending_requests.size() > limit:
+		pending_requests.pop_front()
 	set_process(true)
 
 func _process_blood_request(request: Dictionary) -> void:
