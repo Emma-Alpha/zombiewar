@@ -476,6 +476,25 @@ func register_weapon_profiles() -> void:
 			definition.pellet_count
 		)
 
+## 把某个座位当前的改装件摘要刷到它的头顶标签上。
+##
+## 数据源是 SimWorld 而不是表现层的缓存：改装层数逐 tick 进帧哈希，从它读就
+## 不可能出现「显示的和实际生效的不是一回事」。
+func _refresh_weapon_mod_summary(slot: int) -> void:
+	var player := _player_for_slot(slot)
+	if player == null:
+		return
+	var parts := PackedStringArray()
+	for mod_id in range(WeaponModTableScript.COUNT):
+		var level := sim_world.get_weapon_mod_level(slot, mod_id)
+		if level <= 0:
+			continue
+		parts.append("%s%d" % [WeaponModTableScript.MOD_LABELS_CN[mod_id], level])
+	if parts.is_empty():
+		player.set_weapon_mod_summary("")
+		return
+	player.set_weapon_mod_summary("改装 · " + " ".join(parts))
+
 ## 把「哪个奖励下标是改装件、给几层」告诉模拟层。
 ##
 ## 必须在 map_runtime 建好奖励目录之后调用：reward_profile_index 是 GameMapRuntime
@@ -721,6 +740,11 @@ func _on_sim_chest_event(event: Dictionary) -> void:
 		return
 	if kind != &"chest_claimed":
 		return
+	# 改装件的效果已经在模拟层当场生效了，这里只刷新显示。
+	# 即使下面因为找不到表现节点提前 return，摘要也必须先更新——
+	# 效果是模拟层给的，跟表现节点在不在无关。
+	if int(event.get("weapon_mod_id", -1)) >= 0:
+		_refresh_weapon_mod_summary(int(event["slot"]))
 	var chest_id_value := int(event["chest_id"])
 	var view = chest_views.get(chest_id_value, null)
 	chest_views.erase(chest_id_value)
