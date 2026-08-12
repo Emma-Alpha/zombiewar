@@ -7,7 +7,8 @@ class_name LobbyProtocol
 ##
 ## 这条规则的价值不在于兼容，恰恰在于**拒绝兼容**：把「两个仓库悄悄漂移」
 ## 从一个会在半年后以诡异同步 bug 现身的静默缺陷，变成握手当场的一次响亮失败。
-const PROTOCOL_VERSION := 4
+## v5：新增 EVENT_SHOP_PURCHASE（波间商店购买事件），与 server/src/lib/protocol.ts 同步。
+const PROTOCOL_VERSION := 5
 
 ## 大厅与控制消息号段。
 const OPCODE_LOBBY_MIN := 0x00
@@ -55,6 +56,7 @@ const BIT_PRESENT := 1 << 6
 const EVENT_SHOT := 0
 const EVENT_MELEE := 1
 const EVENT_SPREAD_RESET := 2
+const EVENT_SHOP_PURCHASE := 3
 
 const MAX_PLAYER_SLOTS := 4
 
@@ -199,6 +201,25 @@ static func pack_melee_event(
 
 static func pack_spread_reset_event(profile_index: int) -> Dictionary:
 	return {"k": EVENT_SPREAD_RESET, "w": profile_index}
+
+## 波间商店购买事件（联机装备/被动/弹药购买）。
+## 属性/回血购买不走网络事件——它们直接进模拟（各端从同一商店种子的同一次购买
+## 命令算出同一结果）。
+##
+## 协议只透传最小 int 字段，数据内容用**商品索引 si**承载：各端对同一波有同一份
+## _shop_offers（确定性生成），收端用 si 反查商品定义，服务端无需理解商品内容。
+## t = offer_type int（0=weapon/1=passive/2=ammo，与 ShopOfferDefinition 对齐）。
+static func pack_shop_purchase_event(
+	offer_type: int,
+	price: int,
+	offer_index: int
+) -> Dictionary:
+	return {
+		"k": EVENT_SHOP_PURCHASE,
+		"t": offer_type,
+		"p": price,
+		"si": offer_index,
+	}
 
 static func command_has_bit(command: Dictionary, bit: int) -> bool:
 	return (int(command.get("b", 0)) & bit) != 0

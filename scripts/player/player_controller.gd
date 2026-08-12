@@ -96,6 +96,29 @@ func set_sim_request_sink(value: Callable) -> void:
 
 ## 当前角色定义（spawner 注入）。被动与伤害缩放在表现层读它。
 var character_definition: CharacterDefinition = null
+## 商店买来的运行时被动（覆盖角色自带）。被动读取处优先它。
+## 不能直接改 character_definition（共享 Resource），所以单独存一份。
+var runtime_passive_id: StringName = &""
+
+## 商店购买被动时调用。
+func set_runtime_passive(passive_id: StringName) -> void:
+	runtime_passive_id = passive_id
+
+## 当前生效的被动：优先商店买的 runtime，否则角色自带。
+func effective_passive_id() -> StringName:
+	if runtime_passive_id != &"":
+		return runtime_passive_id
+	if character_definition != null:
+		return character_definition.passive_id
+	return &""
+
+## 当前生效的被动强度：runtime 被动用商店定义强度，角色自带用角色定义强度。
+func effective_passive_strength() -> float:
+	if runtime_passive_id != &"":
+		return 1.0
+	if character_definition != null:
+		return character_definition.passive_strength
+	return 1.0
 
 ## 应用角色三围与配色。必须在 set_input_source / 首次同步血条之前调用。
 ##
@@ -437,9 +460,9 @@ func apply_damage(amount: float, source_position := Vector3.ZERO) -> float:
 	if defeated:
 		return 0.0
 	var effective := amount
-	# 防爆甲：passive_strength 为减伤比例（0.3 = 减 30%）。
-	if character_definition != null and character_definition.passive_id == &"blast_armor":
-		effective *= (1.0 - clampf(character_definition.passive_strength, 0.0, 0.9))
+	# 防爆甲：减伤比例（0.3 = 减 30%）。优先商店买的 runtime 被动，否则角色自带。
+	if effective_passive_id() == &"blast_armor":
+		effective *= (1.0 - clampf(effective_passive_strength(), 0.0, 0.9))
 	var applied := health.apply_damage(effective)
 	if applied <= 0.0:
 		return 0.0
@@ -451,7 +474,7 @@ func apply_damage(amount: float, source_position := Vector3.ZERO) -> float:
 		hit_attack_lock_remaining = maxf(hit_attack_lock_duration, 0.0)
 		var facing_direction := -global_basis.z
 		var knockback_scale := 1.0
-		if character_definition != null and character_definition.passive_id == &"blast_armor":
+		if effective_passive_id() == &"blast_armor":
 			knockback_scale = 0.5
 		knockback_velocity = PlayerMotion.knockback_direction(
 			global_position,

@@ -9,7 +9,7 @@
  * version numbers in the close reason, is worth more than any compatibility
  * shim. See close code 4001 below.
  */
-export const PROTOCOL_VERSION = 4;
+export const PROTOCOL_VERSION = 5;
 
 /**
  * Length ceiling for a cross-wire content identifier (character id, map id).
@@ -117,6 +117,7 @@ export const EDGE_BITS =
 export const EVENT_SHOT = 0;
 export const EVENT_MELEE = 1;
 export const EVENT_SPREAD_RESET = 2;
+export const EVENT_SHOP_PURCHASE = 3;
 
 export interface SimEvent {
   /** EVENT_* discriminant. */
@@ -132,6 +133,12 @@ export interface SimEvent {
   d?: number;
   r?: number;
   hw?: number;
+  /** Shop purchase: offer_type (0=weapon/1=passive/2=ammo). */
+  t?: number;
+  /** Shop purchase: price. */
+  p?: number;
+  /** Shop purchase: offer index into the deterministic per-wave shop list. */
+  si?: number;
 }
 
 /**
@@ -256,9 +263,16 @@ function parseEvent(raw: unknown): SimEvent | null {
   if (typeof raw !== 'object' || raw === null) return null;
   const value = raw as Record<string, unknown>;
   const kind = value['k'];
-  if (kind !== EVENT_SHOT && kind !== EVENT_MELEE && kind !== EVENT_SPREAD_RESET) return null;
+  if (
+    kind !== EVENT_SHOT &&
+    kind !== EVENT_MELEE &&
+    kind !== EVENT_SPREAD_RESET &&
+    kind !== EVENT_SHOP_PURCHASE
+  ) {
+    return null;
+  }
   const event: SimEvent = { k: kind };
-  for (const key of ['w', 'oy', 'd', 'r', 'hw'] as const) {
+  for (const key of ['w', 'oy', 'd', 'r', 'hw', 't', 'p', 'si'] as const) {
     const entry = value[key];
     if (typeof entry === 'number' && Number.isInteger(entry)) event[key] = entry;
   }
