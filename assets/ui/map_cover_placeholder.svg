@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="540" viewBox="0 0 960 540">
+  <rect width="960" height="540" fill="#11191b"/>
+  <path d="M0 116H960M0 270H960M0 424H960" stroke="#6f1f17" stroke-width="3" opacity=".8"/>
+  <path d="M158 0V540M400 0V540M642 0V540M884 0V540" stroke="#304044" stroke-width="2" opacity=".8"/>
+  <rect x="106" y="92" width="748" height="356" fill="none" stroke="#d3523b" stroke-width="6"/>
+  <circle cx="480" cy="270" r="112" fill="none" stroke="#d3523b" stroke-width="4"/>
+  <path d="M480 128V412M338 270H622" stroke="#d3523b" stroke-width="4"/>
+  <text x="480" y="288" fill="#f4eee3" font-family="sans-serif" font-size="52" font-weight="700" text-anchor="middle" letter-spacing="8">MAP DATA</text>
+</svg>

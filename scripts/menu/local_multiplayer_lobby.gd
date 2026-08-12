@@ -119,7 +119,9 @@ func _start_local_game() -> void:
 		return
 	transition_pending = true
 	GameSession.configure_local(join_state.players)
-	get_tree().change_scene_to_file(game_scene_path)
+	get_tree().change_scene_to_file(
+		GameSession.selected_game_scene_path(game_scene_path)
+	)
 
 func _return_to_menu() -> void:
 	transition_pending = true

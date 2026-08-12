@@ -57,6 +57,26 @@ func _run() -> void:
 				)
 		main.free()
 
+	var map_selection_scene := load("res://scenes/menu/MapSelection.tscn") as PackedScene
+	_expect(map_selection_scene != null, "MapSelection scene must load", failures)
+	if map_selection_scene != null:
+		var map_selection = map_selection_scene.instantiate()
+		_expect(
+			map_selection.has_method("_on_confirm_button_pressed"),
+			"MapSelection must expose a confirmation flow",
+			failures
+		)
+		var map_selection_source := FileAccess.get_file_as_string(
+			"res://scripts/menu/map_selection.gd"
+		)
+		_expect(
+			map_selection_source.contains("LOCAL_LOBBY_PATH") and
+			map_selection_source.contains("GameSession.map_selection_mode"),
+			"MapSelection must route local multiplayer to the device join lobby",
+			failures
+		)
+		map_selection.free()
+
 	var lobby_scene := load("res://scenes/menu/LocalMultiplayerLobby.tscn") as PackedScene
 	_expect(lobby_scene != null, "LocalMultiplayerLobby scene must load", failures)
 	if lobby_scene != null:
