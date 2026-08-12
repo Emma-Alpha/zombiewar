@@ -183,7 +183,7 @@ func _test_definition_values(definition, failures: Array[String]) -> void:
 
 	_test_wave_curve(definition, failures)
 
-	_expect(definition.fixed_item_spawns.size() == 4, "four fixed pickups", failures)
+	_expect(definition.fixed_item_spawns.size() == 5, "five fixed pickups", failures)
 	# 最后一列是 respawn_delay_ticks：霰弹枪刻意比其余三件稀缺得多，
 	# 一并锁进期望值，免得有人「统一」成同一个数字时把稀缺性调没了。
 	var expected_fixed := [
@@ -206,6 +206,11 @@ func _test_definition_values(definition, failures: Array[String]) -> void:
 			&"04_shotgun", Vector2(0.0, -6.0),
 			"res://resources/pickups/shotgun_pickup.tres", 16,
 			PickupDefinition.RewardMode.EQUIPMENT, &"shotgun", 16, true, 600,
+		],
+		[
+			&"05_rifle", Vector2(-8.0, -8.0),
+			"res://resources/pickups/rifle_pickup.tres", 30,
+			PickupDefinition.RewardMode.EQUIPMENT, &"rifle", 30, true, 600,
 		],
 	]
 	for index in mini(definition.fixed_item_spawns.size(), expected_fixed.size()):
@@ -262,7 +267,7 @@ func _test_definition_values(definition, failures: Array[String]) -> void:
 			var group = death_rule.groups[0]
 			_expect(group.group_id == &"common_drop", "common drop id", failures)
 			_expect(group.trigger_chance_per_10000 == 2000, "common drop chance", failures)
-			_expect(group.events.size() == 4, "four common drops", failures)
+			_expect(group.events.size() == 5, "five common drops", failures)
 			var expected_drops := [
 				[
 					"res://resources/pickups/smg_pickup.tres",
@@ -279,6 +284,10 @@ func _test_definition_values(definition, failures: Array[String]) -> void:
 				[
 					"res://resources/pickups/shotgun_ammo_pickup.tres",
 					PickupDefinition.RewardMode.AMMO, &"shotgun", 12, false,
+				],
+				[
+					"res://resources/pickups/rifle_ammo_pickup.tres",
+					PickupDefinition.RewardMode.AMMO, &"rifle", 24, false,
 				],
 			]
 			for index in mini(group.events.size(), expected_drops.size()):
@@ -491,20 +500,22 @@ func _test_runtime_assembly(definition, failures: Array[String]) -> void:
 			"zombie profiles sorted by type id",
 			failures
 		)
-		_expect(runtime.reward_definitions.size() == 5, "five runtime reward profiles", failures)
+		_expect(runtime.reward_definitions.size() == 7, "seven runtime reward profiles", failures)
 		var reward_paths: Array[String] = []
 		for reward in runtime.reward_definitions:
 			reward_paths.append(reward.resource_path)
 		_expect(reward_paths == [
 			"res://resources/pickups/oil_barrel_pickup.tres",
+			"res://resources/pickups/rifle_ammo_pickup.tres",
+			"res://resources/pickups/rifle_pickup.tres",
 			"res://resources/pickups/shotgun_ammo_pickup.tres",
 			"res://resources/pickups/shotgun_pickup.tres",
 			"res://resources/pickups/smg_ammo_pickup.tres",
 			"res://resources/pickups/smg_pickup.tres",
 		], "reward profiles sorted by resource path", failures)
-		_expect(runtime.initial_chest_events.size() == 4, "four initial chest events", failures)
+		_expect(runtime.initial_chest_events.size() == 5, "five initial chest events", failures)
 		_expect(runtime.scene_barrels().size() == 3, "three sorted scene barrels", failures)
-		_expect(world.get_chest_count() == 4, "four simulated fixed chests", failures)
+		_expect(world.get_chest_count() == 5, "five simulated fixed chests", failures)
 		_expect(world.grid.origin == definition.grid_origin, "world grid configured", failures)
 		_test_failed_reload_is_atomic(
 			definition,

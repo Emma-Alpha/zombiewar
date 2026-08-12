@@ -5,8 +5,24 @@
   "compatibility_date": "2026-08-05",
   "compatibility_flags": ["nodejs_compat"],
 
+  // Deploy pushes this block wholesale, so it -- not the dashboard -- is what
+  // observability actually is. Toggling Traces on in the dashboard without
+  // declaring it here works until the next deploy silently turns it back off.
+  //
+  // Traces are on because the room's interesting failures are timing ones (a
+  // late seat, a match that ends while someone is still replaying frames), and
+  // a log line records that something happened while a span records when and
+  // for how long. head_sampling_rate stays at the default 1: a room pumps 20
+  // frames a second but only a handful of those are *invocations*, and a
+  // sampled-away trace is exactly the one nobody can get back.
   "observability": {
-    "enabled": true
+    "enabled": true,
+    "logs": {
+      "enabled": true
+    },
+    "traces": {
+      "enabled": true
+    }
   },
 
   // *.workers.dev is DNS-poisoned on mainland Chinese networks -- it resolves to

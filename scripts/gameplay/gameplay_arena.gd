@@ -24,6 +24,8 @@ const PING_HUD_INTERVAL_SECONDS := 0.5
 const PISTOL_DEFINITION := preload("res://resources/weapons/pistol.tres")
 const SMG_DEFINITION := preload("res://resources/weapons/smg.tres")
 const SHOTGUN_DEFINITION := preload("res://resources/weapons/shotgun.tres")
+const RIFLE_DEFINITION := preload("res://resources/weapons/rifle.tres")
+const WeaponModTableScript = preload("res://scripts/sim/weapon_mod_table.gd")
 const HitStopStateScript = preload("res://scripts/fx/hit_stop_state.gd")
 
 @export var map_definition: MapDefinition
@@ -390,6 +392,7 @@ func _setup_simulation() -> PackedStringArray:
 		first_cell_center.x, 0.0, first_cell_center.y
 	)
 	register_weapon_profiles()
+	register_reward_mods()
 	sim_clock.reset()
 	# 上一局若正好在顿帧里结束，残留的冻结会让新一局开场僵尸静止不动。
 	hit_stop.reset()
@@ -431,6 +434,7 @@ func register_weapon_profiles() -> void:
 		PISTOL_DEFINITION,
 		SMG_DEFINITION,
 		SHOTGUN_DEFINITION,
+		RIFLE_DEFINITION,
 	]
 	for profile_index in range(definitions.size()):
 		var definition := definitions[profile_index]
@@ -446,6 +450,30 @@ func register_weapon_profiles() -> void:
 			definition.max_penetration_count,
 			definition.penetration_damage_coefficient,
 			definition.pellet_count
+		)
+
+## 把「哪个奖励下标是改装件、给几层」告诉模拟层。
+##
+## 必须在 map_runtime 建好奖励目录之后调用：reward_profile_index 是 GameMapRuntime
+## 按 resource_path 字典序排出来的，模拟层只认这个 int。这里灌的是同一套下标，
+## 因此各端只要地图资源相同就必然一致。
+##
+## 改装件 id 写错（不在 WeaponModTable.MOD_IDS 里）会拿到 -1，那件掉落就退化成
+## 「捡起来什么也不发生」——不会报错，所以 validate_weapon_mod_catalog.gd 会逐件核对。
+func register_reward_mods() -> void:
+	for profile_index in range(map_runtime.reward_definitions.size()):
+		var definition := map_runtime.reward_definitions[profile_index]
+		if definition == null or not definition.is_weapon_mod():
+			continue
+		var mod_id := WeaponModTableScript.mod_index_from_id(definition.weapon_mod_id)
+		if mod_id < 0:
+			push_warning(
+				"未知的改装件 id '%s'（%s），这件掉落将没有任何效果"
+				% [definition.weapon_mod_id, definition.resource_path]
+			)
+			continue
+		sim_world.configure_reward_mod(
+			profile_index, mod_id, definition.weapon_mod_stacks
 		)
 
 func get_weapon_profile_index(weapon_id: StringName) -> int:

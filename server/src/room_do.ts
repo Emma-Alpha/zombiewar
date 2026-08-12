@@ -388,14 +388,30 @@ export class RoomDurableObject implements DurableObject {
         player_kills: playerKills,
       });
     }
-    this.stopLoop();
+    this.diag('result_received', {
+      from: seat.nickname,
+      player_id: seat.playerId,
+      team_wave: teamWave,
+      reports: this.reports.size,
+      needed: this.occupiedSeats().length,
+      seats: this.diagSeats(),
+    });
+    this.stopLoop('result_received');
     if (this.reports.size >= this.occupiedSeats().length) {
       await this.finishMatch();
       return;
     }
     if (this.resultTimer === null) {
+      // If this timer never fires, the room stays frozen with no `end` ever
+      // broadcast -- and the clients, which have no frame-stream timeout, wait
+      // forever. The paired finish_match/grace_fired lines are what prove
+      // whether it fired.
+      this.diag('grace_armed', { ms: RESULT_GRACE_MS });
       this.resultTimer = setTimeout(() => {
-        void this.finishMatch();
+        this.diag('grace_fired');
+        this.finishMatch().catch((error: unknown) => {
+          this.diag('finish_match_rejected', { from: 'grace_timer', error: String(error) });
+        });
       }, RESULT_GRACE_MS);
     }
   }
@@ -450,6 +466,10 @@ export class RoomDurableObject implements DurableObject {
         player_id: entry.seat.playerId,
       })),
     });
+    this.diag('match_started', {
+      seed: this.seed,
+      players: occupied.map((entry) => ({ slot: entry.slot, nick: entry.seat.nickname })),
+    });
     this.startLoop();
     void this.publishDirectory();
   }
@@ -460,14 +480,44 @@ export class RoomDurableObject implements DurableObject {
    * the match's clock actually is.
    */
   private startLoop(): void {
-    this.stopLoop();
+    this.stopLoop('restarting');
     this.loop = setInterval(() => {
       this.pumpFrame();
     }, TICK_MS);
   }
 
-  private stopLoop(): void {
+  /**
+   * DIAGNOSTIC -- temporary, for the "frozen after a player dies" investigation.
+   *
+   * One greppable line per interesting transition. The room is the only place
+   * that knows both when frames stopped and why, and the client cannot tell the
+   * difference: it has no timeout on the frame stream, so every cause of a
+   * stopped pump looks identical from there (it simply waits forever). Filter
+   * with `wrangler tail --search ZWDIAG`.
+   */
+  private diag(event: string, fields: Record<string, unknown> = {}): void {
+    console.log(
+      `ZWDIAG ${JSON.stringify({ event, room: this.code, tick: this.tick, state: this.roomState, ...fields })}`,
+    );
+  }
+
+  /** Every seat's live wire state, for reading what the pump was relaying. */
+  private diagSeats(): Array<Record<string, unknown>> {
+    return this.occupiedSeats().map(({ slot, seat }) => ({
+      slot,
+      nick: seat.nickname,
+      sock: seat.socket !== null,
+      // Age of the last packet from this seat: the number that says "lagging"
+      // versus "gone". The pump keeps relaying a silent seat's last command.
+      silent_ms: Date.now() - seat.lastSeenAt,
+      bits: this.latest[slot]?.b ?? null,
+      reported: this.latest[slot] !== null,
+    }));
+  }
+
+  private stopLoop(reason = 'unspecified'): void {
     if (this.loop !== null) {
+      this.diag('pump_stopped', { reason, seats: this.diagSeats() });
       clearInterval(this.loop);
       this.loop = null;
     }
@@ -475,9 +525,13 @@ export class RoomDurableObject implements DurableObject {
 
   private pumpFrame(): void {
     if (this.roomState !== 'playing') {
-      this.stopLoop();
+      this.stopLoop('not_playing');
       return;
     }
+    // Every 5 seconds of match time. At 20Hz a per-tick line would be 1200
+    // lines a minute, which Workers Logs would sample -- and the sampled-away
+    // line is the one that says when the stream stopped.
+    if (this.tick % 100 === 0) this.diag('pump_alive', { seats: this.diagSeats() });
     const frame: Frame = { type: 'f', t: this.tick, s: this.latest.slice() };
     if (this.waveRequested) frame.w = true;
     // Encoded once and remembered as the same bytes that went out: a replayed
@@ -504,9 +558,13 @@ export class RoomDurableObject implements DurableObject {
   }
 
   private async finishMatch(): Promise<void> {
-    if (this.roomState === 'ended') return;
+    if (this.roomState === 'ended') {
+      this.diag('finish_match_skipped', { why: 'already_ended' });
+      return;
+    }
+    this.diag('finish_match_enter', { reports: this.reports.size });
     this.roomState = 'ended';
-    this.stopLoop();
+    this.stopLoop('match_finished');
     if (this.resultTimer !== null) {
       clearTimeout(this.resultTimer);
       this.resultTimer = null;
@@ -516,13 +574,28 @@ export class RoomDurableObject implements DurableObject {
       slot: entry.slot,
       player_id: entry.seat.playerId,
     }));
-    const outcome = await submitMatchResult(this.env.DB, {
-      roomId: `${this.code}-${this.matchStartedAt}`,
-      season: CURRENT_SEASON,
-      slots,
-      reports: [...this.reports.values()],
-      durationMs: Date.now() - this.matchStartedAt,
-    });
+    // The pump is already stopped and roomState is already 'ended' by the time
+    // this await runs, so anything thrown here leaves the room frozen with no
+    // `end` ever sent and every later finishMatch() short-circuiting on
+    // 'already_ended'. Logged and rethrown -- rethrowing keeps behaviour
+    // identical, which is the point of a diagnostic build.
+    let outcome;
+    try {
+      outcome = await submitMatchResult(this.env.DB, {
+        roomId: `${this.code}-${this.matchStartedAt}`,
+        season: CURRENT_SEASON,
+        slots,
+        reports: [...this.reports.values()],
+        durationMs: Date.now() - this.matchStartedAt,
+      });
+    } catch (error: unknown) {
+      this.diag('submit_result_threw', {
+        error: String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+      });
+      throw error;
+    }
+    this.diag('end_broadcast', { status: outcome.status, persisted: outcome.persisted });
     this.broadcast({
       type: 'end',
       status: outcome.status,
@@ -551,6 +624,7 @@ export class RoomDurableObject implements DurableObject {
     if (seat == null || seat.socket !== socket) return;
     seat.socket = null;
 
+    this.diag('seat_disconnected', { slot, nick: seat.nickname, seats: this.diagSeats() });
     if (this.roomState === 'playing') {
       // The seat stays, so the slot table -- and therefore every client's
       // simulation -- is unchanged. The player is simply reported absent, and
@@ -580,6 +654,7 @@ export class RoomDurableObject implements DurableObject {
         const seat = this.seats[slot];
         if (seat == null) continue;
         if (now - seat.lastSeenAt > CONNECTION_TIMEOUT_MS) {
+          this.diag('seat_timed_out', { slot, nick: seat.nickname, silent_ms: now - seat.lastSeenAt });
           socket.close(CLOSE_ROOM_CLOSED, 'timed out');
           this.onDisconnect(socket);
           continue;

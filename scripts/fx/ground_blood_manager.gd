@@ -21,7 +21,10 @@ const TRAIL_TEXTURES: Array[Texture2D] = [
 
 @export_range(1, 512, 1) var max_splats := 192
 @export_flags_3d_physics var surface_collision_mask := 1
-@export var spatial_cell_size := 0.45
+## 血迹合并的格子边长。同一格里超过 max_layers_per_cell 层就不再新增，而是把已有的
+## 那片放大加深。格子越大，密集射击越倾向于「加深一片」而不是「铺满一地」——
+## 这是控制地面糊成一片的主要旋钮，比调池子大小有效。
+@export var spatial_cell_size := 0.7
 @export_range(1, 2, 1) var max_layers_per_cell := 2
 ## 每帧落地的血迹数量。每次落地要做一次向下射线找地面，所以这是帧预算而不是
 ## 「越大越好」；但它必须跟得上武器射速与同屏僵尸数，否则请求会持续积压。
@@ -184,7 +187,10 @@ func spawn_hit_splat(
 	if surface.is_empty():
 		return null
 	var resolved_intensity := clampf(intensity, 0.75, 1.35)
-	var diameter := minf(randf_range(0.9, 1.25) * resolved_intensity, 1.4)
+	# 单发命中的血点直径。玩家角色约 1 米宽，原来的 0.9~1.25 米让一发子弹的血
+	# 比僵尸本身还大，冲锋枪 10 发/秒时几帧就能铺满脚下一片地。
+	# 收到半米以内，血迹才读作「弹着点」而不是「泼了一桶漆」。
+	var diameter := minf(randf_range(0.42, 0.68) * resolved_intensity, 0.8)
 	var horizontal_direction := Vector3(shot_direction.x, 0.0, shot_direction.z)
 	var rotation_radians := 0.0
 	if horizontal_direction.length_squared() > 0.000001:
@@ -232,9 +238,11 @@ func spawn_death_pool(
 	if surface.is_empty():
 		return null
 	var resolved_intensity := clampf(intensity, 0.8, 1.35)
+	# 尸血池保持明显大于单发血点（约两倍），让「这里死过一只」和「这里中过一枪」
+	# 在地面上一眼可分。收窄的是绝对尺寸，不是这个对比关系。
 	var size := Vector2(
-		clampf(randf_range(1.15, 1.4) * resolved_intensity, 1.15, 1.4),
-		clampf(randf_range(1.15, 1.4) * resolved_intensity, 1.15, 1.4)
+		clampf(randf_range(0.85, 1.05) * resolved_intensity, 0.85, 1.05),
+		clampf(randf_range(0.85, 1.05) * resolved_intensity, 0.85, 1.05)
 	)
 	return place_splat(
 		surface["position"],

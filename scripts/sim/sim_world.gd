@@ -6,6 +6,8 @@ const SimClockScript = preload("res://scripts/sim/sim_clock.gd")
 const DeterministicRngScript = preload("res://scripts/sim/deterministic_rng.gd")
 const FlowFieldGridScript = preload("res://scripts/sim/flow_field_grid.gd")
 const FlowFieldScript = preload("res://scripts/sim/flow_field.gd")
+const WeaponModTableScript = preload("res://scripts/sim/weapon_mod_table.gd")
+const WeaponModMathScript = preload("res://scripts/sim/weapon_mod_math.gd")
 const SimCollisionScript = preload("res://scripts/sim/sim_collision.gd")
 const ZombieBehaviorMathScript = preload("res://scripts/combat/zombie_behavior_math.gd")
 const SimMathScript = preload("res://scripts/sim/sim_math.gd")
@@ -52,6 +54,30 @@ const ZOMBIE_WANDER_RADIUS := 3.5
 const ZOMBIE_WANDER_ARRIVE_RANGE := 0.25
 const ZOMBIE_WANDER_SLOW_RADIUS := 0.8
 const ZOMBIE_PERCEPTION_SLOW_RADIUS := 1.5
+## 流场重建的最小间隔（tick）。
+##
+## 重建是一次覆盖全网格的 BFS，由玩家跨越格子边界触发。玩家 5 m/s、格边长 1 m，
+## 单人就是每秒五次；四人同场时任一玩家跨格都会触发，最坏接近每 tick 一次，
+## 而模拟每秒只有 20 tick——那意味着每一拍都在重建整张图。
+##
+## 节流把上限压到每 0.3 秒一次。代价是流场最多滞后玩家 1.5 米，但这个滞后只影响
+## **远处**僵尸的绕行路线；近身僵尸走的是 ZOMBIE_DIRECT_CHASE_RANGE 内的直接追击，
+## 根本不看流场，所以贴身的追击精度不受影响。
+const FLOW_FIELD_REBUILD_INTERVAL_TICKS := 6
+## 这个距离内的僵尸直接朝目标走，不查流场。
+##
+## 既是精度也是性能：流场按节流间隔更新，贴脸时用它会追着玩家 1.5 米前的位置；
+## 而这么近的距离上，绕障碍的需求也基本消失了——真撞上东西还有碰撞推挤兜底。
+const ZOMBIE_DIRECT_CHASE_RANGE := 3.5
+## 黄金角（弧度）。按实体 id 乘它给每只僵尸分配一条侧翼车道，连续 id 的僵尸会
+## 均匀铺开；换成等分角会让同一波刷出的僵尸整齐扎堆在少数几个方向上。
+const ZOMBIE_FLANK_ANGLE_STEP := 2.399963
+## 远距离绕行的侧向强度（相对流场前向分量）。0.7 大约是 35 度的偏航：
+## 足以让尸群铺成扇面，又不至于让僵尸看起来在绕圈而不是扑过来。
+const ZOMBIE_FLANK_STRENGTH := 0.7
+## 侧向偏移的衰减距离。超出 ZOMBIE_DIRECT_CHASE_RANGE 这么远时偏移拉满，
+## 越靠近越收敛，进入直接追击范围时归零。
+const ZOMBIE_FLANK_FALLOFF_RANGE := 6.0
 const ZOMBIE_MOVE_ACCELERATION := 5.0
 const ZOMBIE_GROUND_DRAG := 11.0
 const ZOMBIE_KNOCKBACK_IMPULSE := 6.0
@@ -151,6 +177,7 @@ var flow_field: FlowField
 var wave_director
 
 var tick_index := 0
+var last_flow_field_rebuild_tick := -1000
 var next_entity_id := 1
 var default_move_speed := DEFAULT_PERCEPTION_MOVE_SPEED
 var pending_spawn_requests: Array[Dictionary] = []
@@ -197,6 +224,16 @@ var chest_blocker_max := PackedVector2Array()
 var weapon_profiles: Array = []
 var player_spread_degrees := PackedFloat32Array()
 var player_spread_profile := PackedInt32Array()
+## 每个座位持有的武器改装层数，展平成 [slot * WeaponModTable.COUNT + mod_id]。
+##
+## 用 PackedByteArray 有两个理由：层数恒不超过 MAX_STACKS（远小于 255），
+## 以及 SimHasher.mix_bytes() 能直接吃它、不必先 to_byte_array()。
+## 逐座位而不是全局，是因为四人局里每个人的构筑各自独立。
+var player_mod_level := PackedByteArray()
+## reward_profile_index -> 该奖励授予的改装件下标（-1 表示它不是改装件）与层数。
+## 与 weapon_profiles 同性质：装配期由表现层灌入，**不进帧哈希、reset() 不清空**。
+var reward_mod_id := PackedInt32Array()
+var reward_mod_stacks := PackedInt32Array()
 var pending_events: Array = []
 
 func _init() -> void:
@@ -214,6 +251,8 @@ func _init() -> void:
 	player_spread_degrees.fill(0.0)
 	player_spread_profile.resize(MAX_PLAYER_SLOTS)
 	player_spread_profile.fill(-1)
+	player_mod_level.resize(MAX_PLAYER_SLOTS * WeaponModTableScript.COUNT)
+	player_mod_level.fill(0)
 
 func configure(
 	grid_origin_xz: Vector2,
@@ -228,6 +267,8 @@ func configure(
 func reset(room_seed: int) -> void:
 	rng.seed_streams(room_seed)
 	tick_index = 0
+	# 负值保证开局第一 tick 一定重建，而不是等节流间隔走完。
+	last_flow_field_rebuild_tick = -1000
 	next_entity_id = 1
 	zombie_id = PackedInt32Array()
 	zombie_profile_index = PackedInt32Array()
@@ -284,6 +325,8 @@ func reset(room_seed: int) -> void:
 	pending_events = []
 	player_spread_degrees.fill(0.0)
 	player_spread_profile.fill(-1)
+	# 单局清零：改装件只在本局有效，reset() 即开新局。
+	player_mod_level.fill(0)
 	_clear_tick_events()
 	grid.mark_dirty()
 	flow_field.setup(grid)
@@ -500,6 +543,15 @@ func _resolve_chest_claims() -> void:
 			set_blocker_world_rect(
 				chest_blocker_min[index], chest_blocker_max[index], false
 			)
+			# 改装件在模拟层当场生效，不经过表现层兑现。
+			# 走这条路的理由：拾取判定本身已经是确定性的（各端同 tick 判给同一个座位），
+			# 所以改装层数也就天然各端一致；而表现层兑现是「可能失败且模拟层不知情」的
+			# （SimWorld 刻意不提供 release_chest），把 gameplay 效果挂在那里必然分叉。
+			var granted_mod := reward_mod_for(chest_reward_profile[index])
+			if granted_mod >= 0:
+				grant_weapon_mod(
+					slot, granted_mod, reward_mod_stacks[chest_reward_profile[index]]
+				)
 			tick_chest_events.append({
 				"kind": &"chest_claimed",
 				"chest_id": chest_id[index],
@@ -507,6 +559,7 @@ func _resolve_chest_claims() -> void:
 				"position": chest_position[index],
 				"reward_profile_index": chest_reward_profile[index],
 				"amount": chest_amount[index],
+				"weapon_mod_id": granted_mod,
 			})
 			if chest_respawn_delay_ticks[index] >= 0:
 				chest_state[index] = CHEST_STATE_WAITING_RESPAWN
@@ -1017,7 +1070,10 @@ func _update_flow_field() -> void:
 		if cell_index >= 0 and not sources.has(cell_index):
 			sources.append(cell_index)
 	sources.sort()
-	flow_field.update(sources)
+	var elapsed := tick_index - last_flow_field_rebuild_tick
+	var allow_source_rebuild := elapsed >= FLOW_FIELD_REBUILD_INTERVAL_TICKS
+	if flow_field.update(sources, allow_source_rebuild):
+		last_flow_field_rebuild_tick = tick_index
 
 func _update_zombies() -> void:
 	var count := zombie_id.size()
@@ -1079,7 +1135,10 @@ func _update_zombies() -> void:
 				target_velocity = _wander_velocity(index)
 			elif next_state == ZombieBehaviorMathScript.State.AWARE_APPROACH:
 				target_velocity = _approach_velocity(
-					index, distance_to_target, direction_to_target, attack_path_clear
+					index,
+					distance_to_target,
+					direction_to_target,
+					attack_path_clear
 				)
 
 		var facing_direction := direction_to_target
@@ -1192,9 +1251,35 @@ func _approach_velocity(
 	if gap <= 0.0:
 		return Vector2.ZERO
 	var speed_factor := clampf(gap / ZOMBIE_PERCEPTION_SLOW_RADIUS, 0.25, 1.0)
-	var direction := flow_field.get_direction(
-		grid.world_to_cell(zombie_position[index])
-	)
+	# 贴身范围内直接追，不查流场：流场是节流重建的，近距离用它会追着玩家一个
+	# 重建间隔之前的位置跑。
+	var direction := direction_to_target
+	if distance_to_target > ZOMBIE_DIRECT_CHASE_RANGE:
+		direction = flow_field.get_direction(
+			grid.world_to_cell(zombie_position[index])
+		)
+		# 给流场方向叠一个侧向偏移，让尸群沿不同弧线逼近。
+		#
+		# 流场对所有僵尸给出同一条最短路径，于是整群会压成一条线鱼贯而来，玩家
+		# 一直后退就能持续拉开。到跟前再分散是来不及的——僵尸互相不能穿过，
+		# 前排占住位置后，后排在物理上就绕不过去了。所以必须在**远处**就分头走。
+		#
+		# 偏移量随距离衰减，进入 ZOMBIE_FLANK_FALLOFF_RANGE 后归零，保证最后仍然
+		# 收拢到玩家身上而不是绕着圈跑。方向盘由实体 id 决定，各端一致。
+		if direction.length_squared() > 0.0001:
+			var lane := SimMathScript.direction_from_angle(
+				float(zombie_id[index]) * ZOMBIE_FLANK_ANGLE_STEP
+			).x
+			var falloff := clampf(
+				(distance_to_target - ZOMBIE_DIRECT_CHASE_RANGE)
+				/ ZOMBIE_FLANK_FALLOFF_RANGE,
+				0.0,
+				1.0
+			)
+			var lateral := Vector2(-direction.y, direction.x)
+			direction = (
+				direction + lateral * lane * falloff * ZOMBIE_FLANK_STRENGTH
+			)
 	if direction.length_squared() <= 0.0001:
 		direction = direction_to_target
 	if direction.length_squared() <= 0.0001:
@@ -1513,7 +1598,7 @@ func reset_spread(slot: int, profile_index: int) -> void:
 		return
 	player_spread_profile[slot] = profile_index
 	player_spread_degrees[slot] = float(
-		_weapon_profile(profile_index).get("base_spread_degrees", 0.0)
+		_effective_weapon_profile(slot, profile_index).get("base_spread_degrees", 0.0)
 	)
 
 func get_spread_degrees(slot: int) -> float:
@@ -1526,9 +1611,62 @@ func _weapon_profile(profile_index: int) -> Dictionary:
 		return {}
 	return weapon_profiles[profile_index]
 
+## 某个座位实际生效的武器档案 = 基础档案 + 该座位的改装层数。
+##
+## 所有读武器数值的地方都必须走这里，而不是 _weapon_profile()。三个读点分别是
+## reset_spread（换枪把散布拉回 base）、_recover_spread（每 tick 回复散布）、
+## _resolve_shot_event（开火解算）。漏掉任何一个的现象都不是崩溃，而是
+## 「装了补偿器，开火时算改装后的散布、松手回复时按没装算」——各端一致地怪异，
+## 帧哈希不会报，只有源码断言抓得住。
+##
+## 没有任何改装时 derive_profile 返回基础档案本身，因此这条路径在未捡到改装件时
+## 与改造前逐位等价。
+func _effective_weapon_profile(slot: int, profile_index: int) -> Dictionary:
+	var base := _weapon_profile(profile_index)
+	if base.is_empty() or slot < 0 or slot >= MAX_PLAYER_SLOTS:
+		return base
+	return WeaponModMathScript.derive_profile(
+		base, player_mod_level, slot * WeaponModTableScript.COUNT
+	)
+
+## 给某个座位追加改装层数，夹到该改装件的上限。返回实际生效的层数（0 = 已满）。
+func grant_weapon_mod(slot: int, mod_id: int, stacks: int) -> int:
+	if slot < 0 or slot >= MAX_PLAYER_SLOTS:
+		return 0
+	if mod_id < 0 or mod_id >= WeaponModTableScript.COUNT or stacks <= 0:
+		return 0
+	var index := slot * WeaponModTableScript.COUNT + mod_id
+	var current := int(player_mod_level[index])
+	var limit := WeaponModTableScript.MAX_STACKS[mod_id]
+	var next_level := mini(current + stacks, limit)
+	player_mod_level[index] = next_level
+	return next_level - current
+
+func get_weapon_mod_level(slot: int, mod_id: int) -> int:
+	if slot < 0 or slot >= MAX_PLAYER_SLOTS:
+		return 0
+	if mod_id < 0 or mod_id >= WeaponModTableScript.COUNT:
+		return 0
+	return int(player_mod_level[slot * WeaponModTableScript.COUNT + mod_id])
+
+## 装配期登记：某个奖励下标对应哪种改装件、给几层。表现层在注册奖励目录时调用。
+func configure_reward_mod(reward_profile_index: int, mod_id: int, stacks: int) -> void:
+	if reward_profile_index < 0:
+		return
+	while reward_mod_id.size() <= reward_profile_index:
+		reward_mod_id.append(-1)
+		reward_mod_stacks.append(0)
+	reward_mod_id[reward_profile_index] = mod_id
+	reward_mod_stacks[reward_profile_index] = maxi(stacks, 0)
+
+func reward_mod_for(reward_profile_index: int) -> int:
+	if reward_profile_index < 0 or reward_profile_index >= reward_mod_id.size():
+		return -1
+	return reward_mod_id[reward_profile_index]
+
 func _recover_spread() -> void:
 	for slot in range(MAX_PLAYER_SLOTS):
-		var profile := _weapon_profile(player_spread_profile[slot])
+		var profile := _effective_weapon_profile(slot, player_spread_profile[slot])
 		if profile.is_empty():
 			continue
 		player_spread_degrees[slot] = WeaponSpreadStateScript.recovered_degrees(
@@ -1561,7 +1699,7 @@ func _resolve_shot_event(event: Dictionary) -> void:
 	if slot < 0 or slot >= MAX_PLAYER_SLOTS:
 		return
 	var profile_index := int(event["profile_index"])
-	var profile := _weapon_profile(profile_index)
+	var profile := _effective_weapon_profile(slot, profile_index)
 	if profile.is_empty():
 		return
 	# 该槽位第一次用这个档案开火（或换装事件没排上队就直接开火）时，

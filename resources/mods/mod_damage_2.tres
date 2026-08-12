@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="PickupDefinition" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/gameplay/pickup_definition.gd" id="1_pickup_definition"]
+[ext_resource type="PackedScene" path="res://assets/props/kenney_survival/tool-axe-upgraded.glb" id="2_view"]
+
+[resource]
+script = ExtResource("1_pickup_definition")
+reward_mode = 2
+item_id = &"damage"
+amount = 1
+auto_equip = false
+display_name = "淬火斧刃"
+marker_color = Color(1.0, 0.5, 0.15, 1)
+weapon_mod_id = &"damage"
+weapon_mod_stacks = 2
+view_scene = ExtResource("2_view")
+view_scale = 1.7
+effect_text = "全武器伤害 +17%"

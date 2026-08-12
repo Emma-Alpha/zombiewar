@@ -3,6 +3,8 @@ class_name PickupChest
 
 const PickupDefinition = preload("res://scripts/gameplay/pickup_definition.gd")
 const PICKUP_SOUND := preload("res://assets/sfx/boxhead/pickup.mp3")
+## 改装件用另一个更"有获得感"的音，与普通补给区分开。
+const MOD_PICKUP_SOUND := preload("res://assets/sfx/kenney_interface/confirmation_002.ogg")
 
 @export var definition: PickupDefinition
 
@@ -10,6 +12,9 @@ const PICKUP_SOUND := preload("res://assets/sfx/boxhead/pickup.mp3")
 @onready var marker_ring: MeshInstance3D = $MarkerRing
 @onready var marker_beacon: MeshInstance3D = $MarkerBeacon
 @onready var reward_label: Label3D = $RewardLabel
+@onready var visual_root: Node3D = $Visual
+
+var custom_visual: Node3D
 
 var claim_locked := false
 var spatial_sfx_pool: SpatialSfxPool
@@ -68,6 +73,27 @@ func _apply_reward_visuals() -> void:
 		mesh_instance.set_surface_override_material(0, material)
 	reward_label.text = get_reward_label_text()
 	reward_label.modulate = color
+	_apply_custom_visual()
+
+## 按掉落物类型换 3D 外观。
+##
+## 只换**视觉网格**，绝不动碰撞盒与领取半径：PickupChest 的 BoxShape3D 与 ClaimArea
+## 的 CylinderShape3D 是 SimWorld.CHEST_BLOCKER_HALF_SIZE / CHEST_CLAIM_RADIUS 的
+## 手工镜像，而掉落物是阻挡几何——阻挡矩形一旦跟着模型变，各端流场就会分叉，
+## 僵尸集体走岔路。视觉大小只能靠 view_scale 调。
+func _apply_custom_visual() -> void:
+	if definition == null or definition.view_scene == null:
+		return
+	if custom_visual != null and is_instance_valid(custom_visual):
+		custom_visual.queue_free()
+		custom_visual = null
+	var instance := definition.view_scene.instantiate() as Node3D
+	if instance == null:
+		return
+	visual_root.visible = false
+	instance.scale = Vector3.ONE * maxf(definition.view_scale, 0.01)
+	add_child(instance)
+	custom_visual = instance
 
 func get_reward_label_text() -> String:
 	return definition.get_label_text(reward_amount) if definition != null else "未配置补给"

@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="PickupDefinition" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/gameplay/pickup_definition.gd" id="1_pickup_definition"]
+[ext_resource type="PackedScene" path="res://assets/props/kenney_survival/bottle-large.glb" id="2_view"]
+
+[resource]
+script = ExtResource("1_pickup_definition")
+reward_mode = 2
+item_id = &"choke"
+amount = 1
+auto_equip = false
+display_name = "收束枪口"
+marker_color = Color(0.4, 0.85, 0.95, 1)
+weapon_mod_id = &"choke"
+weapon_mod_stacks = 1
+view_scene = ExtResource("2_view")
+view_scale = 2.2
+effect_text = "最大散布 -45%"
