@@ -27,6 +27,7 @@ const SHOTGUN_DEFINITION := preload("res://resources/weapons/shotgun.tres")
 const RIFLE_DEFINITION := preload("res://resources/weapons/rifle.tres")
 const WeaponModTableScript = preload("res://scripts/sim/weapon_mod_table.gd")
 const HitStopStateScript = preload("res://scripts/fx/hit_stop_state.gd")
+const ContentCatalogsScript = preload("res://scripts/gameplay/content_catalogs.gd")
 
 @export var map_definition: MapDefinition
 @export var zombie_difficulty: ZombieDifficultyProfile
@@ -362,6 +363,9 @@ func _report_online_result() -> void:
 	net.room.report_result(wave_number, kills)
 
 func _setup_simulation() -> PackedStringArray:
+	var map_resolve_errors := _resolve_map_definition()
+	if not map_resolve_errors.is_empty():
+		return map_resolve_errors
 	# 联机的种子来自房间，不是任何一个客户端：每端的 DeterministicRng 都由它
 	# 派生，谁自己挑一个都必然分叉。
 	var resolved_seed := DEFAULT_SIM_SEED if random_seed == 0 else random_seed
@@ -420,6 +424,26 @@ func _register_map_entities() -> void:
 		_create_chest_view(event)
 
 ## 模拟层只认档案下标；这里把 weapon_id 映射到下标，顺序即注册顺序。
+## 地图来源有两条：场景里直接绑好的（DemoMap.tscn 那样的调试壳），
+## 和会话里带来的 map_id（菜单与联机走这条）。
+##
+## 解析不到时**失败**，不回退到目录里的第一张图：联机下回退意味着
+## 缺这张图的那一端悄悄跑了另一张，而其他人不会知道。
+func _resolve_map_definition() -> PackedStringArray:
+	if map_definition != null:
+		return PackedStringArray()
+	var session := get_node_or_null("/root/GameSession")
+	if session == null:
+		return PackedStringArray(["GameplayArena 找不到 GameSession，无法确定地图"])
+	var requested: StringName = session.map_id
+	if String(requested) == "":
+		return PackedStringArray(["会话里没有地图 id"])
+	var resolved := ContentCatalogsScript.maps().get_by_id(requested)
+	if resolved == null:
+		return PackedStringArray(["地图目录里没有 %s" % requested])
+	map_definition = resolved
+	return PackedStringArray()
+
 func register_weapon_profiles() -> void:
 	weapon_profile_indices = {}
 	# 新武器一律**追加在末尾**，不要插进中间：下标就是模拟层认的武器档案号，

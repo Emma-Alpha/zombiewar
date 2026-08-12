@@ -255,9 +255,10 @@ func _on_match_started(seed_value: int, slots: Array) -> void:
 		descriptor.player_index = int(entry.get("slot", 0))
 		descriptor.is_local = descriptor.player_index == NetSession.local_slot
 		descriptor.nickname = String(entry.get("nickname", ""))
+		descriptor.character_id = StringName(entry.get("character_id", ""))
 		descriptors.append(descriptor)
 	descriptors.sort_custom(func(a, b): return a.player_index < b.player_index)
-	GameSession.configure_online(descriptors)
+	GameSession.configure_online(descriptors, StringName(NetSession.room.room_map_id))
 	get_tree().change_scene_to_file(game_scene_path)
 
 func _on_match_ended(result: Dictionary) -> void:

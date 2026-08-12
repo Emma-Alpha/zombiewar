@@ -20,6 +20,9 @@ enum SourceKind {
 var player_index := 0
 var source_kind := SourceKind.KEYBOARD_WASD
 var gamepad_device_id := -1
+## 该座位选定的角色。与 OnlinePlayerDescriptor 同名同义，
+## LocalPlayerSpawner 靠鸭子类型同时消费两者。
+var character_id: StringName = &""
 var online := true
 
 func source_key() -> StringName:

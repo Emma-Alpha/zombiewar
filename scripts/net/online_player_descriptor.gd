@@ -13,6 +13,9 @@ const NetworkInputSourceScript = preload("res://scripts/net/network_input_source
 var player_index := 0
 var is_local := false
 var nickname := ""
+## 该座位选定的角色。来自服务端 start 消息里的座位表，不是本机记忆——
+## 开局瞬间座位会被压实，本机记住的编号可能已经指向别人。
+var character_id: StringName = &""
 var online := true
 
 func source_key() -> StringName:

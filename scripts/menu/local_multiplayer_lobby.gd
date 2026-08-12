@@ -10,6 +10,7 @@ const LocalPlayerDescriptorScript = preload(
 const LOBBY_PLAYER_PREVIEW_SCENE := preload(
 	"res://scenes/menu/LobbyPlayerPreview.tscn"
 )
+const ContentCatalogsScript = preload("res://scripts/gameplay/content_catalogs.gd")
 
 @export_file("*.tscn") var game_scene_path := "res://scenes/maps/demo/DemoMap.tscn"
 @export_file("*.tscn") var main_menu_scene_path := "res://scenes/menu/MainMenu.tscn"
@@ -118,6 +119,12 @@ func _start_local_game() -> void:
 	if not _p1_can_start():
 		return
 	transition_pending = true
+	# A 阶段本地多人不提供选角交互——只有一个可选项时那个界面没有意义。
+	# 这里只把接缝填上默认值，选角 UI 随角色系统（B）一起进这个界面。
+	var default_character: StringName = ContentCatalogsScript.characters().default_id()
+	for descriptor in join_state.players:
+		if String(descriptor.character_id) == "":
+			descriptor.character_id = default_character
 	GameSession.configure_local(join_state.players)
 	get_tree().change_scene_to_file(game_scene_path)
 
