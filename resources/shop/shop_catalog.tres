@@ -3,78 +3,101 @@
 [ext_resource type="Script" path="res://scripts/shop/shop_catalog.gd" id="1_catalog"]
 [ext_resource type="Script" path="res://scripts/shop/shop_offer_definition.gd" id="2_offer"]
 
-[sub_resource type="Resource" id="offer_damage_1"]
+[sub_resource type="Resource" id="offer_damage_small"]
 script = ExtResource("2_offer")
 offer_type = 0
 stat_index = 0
-stat_amount = 1.1
-price = 30
-display_name = "伤害提升 +10%"
+stat_amount = 1.12
+price = 12
+display_name = "伤害提升 +12%"
 
-[sub_resource type="Resource" id="offer_damage_2"]
+[sub_resource type="Resource" id="offer_damage_mid"]
 script = ExtResource("2_offer")
 offer_type = 0
 stat_index = 0
-stat_amount = 1.15
-price = 60
-display_name = "伤害提升 +15%"
+stat_amount = 1.25
+price = 35
+display_name = "伤害提升 +25%"
 
-[sub_resource type="Resource" id="offer_health"]
+[sub_resource type="Resource" id="offer_damage_big"]
+script = ExtResource("2_offer")
+offer_type = 0
+stat_index = 0
+stat_amount = 1.5
+price = 80
+display_name = "伤害提升 +50%"
+
+[sub_resource type="Resource" id="offer_health_small"]
 script = ExtResource("2_offer")
 offer_type = 0
 stat_index = 1
-stat_amount = 30.0
-price = 40
-display_name = "最大生命 +30"
+stat_amount = 20.0
+price = 15
+display_name = "最大生命 +20"
+
+[sub_resource type="Resource" id="offer_health_big"]
+script = ExtResource("2_offer")
+offer_type = 0
+stat_index = 1
+stat_amount = 60.0
+price = 50
+display_name = "最大生命 +60"
 
 [sub_resource type="Resource" id="offer_speed"]
 script = ExtResource("2_offer")
 offer_type = 0
 stat_index = 2
-stat_amount = 1.05
-price = 35
-display_name = "移速 +5%"
+stat_amount = 1.08
+price = 25
+display_name = "移速 +8%"
 
-[sub_resource type="Resource" id="offer_heal"]
+[sub_resource type="Resource" id="offer_heal_small"]
 script = ExtResource("2_offer")
 offer_type = 1
-heal_amount = 40.0
-price = 25
-display_name = "回血 +40"
+heal_amount = 25.0
+price = 10
+display_name = "回血 +25"
+
+[sub_resource type="Resource" id="offer_heal_big"]
+script = ExtResource("2_offer")
+offer_type = 1
+heal_amount = 80.0
+price = 40
+display_name = "回血 +80"
 
 [sub_resource type="Resource" id="offer_smg"]
 script = ExtResource("2_offer")
 offer_type = 2
 weapon_id = &"smg"
-price = 50
+price = 45
 display_name = "冲锋枪"
 
 [sub_resource type="Resource" id="offer_shotgun"]
 script = ExtResource("2_offer")
 offer_type = 2
 weapon_id = &"shotgun"
-price = 60
+price = 55
 display_name = "散弹枪"
 
 [sub_resource type="Resource" id="offer_rifle"]
 script = ExtResource("2_offer")
 offer_type = 2
 weapon_id = &"rifle"
-price = 70
+price = 65
 display_name = "步枪"
 
 [sub_resource type="Resource" id="offer_blast_armor"]
 script = ExtResource("2_offer")
 offer_type = 3
 passive_id = &"blast_armor"
-price = 55
+price = 50
 display_name = "防爆甲"
 
 [sub_resource type="Resource" id="offer_medic_aura"]
 script = ExtResource("2_offer")
 offer_type = 3
 passive_id = &"medic_aura"
-price = 65
+price = 60
 display_name = "医疗光环"
 
 [sub_resource type="Resource" id="offer_ammo_smg"]
@@ -82,7 +105,7 @@ script = ExtResource("2_offer")
 offer_type = 4
 weapon_id = &"smg"
 ammo_amount = 60
-price = 15
+price = 12
 display_name = "冲锋枪弹药 ×60"
 
 [sub_resource type="Resource" id="offer_ammo_shotgun"]
@@ -90,17 +113,9 @@ script = ExtResource("2_offer")
 offer_type = 4
 weapon_id = &"shotgun"
 ammo_amount = 20
-price = 15
+price = 12
 display_name = "散弹枪弹药 ×20"
-
-[sub_resource type="Resource" id="offer_ammo_rifle"]
-script = ExtResource("2_offer")
-offer_type = 4
-weapon_id = &"rifle"
-ammo_amount = 30
-price = 15
-display_name = "步枪弹药 ×30"
 
 [resource]
 script = ExtResource("1_catalog")
-entries = [SubResource("offer_damage_1"), SubResource("offer_damage_2"), SubResource("offer_health"), SubResource("offer_speed"), SubResource("offer_heal"), SubResource("offer_smg"), SubResource("offer_shotgun"), SubResource("offer_rifle"), SubResource("offer_blast_armor"), SubResource("offer_medic_aura"), SubResource("offer_ammo_smg"), SubResource("offer_ammo_shotgun"), SubResource("offer_ammo_rifle")]
+entries = [SubResource("offer_damage_small"), SubResource("offer_damage_mid"), SubResource("offer_damage_big"), SubResource("offer_health_small"), SubResource("offer_health_big"), SubResource("offer_speed"), SubResource("offer_heal_small"), SubResource("offer_heal_big"), SubResource("offer_smg"), SubResource("offer_shotgun"), SubResource("offer_rifle"), SubResource("offer_blast_armor"), SubResource("offer_medic_aura"), SubResource("offer_ammo_smg"), SubResource("offer_ammo_shotgun")]

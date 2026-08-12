@@ -321,20 +321,20 @@ amount = 12
 script = ExtResource("8_death_event_definition")
 event_type = 1
 weight = 3
-material_drop_min = 2
-material_drop_max = 5
+material_drop_min = 8
+material_drop_max = 12
 
 [sub_resource type="Resource" id="Resource_drop_material_medium"]
 script = ExtResource("8_death_event_definition")
 event_type = 1
 weight = 2
-material_drop_min = 6
-material_drop_max = 10
+material_drop_min = 13
+material_drop_max = 18
 
 [sub_resource type="Resource" id="Resource_common_drop_group"]
 script = ExtResource("7_death_group_definition")
 group_id = &"common_drop"
-trigger_chance_per_10000 = 3200
+trigger_chance_per_10000 = 6000
 events = [SubResource("Resource_drop_smg"), SubResource("Resource_drop_smg_ammo"), SubResource("Resource_drop_oil"), SubResource("Resource_drop_shotgun_ammo"), SubResource("Resource_drop_rifle_ammo"), SubResource("Resource_drop_material_small"), SubResource("Resource_drop_material_medium"), SubResource("Resource_drop_mod_damage_1"), SubResource("Resource_drop_mod_pierce_1"), SubResource("Resource_drop_mod_split_1"), SubResource("Resource_drop_mod_compensator_1"), SubResource("Resource_drop_mod_heavy_core"), SubResource("Resource_drop_mod_hollow_point")]
 
 [sub_resource type="Resource" id="Resource_tank_drop_group"]

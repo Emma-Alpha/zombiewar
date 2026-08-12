@@ -129,6 +129,15 @@ func load(
 		for group in death_rule.groups:
 			var events: Array[Dictionary] = []
 			for event in group.events:
+				if event.event_type == DeathEventDefinition.EventType.DROP_MATERIAL:
+					# 材料掉落：不依赖 pickup/reward_profile，直接用 min/max 区间。
+					events.append({
+						"event_type": int(event.event_type),
+						"weight": event.weight,
+						"material_drop_min": event.material_drop_min,
+						"material_drop_max": event.material_drop_max,
+					})
+					continue
 				if event.event_type != DeathEventDefinition.EventType.DROP_ITEM:
 					errors.append("unsupported death event type for group: %s" % group.group_id)
 					continue
