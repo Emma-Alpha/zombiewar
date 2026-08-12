@@ -98,6 +98,9 @@ static func hash_world(world: SimWorld) -> String:
 	# 改装层数决定每个座位实际的武器数值，不混进哈希的话，两端改装状态分叉后
 	# 要等到某一枪打出不同伤害才被间接发现，而那时已经错了很多 tick。
 	hasher.mix_bytes(world.player_mod_level)
+	# 本命武器缩放决定每名玩家实际打出的伤害，混进哈希做哨兵：两端角色目录
+	# 不一致时（角色文件不同步），这帧就会暴露，而不是等到某枪伤害差被发现。
+	hasher.mix_bytes(world.player_signature_scale.to_byte_array())
 	for state_word in world.get_wave_state_words():
 		hasher.mix_uint32(state_word)
 	hasher.mix_uint32(world.pending_spawn_requests.size())

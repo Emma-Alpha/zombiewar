@@ -87,6 +87,13 @@ func spawn_players(
 		player.set_place_item_service(place_item_service)
 		player.set_screen_camera(screen_camera)
 		container.add_child(player)
+		# 自动装备本命武器。add_child 之后 equipment 才初始化（@onready），
+		# 所以放在这里而不是 apply_character_definition 里。武器本就在
+		# Player.tscn 的 loadout 里；get_slot_for_item 拿不到（未知 id）则跳过。
+		if character != null and String(character.signature_weapon_id) != "":
+			var sig_slot := player.equipment.get_slot_for_item(character.signature_weapon_id)
+			if sig_slot >= 0:
+				player.equipment.equip_slot(sig_slot)
 		player.global_position = spawn_position
 		spawned.append(player)
 	return spawned

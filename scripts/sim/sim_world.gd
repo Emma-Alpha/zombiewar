@@ -236,6 +236,13 @@ var player_spread_profile := PackedInt32Array()
 ## 以及 SimHasher.mix_bytes() 能直接吃它、不必先 to_byte_array()。
 ## 逐座位而不是全局，是因为四人局里每个人的构筑各自独立。
 var player_mod_level := PackedByteArray()
+## 逐玩家本命武器伤害缩放，展平成 [slot * weapon_profile_count + profile_index]。
+##
+## 装配期由表现层按角色目录灌入（与 weapon_profiles 同性质）：联机各端从同一份
+## 角色目录独立算出同一张表，因此**不随网络帧传输**，但**进帧哈希**做哨兵——
+## 目录不一致时（例如两端角色文件不同步）哈希立刻暴露。值 1.0 = 无加成。
+## reset() 只把值复位为 1.0，保留尺寸分配（profile 数在装配期才确定）。
+var player_signature_scale := PackedFloat32Array()
 ## reward_profile_index -> 该奖励授予的改装件下标（-1 表示它不是改装件）与层数。
 ## 与 weapon_profiles 同性质：装配期由表现层灌入，**不进帧哈希、reset() 不清空**。
 var reward_mod_id := PackedInt32Array()
@@ -334,6 +341,8 @@ func reset(room_seed: int) -> void:
 	player_spread_profile.fill(-1)
 	# 单局清零：改装件只在本局有效，reset() 即开新局。
 	player_mod_level.fill(0)
+	# 签名表复位为 1.0（无加成），保留尺寸分配。
+	player_signature_scale.fill(1.0)
 	_clear_tick_events()
 	grid.mark_dirty()
 	flow_field.setup(grid)
@@ -1543,6 +1552,30 @@ func configure_weapon_profile(
 		"pellet_count": clampi(pellet_count, 1, 32),
 	}
 
+## 已注册的武器档案数。profile 下标 0..count-1 都是合法武器。
+func weapon_profile_count() -> int:
+	return weapon_profiles.size()
+
+## 登记某座位本命武器的伤害缩放。非本命武器档案的 scale 恒为 1.0。
+## 各端从同一份角色目录独立调用，结果必然一致；进帧哈希做哨兵。
+func set_player_signature_scale(slot: int, profile_index: int, scale: float) -> void:
+	var count := weapon_profile_count()
+	if slot < 0 or slot >= MAX_PLAYER_SLOTS or profile_index < 0 or profile_index >= count:
+		return
+	if player_signature_scale.size() != MAX_PLAYER_SLOTS * count:
+		player_signature_scale.resize(MAX_PLAYER_SLOTS * count)
+		player_signature_scale.fill(1.0)
+	player_signature_scale[slot * count + profile_index] = maxf(scale, 0.0)
+
+## 读取本命武器缩放。未登记时返回 1.0（无加成）。
+func get_player_signature_scale(slot: int, profile_index: int) -> float:
+	var count := weapon_profile_count()
+	if count == 0 or slot < 0 or slot >= MAX_PLAYER_SLOTS or profile_index < 0 or profile_index >= count:
+		return 1.0
+	if player_signature_scale.size() != MAX_PLAYER_SLOTS * count:
+		return 1.0
+	return player_signature_scale[slot * count + profile_index]
+
 ## 开火事件只携带玩家的瞄准方向，不携带散布后的方向。
 ## 散布由各客户端在 Stream.WEAPON_SPREAD 上各自确定性地算出。
 func queue_fire_event(
@@ -1733,13 +1766,14 @@ func _resolve_shot_event(event: Dictionary) -> void:
 
 	var spread_degrees := player_spread_degrees[slot]
 	var pellet_count := maxi(int(profile["pellet_count"]), 1)
+	var damage_scale := get_player_signature_scale(slot, profile_index)
 	for pellet_index in range(pellet_count):
 		var pellet_direction := WeaponSpreadStateScript.spread_direction(
 			aim,
 			spread_degrees,
 			_pellet_spread_offset(pellet_index, pellet_count)
 		)
-		_resolve_pellet(slot, profile, origin, origin_height, pellet_direction)
+		_resolve_pellet(slot, profile, origin, origin_height, pellet_direction, damage_scale)
 	# 散布按「扣一次扳机」增长一次，不按弹丸数增长：
 	# 否则一发霰弹就把散布顶到上限，第二枪起等于在盲射。
 	player_spread_degrees[slot] = WeaponSpreadStateScript.increased_degrees(
@@ -1777,7 +1811,8 @@ func _resolve_pellet(
 	profile: Dictionary,
 	origin: Vector2,
 	origin_height: float,
-	direction: Vector2
+	direction: Vector2,
+	damage_scale: float
 ) -> void:
 	# 射程被第一堵墙截断：基线的物理射线命中层 1 静态体就 break，
 	# 未命中僵尸时曳光终点也停在墙上而不是穿墙飞满射程。
@@ -1799,7 +1834,7 @@ func _resolve_pellet(
 	var killed := false
 	var total_damage := 0.0
 	var zone: StringName = &""
-	var current_damage := float(profile["damage"])
+	var current_damage := float(profile["damage"]) * damage_scale
 	for hit in hits:
 		var index := int(hit["index"])
 		var hit_zone: StringName = hit["zone"]

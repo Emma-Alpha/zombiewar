@@ -1058,8 +1058,30 @@ func _spawn_session_players() -> bool:
 	if player_registry != null:
 		for player in players:
 			player_registry.register_player(player)
+	_register_player_signatures()
 	_collect_network_input_sources()
 	return not players.is_empty()
+
+## 把每名玩家的本命武器伤害缩放登记进模拟层。
+##
+## 必须在玩家生成后调用：register_weapon_profiles 跑在玩家之前，那时还没有
+## player.character_definition 可读。本方法依赖 weapons profiles 已注册（
+## weapon_profile_count() 非零）。各端从同一份角色目录独立算出同一张表，
+## 因此不进网络帧；sim_hasher 已把它混入帧哈希做哨兵。
+func _register_player_signatures() -> void:
+	for slot in range(players.size()):
+		var player := players[slot]
+		if player == null or player.character_definition == null:
+			continue
+		var def := player.character_definition
+		if String(def.signature_weapon_id) == "":
+			continue
+		var profile_index := get_weapon_profile_index(def.signature_weapon_id)
+		if profile_index < 0:
+			continue
+		sim_world.set_player_signature_scale(
+			slot, profile_index, def.signature_weapon_damage_mult
+		)
 
 ## 记下每个远端座位的输入源，之后每一帧都靠它把命令喂给对应的身体。
 ## 本机座位不在表里：它由真实设备驱动。
