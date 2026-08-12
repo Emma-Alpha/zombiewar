@@ -191,6 +191,41 @@ simulation layer (scripts/sim/, sim-reachable math)  → needs determinism valid
 network protocol (scripts/net/, server/src/lib/protocol.ts)  → bump PROTOCOL_VERSION, run gates
 ```
 
+## External skills: what to take and what will break this project
+
+The installed skill libraries (`awesome-gamedev-agent-skills`, `gd-agentic-skills`) are written
+for the *typical* Godot game. This project is not typical: it runs a deterministic, tick-driven
+simulation shared across clients. Several of their strongest "NEVER" rules are **correct advice
+that is wrong here**, and following them produces desyncs that never reproduce locally.
+
+**Reject these, with reasons:**
+
+| External advice | Why it breaks this project |
+|---|---|
+| "NEVER pathfind for hundreds of agents on the main thread — use async navigation / `WorkerThreadPool`" | Async completion timing is nondeterministic and would break lockstep replay. `AGENTS.md` forbids it outright. The flow field already makes pathing cost independent of zombie count. |
+| "Generate content on a background thread, parse on the main thread" | Same reason. Any gameplay state produced off the tick loop diverges between clients. |
+| "Use `MultiplayerSynchronizer` / sync a UID and look it up client-side" | This project does not use Godot's high-level multiplayer at all. Sync goes through the custom frame channel. |
+| "Use a `Timer` for wave countdowns / cooldowns / fuses" | Wall-clock timers land on different ticks on different clients. Everything gameplay-facing counts **ticks**. |
+| "Fog of war to hide the edge of the world" | Fixed top-down arena with camera bounds; there is no unexplored space to hide. |
+
+**Take these — they apply and matter:**
+
+- **`duplicate(true)` on base stat Resources.** Godot Resources are shared instances; mutating one
+  `.tres` at runtime changes it for every entity that references it — the "damage one, damage all"
+  bug. Directly relevant to roguelite upgrades that modify weapon stats.
+- **Modifier stacking with explicit types** (ADDITIVE / MULTIPLICATIVE / OVERRIDE) and a unique id
+  per modifier so it can be removed. Recompute reactively on change, never in `_process`.
+- **Shuffle bag instead of `pick_random()`** for meaningful drops — prevents a run being ruined by
+  a statistically legal but miserable streak. Must be driven by the deterministic RNG here.
+- **Keep meta-progression subtle (+5–15%), not +100%** — otherwise skill stops mattering.
+- **Separate run state from meta state** so a run's temporary power never leaks into the profile.
+- **Every run must be winnable** — provide mitigation (rerolls, pity timers) rather than pure RNG.
+
+**The general rule:** external skills tell you *how* a technique is normally implemented. This
+file and `AGENTS.md` decide *whether that technique is allowed here*. When they conflict, the
+project's determinism rules win, and the right move is to find a tick-driven equivalent — not to
+relax the rule.
+
 ## Where the design data actually lives
 
 | Pillar | Files |
