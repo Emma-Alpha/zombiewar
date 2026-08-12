@@ -54,7 +54,7 @@ func _run() -> void:
 	_test_slot_contract(inventory_slot_script, fake_owner_script)
 	_test_profile_catalog(catalog, inventory_profile_script, mod_table_script)
 	_test_pickup_metadata(catalog, pickup_definition_script, inventory_profile_script, mod_table_script)
-	_test_map_runtime_contract(map_runtime_script)
+	_test_map_runtime_contract(map_runtime_script, catalog)
 	_finish()
 
 
@@ -193,7 +193,7 @@ func _test_pickup_metadata(catalog, pickup_definition_script: Script, profile_sc
 			_check("%s must use the oil profile id" % path, key == &"oil_barrel")
 
 
-func _test_map_runtime_contract(map_runtime_script: Script) -> void:
+func _test_map_runtime_contract(map_runtime_script: Script, catalog: InventoryProfile) -> void:
 	var runtime = map_runtime_script.new()
 	_check("GameMapRuntime must expose inventory_profiles()", runtime.has_method(&"inventory_profiles"))
 	_check("GameMapRuntime must expose inventory_profile_index_for()", runtime.has_method(&"inventory_profile_index_for"))
@@ -202,6 +202,78 @@ func _test_map_runtime_contract(map_runtime_script: Script) -> void:
 			"unknown inventory reward profile must not fall back to a default",
 			runtime.inventory_profile_index_for(9999) == -1
 		)
+	_assert_map_compile_rejects_catalog_field(
+		runtime, catalog, &"weapon_smg", &"category", 99,
+		"invalid inventory profile category"
+	)
+	_assert_map_compile_rejects_catalog_field(
+		runtime, catalog, &"weapon_smg", &"max_stack", 0,
+		"inventory profile max stack must be positive"
+	)
+	_assert_map_compile_rejects_catalog_field(
+		runtime, catalog, &"weapon_smg", &"icon_region",
+		Rect2(Vector2(1, 0), Vector2(64, 64)),
+		"inventory profile icon region must be a single atlas cell"
+	)
+	_assert_map_compile_rejects_catalog_field(
+		runtime, catalog, &"weapon_smg", &"icon_region",
+		Rect2(Vector2(320, 0), Vector2(64, 64)),
+		"inventory profile icon region must be a single atlas cell"
+	)
+	_assert_map_compile_rejects_catalog_field(
+		runtime, catalog, &"weapon_smg", &"weapon_id", &"unknown_weapon",
+		"inventory profile references unknown weapon id"
+	)
+	_assert_map_compile_rejects_catalog_field(
+		runtime, catalog, &"mod_damage", &"mod_id", &"unknown_mod",
+		"inventory profile references unknown weapon mod id"
+	)
+	_assert_map_compile_rejects_catalog_field(
+		runtime, catalog, &"ammo_smg", &"max_stack", 1,
+		"inventory ammo max stack must match weapon max_ammo"
+	)
+	_assert_map_compile_rejects_catalog_field(
+		runtime, catalog, &"mod_damage", &"max_stack", 1,
+		"inventory weapon mod max stack must match WeaponModTable"
+	)
+
+
+func _assert_map_compile_rejects_catalog_field(
+	runtime,
+	catalog: InventoryProfile,
+	profile_id: StringName,
+	field: StringName,
+	invalid_value,
+	expected_error: String
+) -> void:
+	var profile := _inventory_profile_by_id(catalog, profile_id)
+	_check("catalog must contain profile '%s' for map compiler validation" % profile_id, profile != null)
+	if profile == null:
+		return
+	var original_value = profile.get(field)
+	profile.set(field, invalid_value)
+	var errors := PackedStringArray()
+	var no_rewards: Array[PickupDefinition] = []
+	runtime._compile_inventory_profiles(no_rewards, errors)
+	_check(
+		"map compilation must reject %s on '%s'" % [field, profile_id],
+		_contains_error(errors, expected_error)
+	)
+	profile.set(field, original_value)
+
+
+func _inventory_profile_by_id(catalog: InventoryProfile, profile_id: StringName) -> InventoryProfile:
+	for profile in catalog.profiles:
+		if profile != null and profile.profile_id == profile_id:
+			return profile
+	return null
+
+
+func _contains_error(errors: PackedStringArray, expected_error: String) -> bool:
+	for error in errors:
+		if error.contains(expected_error):
+			return true
+	return false
 
 
 func _load_weapon_definitions() -> Dictionary:

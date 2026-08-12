@@ -4,6 +4,8 @@ class_name GameMapRuntime
 const FlowFieldGridScript = preload("res://scripts/sim/flow_field_grid.gd")
 const PlaceItemGridScript = preload("res://scripts/gameplay/place_item_grid.gd")
 const InventoryProfileCatalog = preload("res://resources/inventory/inventory_profiles.tres")
+const WeaponModTableScript = preload("res://scripts/sim/weapon_mod_table.gd")
+const WEAPON_DIRECTORY := "res://resources/weapons"
 
 var content_root: Node3D
 var zombie_definitions: Array[ZombieDefinition] = []
@@ -335,12 +337,14 @@ func _compile_inventory_profiles(
 	var profiles: Array[InventoryProfile] = []
 	profiles.append_array(catalog.profiles)
 	profiles.sort_custom(_inventory_profile_less)
+	var weapon_definitions_by_id := _load_inventory_weapon_definitions(errors)
 	var profile_indices_by_id: Dictionary = {}
 	for profile_index in range(profiles.size()):
 		var profile := profiles[profile_index]
 		if profile == null or profile.profile_id.is_empty():
 			errors.append("inventory profile must have a non-empty id")
 			continue
+		_validate_inventory_profile(profile, weapon_definitions_by_id, errors)
 		if profile_indices_by_id.has(profile.profile_id):
 			errors.append("duplicate inventory profile id: %s" % profile.profile_id)
 			continue
@@ -370,6 +374,100 @@ func _compile_inventory_profiles(
 			continue
 		indices[reward_profile_index] = inventory_profile_index
 	return {"profiles": profiles, "indices": indices}
+
+func _load_inventory_weapon_definitions(errors: PackedStringArray) -> Dictionary:
+	var directory := DirAccess.open(WEAPON_DIRECTORY)
+	if directory == null:
+		errors.append("inventory weapon directory is unavailable: %s" % WEAPON_DIRECTORY)
+		return {}
+	var paths: Array[String] = []
+	directory.list_dir_begin()
+	var entry := directory.get_next()
+	while not entry.is_empty():
+		if not directory.current_is_dir() and entry.get_extension() == "tres":
+			paths.append(WEAPON_DIRECTORY.path_join(entry))
+		entry = directory.get_next()
+	directory.list_dir_end()
+	paths.sort()
+	var definitions_by_id: Dictionary = {}
+	for path in paths:
+		var definition := load(path) as WeaponDefinition
+		if definition == null or definition.weapon_id.is_empty():
+			errors.append("inventory weapon definition is invalid: %s" % path)
+			continue
+		if definitions_by_id.has(definition.weapon_id):
+			errors.append("duplicate inventory weapon id: %s" % definition.weapon_id)
+			continue
+		definitions_by_id[definition.weapon_id] = definition
+	return definitions_by_id
+
+func _validate_inventory_profile(
+	profile: InventoryProfile,
+	weapon_definitions_by_id: Dictionary,
+	errors: PackedStringArray
+) -> void:
+	if profile.max_stack <= 0:
+		errors.append("inventory profile max stack must be positive: %s" % profile.profile_id)
+	if not InventoryProfile.is_icon_region_inside_atlas(profile.icon_region):
+		errors.append("inventory profile icon region must be a single atlas cell: %s" % profile.profile_id)
+	if profile.category < InventoryProfile.Category.WEAPON or profile.category > InventoryProfile.Category.WEAPON_MOD:
+		errors.append("invalid inventory profile category: %s" % profile.profile_id)
+		return
+	match profile.category:
+		InventoryProfile.Category.WEAPON:
+			_validate_inventory_weapon_profile(profile, weapon_definitions_by_id, errors)
+		InventoryProfile.Category.AMMO:
+			_validate_inventory_ammo_profile(profile, weapon_definitions_by_id, errors)
+		InventoryProfile.Category.OIL:
+			if not profile.weapon_id.is_empty() or not profile.mod_id.is_empty():
+				errors.append("inventory oil profile must not declare weapon or mod id: %s" % profile.profile_id)
+			if profile.max_stack <= 0:
+				errors.append("inventory oil max stack must be positive: %s" % profile.profile_id)
+		InventoryProfile.Category.WEAPON_MOD:
+			_validate_inventory_weapon_mod_profile(profile, errors)
+
+func _validate_inventory_weapon_profile(
+	profile: InventoryProfile,
+	weapon_definitions_by_id: Dictionary,
+	errors: PackedStringArray
+) -> void:
+	if not weapon_definitions_by_id.has(profile.weapon_id):
+		errors.append("inventory profile references unknown weapon id: %s" % profile.profile_id)
+	if not profile.mod_id.is_empty():
+		errors.append("inventory weapon profile must not declare mod id: %s" % profile.profile_id)
+	if profile.max_stack != 1:
+		errors.append("inventory weapon max stack must be one: %s" % profile.profile_id)
+
+func _validate_inventory_ammo_profile(
+	profile: InventoryProfile,
+	weapon_definitions_by_id: Dictionary,
+	errors: PackedStringArray
+) -> void:
+	if not weapon_definitions_by_id.has(profile.weapon_id):
+		errors.append("inventory profile references unknown weapon id: %s" % profile.profile_id)
+		return
+	var definition := weapon_definitions_by_id[profile.weapon_id] as WeaponDefinition
+	if not definition is RangedWeaponDefinition:
+		errors.append("inventory ammo profile must reference a ranged weapon: %s" % profile.profile_id)
+		return
+	var ranged_definition := definition as RangedWeaponDefinition
+	if profile.max_stack != ranged_definition.max_ammo:
+		errors.append("inventory ammo max stack must match weapon max_ammo: %s" % profile.profile_id)
+	if not profile.mod_id.is_empty():
+		errors.append("inventory ammo profile must not declare mod id: %s" % profile.profile_id)
+
+func _validate_inventory_weapon_mod_profile(
+	profile: InventoryProfile,
+	errors: PackedStringArray
+) -> void:
+	var mod_index := WeaponModTableScript.mod_index_from_id(profile.mod_id)
+	if mod_index < 0:
+		errors.append("inventory profile references unknown weapon mod id: %s" % profile.profile_id)
+		return
+	if profile.max_stack != WeaponModTableScript.MAX_STACKS[mod_index]:
+		errors.append("inventory weapon mod max stack must match WeaponModTable: %s" % profile.profile_id)
+	if not profile.weapon_id.is_empty():
+		errors.append("inventory weapon mod profile must not declare weapon id: %s" % profile.profile_id)
 
 func _collect_content_nodes(
 	root_node: Node3D,
