@@ -1,0 +1,289 @@
+[gd_scene load_steps=11 format=3]
+
+[ext_resource type="Script" path="res://scripts/menu/map_selection.gd" id="1_selection"]
+[ext_resource type="PackedScene" path="res://scenes/menu/MenuBackdrop.tscn" id="2_backdrop"]
+[ext_resource type="FontFile" path="res://assets/fonts/NotoSansSC-UI.ttf" id="3_font"]
+[ext_resource type="PackedScene" path="res://scenes/ui/MobileOrientationGuard.tscn" id="4_guard"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBox_panel"]
+bg_color = Color(0.035, 0.043, 0.045, 0.94)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.72, 0.2, 0.14, 1)
+corner_radius_top_left = 5
+corner_radius_top_right = 5
+corner_radius_bottom_right = 5
+corner_radius_bottom_left = 5
+shadow_color = Color(0, 0, 0, 0.6)
+shadow_size = 18
+
+[sub_resource type="StyleBoxFlat" id="StyleBox_button"]
+bg_color = Color(0.075, 0.09, 0.095, 0.94)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.72, 0.2, 0.14, 1)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+
+[sub_resource type="StyleBoxFlat" id="StyleBox_button_primary"]
+bg_color = Color(0.62, 0.12, 0.09, 1)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.85, 0.32, 0.22, 1)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+
+[sub_resource type="StyleBoxFlat" id="StyleBox_button_disabled"]
+bg_color = Color(0.045, 0.052, 0.055, 0.9)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.31, 0.12, 0.1, 1)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+
+[sub_resource type="StyleBoxFlat" id="StyleBox_cover"]
+bg_color = Color(0.012, 0.017, 0.019, 0.92)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.72, 0.2, 0.14, 1)
+corner_radius_top_left = 5
+corner_radius_top_right = 5
+corner_radius_bottom_right = 5
+corner_radius_bottom_left = 5
+
+[node name="MapSelection" type="Node3D"]
+script = ExtResource("1_selection")
+
+[node name="MenuBackdrop" parent="." instance=ExtResource("2_backdrop")]
+
+[node name="MobileOrientationGuard" parent="." instance=ExtResource("4_guard")]
+
+[node name="MenuLayer" type="CanvasLayer" parent="."]
+
+[node name="Root" type="Control" parent="MenuLayer"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="TopAccent" type="ColorRect" parent="MenuLayer/Root"]
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
+offset_bottom = 5.0
+grow_horizontal = 2
+mouse_filter = 2
+color = Color(0.71, 0.16, 0.12, 1)
+
+[node name="Title" type="Label" parent="MenuLayer/Root"]
+layout_mode = 1
+anchors_preset = 10
+anchor_left = 0.08
+anchor_top = 0.08
+anchor_right = 0.92
+anchor_bottom = 0.16
+theme_override_colors/font_color = Color(0.97, 0.95, 0.9, 1)
+theme_override_fonts/font = ExtResource("3_font")
+theme_override_font_sizes/font_size = 42
+text = "选择地图"
+
+[node name="RedRule" type="ColorRect" parent="MenuLayer/Root"]
+layout_mode = 1
+anchors_preset = 0
+anchor_left = 0.08
+anchor_top = 0.16
+anchor_right = 0.08
+anchor_bottom = 0.16
+offset_right = 82.0
+offset_bottom = 4.0
+mouse_filter = 2
+color = Color(0.71, 0.16, 0.12, 1)
+
+[node name="CoverPanel" type="PanelContainer" parent="MenuLayer/Root"]
+layout_mode = 1
+anchors_preset = 0
+anchor_left = 0.08
+anchor_top = 0.24
+anchor_right = 0.48
+anchor_bottom = 0.7
+theme_override_styles/panel = SubResource("StyleBox_cover")
+
+[node name="Cover" type="TextureRect" parent="MenuLayer/Root"]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 0
+anchor_left = 0.08
+anchor_top = 0.24
+anchor_right = 0.48
+anchor_bottom = 0.7
+expand_mode = 1
+stretch_mode = 5
+
+[node name="InfoPanel" type="PanelContainer" parent="MenuLayer/Root"]
+layout_mode = 1
+anchors_preset = 0
+anchor_left = 0.52
+anchor_top = 0.24
+anchor_right = 0.92
+anchor_bottom = 0.7
+theme_override_styles/panel = SubResource("StyleBox_panel")
+
+[node name="Margin" type="MarginContainer" parent="MenuLayer/Root/InfoPanel"]
+layout_mode = 2
+theme_override_constants/margin_left = 32
+theme_override_constants/margin_top = 28
+theme_override_constants/margin_right = 32
+theme_override_constants/margin_bottom = 28
+
+[node name="Info" type="VBoxContainer" parent="MenuLayer/Root/InfoPanel/Margin"]
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="MapName" type="Label" parent="MenuLayer/Root"]
+unique_name_in_owner = true
+layout_mode = 0
+offset_left = 675.0
+offset_top = 214.0
+offset_right = 1120.0
+offset_bottom = 274.0
+theme_override_colors/font_color = Color(1, 0.54, 0.35, 1)
+theme_override_fonts/font = ExtResource("3_font")
+theme_override_font_sizes/font_size = 34
+text = "地图"
+autowrap_mode = 3
+
+[node name="Description" type="Label" parent="MenuLayer/Root"]
+unique_name_in_owner = true
+layout_mode = 0
+offset_left = 675.0
+offset_top = 300.0
+offset_right = 1120.0
+offset_bottom = 440.0
+theme_override_colors/font_color = Color(0.78, 0.8, 0.77, 1)
+theme_override_fonts/font = ExtResource("3_font")
+theme_override_font_sizes/font_size = 20
+autowrap_mode = 3
+
+[node name="PositionLabel" type="Label" parent="MenuLayer/Root"]
+unique_name_in_owner = true
+layout_mode = 0
+offset_left = 675.0
+offset_top = 505.0
+offset_right = 1120.0
+offset_bottom = 540.0
+theme_override_colors/font_color = Color(0.72, 0.74, 0.71, 1)
+theme_override_fonts/font = ExtResource("3_font")
+theme_override_font_sizes/font_size = 18
+horizontal_alignment = 2
+
+[node name="ErrorLabel" type="Label" parent="MenuLayer/Root"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 1
+anchors_preset = 0
+anchor_left = 0.52
+anchor_top = 0.66
+anchor_right = 0.92
+anchor_bottom = 0.72
+theme_override_colors/font_color = Color(1, 0.45, 0.31, 1)
+theme_override_fonts/font = ExtResource("3_font")
+theme_override_font_sizes/font_size = 18
+text = "场景资源缺失，无法启动这张地图。"
+horizontal_alignment = 1
+
+[node name="Actions" type="HBoxContainer" parent="MenuLayer/Root"]
+layout_mode = 1
+anchors_preset = 0
+anchor_left = 0.25
+anchor_top = 0.78
+anchor_right = 0.75
+anchor_bottom = 0.87
+theme_override_constants/separation = 16
+alignment = 1
+
+[node name="PreviousButton" type="Button" parent="MenuLayer/Root/Actions"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(170, 56)
+layout_mode = 2
+focus_mode = 0
+theme_override_colors/font_color = Color(0.97, 0.95, 0.9, 1)
+theme_override_fonts/font = ExtResource("3_font")
+theme_override_font_sizes/font_size = 22
+theme_override_styles/normal = SubResource("StyleBox_button")
+theme_override_styles/hover = SubResource("StyleBox_button_primary")
+theme_override_styles/pressed = SubResource("StyleBox_button_primary")
+theme_override_styles/focus = SubResource("StyleBox_button_primary")
+theme_override_styles/disabled = SubResource("StyleBox_button_disabled")
+text = "上一张"
+
+[node name="ConfirmButton" type="Button" parent="MenuLayer/Root/Actions"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(190, 56)
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.98, 0.96, 1)
+theme_override_fonts/font = ExtResource("3_font")
+theme_override_font_sizes/font_size = 22
+theme_override_styles/normal = SubResource("StyleBox_button_primary")
+theme_override_styles/hover = SubResource("StyleBox_button_primary")
+theme_override_styles/pressed = SubResource("StyleBox_button")
+theme_override_styles/focus = SubResource("StyleBox_button_primary")
+theme_override_styles/disabled = SubResource("StyleBox_button_disabled")
+text = "进入地图"
+
+[node name="NextButton" type="Button" parent="MenuLayer/Root/Actions"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(170, 56)
+layout_mode = 2
+focus_mode = 0
+theme_override_colors/font_color = Color(0.97, 0.95, 0.9, 1)
+theme_override_fonts/font = ExtResource("3_font")
+theme_override_font_sizes/font_size = 22
+theme_override_styles/normal = SubResource("StyleBox_button")
+theme_override_styles/hover = SubResource("StyleBox_button_primary")
+theme_override_styles/pressed = SubResource("StyleBox_button_primary")
+theme_override_styles/focus = SubResource("StyleBox_button_primary")
+theme_override_styles/disabled = SubResource("StyleBox_button_disabled")
+text = "下一张"
+
+[node name="BackButton" type="Button" parent="MenuLayer/Root"]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 0
+anchor_left = 0.08
+anchor_top = 0.86
+anchor_right = 0.08
+anchor_bottom = 0.86
+offset_right = 140.0
+offset_bottom = 52.0
+focus_mode = 0
+theme_override_colors/font_color = Color(0.97, 0.95, 0.9, 1)
+theme_override_fonts/font = ExtResource("3_font")
+theme_override_font_sizes/font_size = 20
+theme_override_styles/normal = SubResource("StyleBox_button")
+theme_override_styles/hover = SubResource("StyleBox_button_primary")
+theme_override_styles/pressed = SubResource("StyleBox_button_primary")
+theme_override_styles/focus = SubResource("StyleBox_button_primary")
+text = "返回"
+
+[connection signal="pressed" from="MenuLayer/Root/Actions/PreviousButton" to="." method="_on_previous_button_pressed"]
+[connection signal="pressed" from="MenuLayer/Root/Actions/ConfirmButton" to="." method="_on_confirm_button_pressed"]
+[connection signal="pressed" from="MenuLayer/Root/Actions/NextButton" to="." method="_on_next_button_pressed"]
+[connection signal="pressed" from="MenuLayer/Root/BackButton" to="." method="_on_back_button_pressed"]

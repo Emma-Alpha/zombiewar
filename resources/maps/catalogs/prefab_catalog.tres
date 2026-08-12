@@ -1,0 +1,79 @@
+[gd_resource type="Resource" script_class="PrefabCatalog" load_steps=21 format=3]
+
+[ext_resource type="Script" path="res://scripts/gameplay/map/authoring/prefab_catalog.gd" id="1_catalog"]
+[ext_resource type="Script" path="res://scripts/gameplay/map/authoring/prefab_catalog_entry.gd" id="2_entry"]
+[ext_resource type="PackedScene" path="res://scenes/props/TrafficBarrier.tscn" id="3_traffic_barrier"]
+[ext_resource type="Texture2D" path="res://assets/environment/TrafficBarrier_1_Zombie_Atlas.png" id="4_traffic_barrier_thumbnail"]
+[ext_resource type="PackedScene" path="res://scenes/props/PlasticBarrier.tscn" id="5_plastic_barrier"]
+[ext_resource type="Texture2D" path="res://assets/environment/PlasticBarrier_Zombie_Atlas.png" id="6_plastic_barrier_thumbnail"]
+[ext_resource type="PackedScene" path="res://scenes/props/ExplosiveBarrel.tscn" id="7_explosive_barrel"]
+[ext_resource type="Texture2D" path="res://assets/environment/Barrel_Zombie_Atlas.png" id="8_explosive_barrel_thumbnail"]
+[ext_resource type="PackedScene" path="res://scenes/props/VehiclePickupObstacle.tscn" id="9_vehicle_pickup"]
+[ext_resource type="Texture2D" path="res://assets/vehicles/Vehicle_Pickup_Zombie_Atlas.png" id="10_vehicle_pickup_thumbnail"]
+[ext_resource type="PackedScene" path="res://scenes/props/ContainerRedObstacle.tscn" id="11_container_red"]
+[ext_resource type="Texture2D" path="res://assets/environment/Container_Red_Zombie_Atlas.png" id="12_container_red_thumbnail"]
+[ext_resource type="PackedScene" path="res://scenes/props/TrafficConeDecoration.tscn" id="13_traffic_cone"]
+[ext_resource type="Texture2D" path="res://assets/environment/TrafficCone_1_Zombie_Atlas.png" id="14_traffic_cone_thumbnail"]
+
+[sub_resource type="Resource" id="Resource_traffic_barrier"]
+script = ExtResource("2_entry")
+prefab_id = &"traffic_barrier"
+display_name = "交通路障"
+category = &"obstacle"
+search_tags = PackedStringArray("交通路障", "traffic barrier")
+scene = ExtResource("3_traffic_barrier")
+thumbnail = ExtResource("4_traffic_barrier_thumbnail")
+kind = 1
+
+[sub_resource type="Resource" id="Resource_plastic_barrier"]
+script = ExtResource("2_entry")
+prefab_id = &"plastic_barrier"
+display_name = "塑料路障"
+category = &"obstacle"
+search_tags = PackedStringArray("塑料路障", "plastic barrier")
+scene = ExtResource("5_plastic_barrier")
+thumbnail = ExtResource("6_plastic_barrier_thumbnail")
+kind = 1
+
+[sub_resource type="Resource" id="Resource_explosive_barrel"]
+script = ExtResource("2_entry")
+prefab_id = &"explosive_barrel"
+display_name = "爆炸桶"
+category = &"hazard"
+search_tags = PackedStringArray("爆炸桶", "explosive barrel")
+scene = ExtResource("7_explosive_barrel")
+thumbnail = ExtResource("8_explosive_barrel_thumbnail")
+kind = 2
+
+[sub_resource type="Resource" id="Resource_vehicle_pickup"]
+script = ExtResource("2_entry")
+prefab_id = &"vehicle_pickup"
+display_name = "皮卡车"
+category = &"vehicle"
+search_tags = PackedStringArray("皮卡车", "pickup vehicle")
+scene = ExtResource("9_vehicle_pickup")
+thumbnail = ExtResource("10_vehicle_pickup_thumbnail")
+kind = 1
+
+[sub_resource type="Resource" id="Resource_container_red"]
+script = ExtResource("2_entry")
+prefab_id = &"container_red"
+display_name = "红色集装箱"
+category = &"container"
+search_tags = PackedStringArray("红色集装箱", "red container")
+scene = ExtResource("11_container_red")
+thumbnail = ExtResource("12_container_red_thumbnail")
+kind = 1
+
+[sub_resource type="Resource" id="Resource_traffic_cone"]
+script = ExtResource("2_entry")
+prefab_id = &"traffic_cone"
+display_name = "交通锥"
+category = &"decoration"
+search_tags = PackedStringArray("交通锥", "traffic cone")
+scene = ExtResource("13_traffic_cone")
+thumbnail = ExtResource("14_traffic_cone_thumbnail")
+
+[resource]
+script = ExtResource("1_catalog")
+entries = Array[ExtResource("2_entry")]([SubResource("Resource_traffic_barrier"), SubResource("Resource_plastic_barrier"), SubResource("Resource_explosive_barrel"), SubResource("Resource_vehicle_pickup"), SubResource("Resource_container_red"), SubResource("Resource_traffic_cone")])

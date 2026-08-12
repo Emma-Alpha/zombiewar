@@ -1,17 +1,17 @@
 extends SceneTree
 
 const DEMO_MAP_PATH := "res://resources/maps/demo/demo_map.tres"
+const DEMO_CONTENT_PATH := "res://scenes/maps/demo/DemoMapContent.tscn"
 const GAMEPLAY_ARENA_SCRIPT_PATH := "res://scripts/gameplay/gameplay_arena.gd"
 const GAMEPLAY_ARENA_SCENE_PATH := "res://scenes/gameplay/GameplayArena.tscn"
 const GAME_MAP_RUNTIME_SCRIPT_PATH := "res://scripts/gameplay/map/game_map_runtime.gd"
 const DEMO_MAP_SCENE_PATH := "res://scenes/maps/demo/DemoMap.tscn"
 const ZOMBIE_DIFFICULTY_PATH := "res://resources/difficulty/zombie_normal.tres"
 const DEFAULT_GAME_SCENE_PATH := "res://scenes/maps/demo/DemoMap.tscn"
-const GAME_ENTRY_SCRIPT_PATHS: PackedStringArray = [
-	"res://scripts/menu/main_menu.gd",
-	"res://scripts/menu/local_multiplayer_lobby.gd",
-	"res://scripts/menu/online_lobby.gd",
-]
+const MAP_SELECTION_SCENE_PATH := "res://scenes/menu/MapSelection.tscn"
+const MAIN_MENU_SCRIPT_PATH := "res://scripts/menu/main_menu.gd"
+const LOCAL_MULTIPLAYER_LOBBY_SCRIPT_PATH := "res://scripts/menu/local_multiplayer_lobby.gd"
+const ONLINE_LOBBY_SCRIPT_PATH := "res://scripts/menu/online_lobby.gd"
 const CURRENT_RUNTIME_ROOTS: PackedStringArray = [
 	"res://scripts",
 	"res://scenes",
@@ -57,18 +57,34 @@ func _run() -> void:
 	_finish(failures)
 
 func _test_gameplay_entry_paths(failures: Array[String]) -> void:
-	for script_path in GAME_ENTRY_SCRIPT_PATHS:
-		var entry_script := load(script_path) as GDScript
-		_expect(entry_script != null, "%s must load" % script_path, failures)
-		if entry_script == null:
-			continue
-		var entry: Node = entry_script.new()
+	var main_menu_script := load(MAIN_MENU_SCRIPT_PATH) as GDScript
+	_expect(main_menu_script != null, "%s must load" % MAIN_MENU_SCRIPT_PATH, failures)
+	if main_menu_script != null:
+		var main_menu: Node = main_menu_script.new()
 		_expect(
-			entry.game_scene_path == DEFAULT_GAME_SCENE_PATH,
-			"%s must default to %s" % [script_path, DEFAULT_GAME_SCENE_PATH],
+			main_menu.map_selection_scene_path == MAP_SELECTION_SCENE_PATH,
+			"%s must default map selection to %s" % [MAIN_MENU_SCRIPT_PATH, MAP_SELECTION_SCENE_PATH],
 			failures
 		)
-		entry.free()
+		main_menu.free()
+
+	var online_lobby_script := load(ONLINE_LOBBY_SCRIPT_PATH) as GDScript
+	_expect(online_lobby_script != null, "%s must load" % ONLINE_LOBBY_SCRIPT_PATH, failures)
+	if online_lobby_script != null:
+		var online_lobby: Node = online_lobby_script.new()
+		_expect(
+			online_lobby.game_scene_path == DEFAULT_GAME_SCENE_PATH,
+			"%s must default to %s" % [ONLINE_LOBBY_SCRIPT_PATH, DEFAULT_GAME_SCENE_PATH],
+			failures
+		)
+		online_lobby.free()
+
+	var local_lobby_source := FileAccess.get_file_as_string(LOCAL_MULTIPLAYER_LOBBY_SCRIPT_PATH)
+	_expect(
+		local_lobby_source.contains("selected_game_scene_path(game_scene_path)"),
+		"local multiplayer lobby must launch the selected game scene",
+		failures
+	)
 
 func _test_current_runtime_names(failures: Array[String]) -> void:
 	var retired_arena_name := "Demo" + "Arena"
@@ -124,6 +140,11 @@ func _test_architecture_contract(failures: Array[String]) -> void:
 func _test_definition_values(definition, failures: Array[String]) -> void:
 	_expect(definition.map_id == &"demo", "demo map id", failures)
 	_expect(definition.display_name == "Demo 检查站", "demo display name", failures)
+	_expect(
+		definition.content_scene.resource_path == DEMO_CONTENT_PATH,
+		"demo definition must retain authoring content scene",
+		failures
+	)
 	_expect(definition.end_mode == MapDefinition.EndMode.LOOP, "demo loops", failures)
 	_expect(definition.grid_origin == Vector2(-24.5, -19.5), "grid origin", failures)
 	_expect(

@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="MapCatalog" load_steps=6 format=3]
+
+[ext_resource type="Script" path="res://scripts/gameplay/map/authoring/map_catalog.gd" id="1_catalog"]
+[ext_resource type="Script" path="res://scripts/gameplay/map/authoring/map_catalog_entry.gd" id="2_entry"]
+[ext_resource type="PackedScene" path="res://scenes/maps/demo/DemoMap.tscn" id="3_demo_scene"]
+[ext_resource type="Texture2D" path="res://assets/environment/Container_Red_Zombie_Atlas.png" id="4_demo_cover"]
+
+[sub_resource type="Resource" id="Resource_demo"]
+script = ExtResource("2_entry")
+map_id = &"demo"
+entry_scene = ExtResource("3_demo_scene")
+display_name = "Demo 检查站"
+description = "守住检查站，在循环尸潮中尽可能生存。"
+cover = ExtResource("4_demo_cover")
+sort_order = 0
+
+[resource]
+script = ExtResource("1_catalog")
+entries = Array[ExtResource("2_entry")]([SubResource("Resource_demo")])

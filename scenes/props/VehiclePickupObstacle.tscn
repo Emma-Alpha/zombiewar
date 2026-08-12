@@ -1,0 +1,16 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="PackedScene" path="res://assets/vehicles/Vehicle_Pickup.gltf" id="1_visual"]
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_vehicle_pickup"]
+size = Vector3(4.2, 1.8, 2.1)
+
+[node name="VehiclePickupObstacle" type="StaticBody3D" groups=["place_item_obstacle"]]
+collision_layer = 1
+collision_mask = 0
+
+[node name="Visual" parent="." instance=ExtResource("1_visual")]
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+position = Vector3(0, 0.9, 0)
+shape = SubResource("BoxShape3D_vehicle_pickup")
