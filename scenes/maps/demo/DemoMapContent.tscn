@@ -1,4 +1,4 @@
-[gd_scene load_steps=40 format=3]
+[gd_scene load_steps=42 format=3]
 
 [ext_resource type="PackedScene" path="res://assets/vehicles/Vehicle_Pickup.gltf" id="1_pickup"]
 [ext_resource type="PackedScene" path="res://assets/environment/Container_Red.gltf" id="2_container"]
@@ -16,6 +16,8 @@
 [ext_resource type="Resource" path="res://resources/pickups/smg_pickup.tres" id="14_smg_pickup"]
 [ext_resource type="Resource" path="res://resources/pickups/smg_ammo_pickup.tres" id="15_smg_ammo_pickup"]
 [ext_resource type="Resource" path="res://resources/pickups/oil_barrel_pickup.tres" id="16_oil_pickup"]
+[ext_resource type="Resource" path="res://resources/pickups/shotgun_pickup.tres" id="17_shotgun_pickup"]
+[ext_resource type="Resource" path="res://resources/pickups/rifle_pickup.tres" id="18_rifle_pickup"]
 
 [sub_resource type="Environment" id="Environment_arena"]
 background_mode = 1
@@ -570,3 +572,19 @@ spawn_id = &"03_oil"
 pickup = ExtResource("16_oil_pickup")
 amount = 30
 respawn_delay_ticks = 60
+
+[node name="Shotgun" type="Node3D" parent="MapMarkers/FixedItemSpawns"]
+position = Vector3(0, 0, -6)
+script = ExtResource("13_fixed_marker")
+spawn_id = &"04_shotgun"
+pickup = ExtResource("17_shotgun_pickup")
+amount = 16
+respawn_delay_ticks = 600
+
+[node name="Rifle" type="Node3D" parent="MapMarkers/FixedItemSpawns"]
+position = Vector3(-8, 0, -8)
+script = ExtResource("13_fixed_marker")
+spawn_id = &"05_rifle"
+pickup = ExtResource("18_rifle_pickup")
+amount = 30
+respawn_delay_ticks = 600

@@ -35,7 +35,7 @@ func _init() -> void:
 	_expect(content.get_node_or_null("MapMarkers/FixedItemSpawns") != null, "fixed marker root", failures)
 	_expect(content.find_children("*", "MapPlayerSpawnMarker").size() == 4, "four player markers", failures)
 	_expect(content.find_children("*", "MapZombieSpawnMarker").size() == 4, "four zombie markers", failures)
-	_expect(content.find_children("*", "MapFixedItemSpawnMarker").size() == 3, "three fixed markers", failures)
+	_expect(content.find_children("*", "MapFixedItemSpawnMarker").size() == 5, "five fixed markers", failures)
 	_expect(
 		_marker_ids(content, "MapPlayerSpawnMarker", "marker_id") == [
 			&"player_01", &"player_02", &"player_03", &"player_04",
@@ -53,7 +53,7 @@ func _init() -> void:
 	)
 	_expect(
 		_marker_ids(content, "MapFixedItemSpawnMarker", "spawn_id") == [
-			&"01_smg", &"02_smg_ammo", &"03_oil",
+			&"01_smg", &"02_smg_ammo", &"03_oil", &"04_shotgun", &"05_rifle",
 		],
 		"exact fixed marker ids",
 		failures
