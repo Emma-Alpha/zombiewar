@@ -1,0 +1,95 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/menu/map_card.gd" id="1_map_card"]
+
+[node name="MapCard" type="PanelContainer"]
+custom_minimum_size = Vector2(280, 200)
+script = ExtResource("1_map_card")
+
+[node name="Body" type="VBoxContainer" parent="."]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="MapNameLabel" type="Label" parent="Body"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "未选择地图"
+horizontal_alignment = 1
+theme_override_font_sizes/font_size = 18
+
+[node name="DifficultyRow" type="HBoxContainer" parent="Body"]
+unique_name_in_owner = true
+layout_mode = 2
+alignment = 1
+
+[node name="Star1" type="ColorRect" parent="Body/DifficultyRow"]
+custom_minimum_size = Vector2(14, 14)
+layout_mode = 2
+size_flags_vertical = 4
+color = Color(1, 1, 1, 1)
+
+[node name="Star2" type="ColorRect" parent="Body/DifficultyRow"]
+custom_minimum_size = Vector2(14, 14)
+layout_mode = 2
+size_flags_vertical = 4
+color = Color(1, 1, 1, 1)
+
+[node name="Star3" type="ColorRect" parent="Body/DifficultyRow"]
+custom_minimum_size = Vector2(14, 14)
+layout_mode = 2
+size_flags_vertical = 4
+color = Color(1, 1, 1, 1)
+
+[node name="Star4" type="ColorRect" parent="Body/DifficultyRow"]
+custom_minimum_size = Vector2(14, 14)
+layout_mode = 2
+size_flags_vertical = 4
+color = Color(1, 1, 1, 1)
+
+[node name="Star5" type="ColorRect" parent="Body/DifficultyRow"]
+custom_minimum_size = Vector2(14, 14)
+layout_mode = 2
+size_flags_vertical = 4
+color = Color(1, 1, 1, 1)
+
+[node name="Stage" type="Control" parent="Body"]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="ThumbnailPlaceholder" type="ColorRect" parent="Body/Stage"]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0.16, 0.18, 0.2, 1)
+
+[node name="Thumbnail" type="TextureRect" parent="Body/Stage"]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+expand_mode = 1
+stretch_mode = 5
+
+[node name="ClickArea" type="Button" parent="Body/Stage"]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+flat = true
+
+[node name="ChangeHint" type="Label" parent="Body"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "点击更换地图"
+horizontal_alignment = 1
+theme_override_font_sizes/font_size = 14
