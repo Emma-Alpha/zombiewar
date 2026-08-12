@@ -46,6 +46,11 @@ var slot := -1
 var player_id := ""
 var host_slot := -1
 var room_state := "lobby"
+## 本机选定的角色。记在这里而不是只记在界面上，是为了重连：
+## 握手要把它重新报给房间，否则重连回去的人会变回默认角色。
+var character_id: StringName = &""
+## 房主选定的地图。由 roster 与 start 两种消息共同维护。
+var room_map_id := ""
 var roster: Array = []
 var seed_value := 0
 
@@ -64,10 +69,16 @@ var _ping_timer := 0.0
 func _ready() -> void:
 	set_process(true)
 
-func connect_to_room(code: String, session_token: String, display_name: String) -> void:
+func connect_to_room(
+	code: String,
+	session_token: String,
+	display_name: String,
+	selected_character: StringName
+) -> void:
 	room_code = code.to_upper()
 	token = session_token
 	nickname = display_name
+	character_id = selected_character
 	_want_connection = true
 	_reconnect_attempts = 0
 	_open_socket()
@@ -88,6 +99,17 @@ func set_ready(is_ready: bool) -> void:
 
 func request_start() -> void:
 	_send({"type": "start"})
+
+## 换角色。本机先记下来，再发出去——重连时握手要带的是本机的选择，
+## 而不是「上一次服务端确认过的选择」。
+func select_character(id: StringName) -> void:
+	character_id = id
+	_send({"type": "select_character", "character_id": String(id)})
+
+## 换地图。服务端只认房主发的，这里不做本地拦截：拦截会让「我以为我是房主」
+## 与「服务端认为谁是房主」两份判断产生分歧，而只有后者算数。
+func select_map(id: StringName) -> void:
+	_send({"type": "select_map", "map_id": String(id)})
 
 func is_host() -> bool:
 	return slot >= 0 and slot == host_slot
@@ -201,6 +223,7 @@ func join_payload() -> Dictionary:
 		"token": token,
 		"nickname": nickname,
 		"resume_tick": _applied_tick,
+		"character_id": String(character_id),
 	}
 
 func _send_join() -> void:
@@ -230,9 +253,12 @@ func _handle_packet(packet: PackedByteArray) -> void:
 			roster = players if typeof(players) == TYPE_ARRAY else []
 			host_slot = int(message.get("host_slot", -1))
 			room_state = String(message.get("state", room_state))
+			# 必须在 emit 之前落好：房间面板是在这个信号里读 room_map_id 的。
+			room_map_id = String(message.get("map_id", room_map_id))
 			roster_changed.emit(roster, host_slot, room_state)
 		"start":
 			seed_value = int(message.get("seed", 0))
+			room_map_id = String(message.get("map_id", room_map_id))
 			room_state = "playing"
 			_frames.clear()
 			# 新一局的 tick 从 0 重新开始，上一局走到哪与这一局无关。

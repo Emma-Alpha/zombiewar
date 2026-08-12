@@ -11,6 +11,7 @@ const OnlinePlayerDescriptorScript = preload("res://scripts/net/online_player_de
 const RoomClientScript = preload("res://scripts/net/room_client.gd")
 const NetConfigScript = preload("res://scripts/net/net_config.gd")
 const LobbyProtocolScript = preload("res://scripts/net/lobby_protocol.gd")
+const ContentCatalogsScript = preload("res://scripts/gameplay/content_catalogs.gd")
 
 @export_file("*.tscn") var game_scene_path := "res://scenes/maps/demo/DemoMap.tscn"
 @export_file("*.tscn") var main_menu_scene_path := "res://scenes/menu/MainMenu.tscn"
@@ -161,7 +162,10 @@ func _on_join_room_button_pressed() -> void:
 
 func _connect_to_room(code: String) -> void:
 	NetSession.room.connect_to_room(
-		code, NetSession.identity.token, NetSession.identity.nickname
+		code,
+		NetSession.identity.token,
+		NetSession.identity.nickname,
+		ContentCatalogsScript.characters().default_id()
 	)
 	_sync_buttons()
 
