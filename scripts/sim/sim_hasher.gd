@@ -50,21 +50,21 @@ func get_hash_high() -> int:
 func get_hash_hex() -> String:
 	return "%08x%08x" % [hash_high, hash_low]
 
-## 纳入哈希的字段：僵尸的实体 id、位置、高度、朝向、血量、状态、目标槽位；
+## 纳入哈希的字段：僵尸的实体 id、档案下标、位置、高度、朝向、血量、状态、目标槽位；
 ## 油桶的实体 id、位置、状态、命中计数、引信剩余 tick；玩家量化快照与散布；
 ## 各 RNG 流的 state、当前 tick。Packed 数组的 to_byte_array() 直接给出
 ## 小端 IEEE 位模式，无需逐元素拆解。
 ##
 ## 不哈希阻挡网格（约 1.9 KB/tick，会让 3000 tick 的回归多跑两成）：
-## 模拟层内部唯一会改动阻挡格的就是油桶的注册与引爆，而油桶的
-## state / hit_count / fuse_ticks 已经逐 tick 进了哈希，网格分叉必然先在这里暴露。
-## 表现层驱动的放置与拾取箱增删属于 S3 的输入同步范畴，不由本层的哈希覆盖。
+## 模拟层实体持有的油桶与补给箱生命周期字段都逐 tick 进哈希；运行时放置物
+## 仍属于 S3 的输入同步范畴，由输入与周期帧哈希共同约束。
 static func hash_world(world: SimWorld) -> String:
 	var hasher := new()
 	hasher.mix_uint32(world.get_tick())
 	hasher.mix_uint32(world.get_zombie_count())
 	hasher.mix_uint32(world.get_next_entity_id())
 	hasher.mix_bytes(world.zombie_id.to_byte_array())
+	hasher.mix_bytes(world.zombie_profile_index.to_byte_array())
 	hasher.mix_bytes(world.zombie_position.to_byte_array())
 	hasher.mix_bytes(world.zombie_height.to_byte_array())
 	hasher.mix_bytes(world.zombie_facing.to_byte_array())
@@ -82,11 +82,29 @@ static func hash_world(world: SimWorld) -> String:
 	hasher.mix_uint32(world.get_chest_count())
 	hasher.mix_bytes(world.chest_id.to_byte_array())
 	hasher.mix_bytes(world.chest_position.to_byte_array())
+	hasher.mix_bytes(world.chest_radius.to_byte_array())
 	hasher.mix_bytes(world.chest_state)
+	hasher.mix_bytes(world.chest_reward_profile.to_byte_array())
+	hasher.mix_bytes(world.chest_amount.to_byte_array())
+	hasher.mix_bytes(world.chest_respawn_delay_ticks.to_byte_array())
+	hasher.mix_bytes(world.chest_respawn_at_tick.to_byte_array())
+	hasher.mix_bytes(world.chest_blocker_min.to_byte_array())
+	hasher.mix_bytes(world.chest_blocker_max.to_byte_array())
 	hasher.mix_bytes(world.player_position_quantized.to_byte_array())
 	hasher.mix_bytes(world.player_alive)
 	hasher.mix_bytes(world.player_present)
 	hasher.mix_bytes(world.player_spread_degrees.to_byte_array())
+	for state_word in world.get_wave_state_words():
+		hasher.mix_uint32(state_word)
+	hasher.mix_uint32(world.pending_spawn_requests.size())
+	for request in world.pending_spawn_requests:
+		hasher.mix_uint32(int(request["profile_index"]))
+		var center: Vector2 = request["center"]
+		hasher.mix_bytes(PackedVector2Array([center]).to_byte_array())
+		hasher.mix_bytes(PackedFloat32Array([
+			float(request["radius"]),
+			float(request["minimum_spacing"]),
+		]).to_byte_array())
 	for state_word in world.get_rng().get_state_words():
 		hasher.mix_int64(state_word)
 	return hasher.get_hash_hex()

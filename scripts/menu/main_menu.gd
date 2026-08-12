@@ -2,7 +2,7 @@ extends Node3D
 
 const MenuFlow = preload("res://scripts/menu/menu_flow.gd")
 
-@export_file("*.tscn") var game_scene_path := "res://scenes/gameplay/DemoArena.tscn"
+@export_file("*.tscn") var game_scene_path := "res://scenes/maps/demo/DemoMap.tscn"
 @export_file("*.tscn") var local_lobby_scene_path := "res://scenes/menu/LocalMultiplayerLobby.tscn"
 @export_file("*.tscn") var online_lobby_scene_path := "res://scenes/menu/OnlineLobby.tscn"
 @export_file("*.tscn") var leaderboard_scene_path := "res://scenes/menu/LeaderboardPanel.tscn"

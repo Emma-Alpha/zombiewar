@@ -1,0 +1,7 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="PackedScene" path="res://scenes/gameplay/GameplayArena.tscn" id="1_gameplay_arena"]
+[ext_resource type="Resource" path="res://resources/maps/demo/demo_map.tres" id="2_demo_map_definition"]
+
+[node name="DemoMap" instance=ExtResource("1_gameplay_arena")]
+map_definition = ExtResource("2_demo_map_definition")

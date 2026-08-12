@@ -4,7 +4,7 @@ class_name RoomClient
 ## 房间的 WebSocket 客户端。
 ##
 ## 它只做三件事：把大厅消息翻译成信号、把每 tick 的命令发出去、把收到的帧
-## 排进队列供模拟层消费。它**不**推进模拟：推进由 DemoArena 按墙钟节奏从
+## 排进队列供模拟层消费。它**不**推进模拟：推进由 GameplayArena 按墙钟节奏从
 ## 队列里取帧完成，取不到就停在原地。
 ##
 ## 「取不到就停」是这套同步的地基。服务端是唯一的 tick 权威，客户端自行
@@ -95,7 +95,7 @@ func is_host() -> bool:
 func is_connected_to_room() -> bool:
 	return socket.get_ready_state() == WebSocketPeer.STATE_OPEN and _joined
 
-## 一个 tick 的命令。DemoArena 每消费一帧就调一次，频率天然等于服务端泵帧频率。
+## 一个 tick 的命令。GameplayArena 每消费一帧就调一次，频率天然等于服务端泵帧频率。
 func send_command(command: Dictionary, hash_tick: int) -> void:
 	if not is_connected_to_room():
 		return
@@ -118,7 +118,7 @@ func report_result(team_wave: int, player_kills: Dictionary) -> void:
 
 ## 取出下一帧；队列空时返回 null，调用方必须原地等待而不是自行推进。
 ##
-## 取走即视为已应用：DemoArena 拿到帧后同一次调用里就 step 了模拟。
+## 取走即视为已应用：GameplayArena 拿到帧后同一次调用里就 step 了模拟。
 ## 记住这个 tick 是为了重连——它就是「本机停在哪」的唯一答案。
 func pop_frame():
 	if _frames.is_empty():

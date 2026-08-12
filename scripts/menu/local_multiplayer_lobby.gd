@@ -11,7 +11,7 @@ const LOBBY_PLAYER_PREVIEW_SCENE := preload(
 	"res://scenes/menu/LobbyPlayerPreview.tscn"
 )
 
-@export_file("*.tscn") var game_scene_path := "res://scenes/gameplay/DemoArena.tscn"
+@export_file("*.tscn") var game_scene_path := "res://scenes/maps/demo/DemoMap.tscn"
 @export_file("*.tscn") var main_menu_scene_path := "res://scenes/menu/MainMenu.tscn"
 
 @onready var warning_light: OmniLight3D = $WarningLight

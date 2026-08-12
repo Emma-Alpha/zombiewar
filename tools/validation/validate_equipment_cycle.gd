@@ -20,7 +20,7 @@ func _init() -> void:
 	_test_smg_pickup_grants_owner_ammo_and_auto_equips(failures)
 	_test_oil_barrel_pickup_caps_per_player_inventory(failures)
 	_test_equipment_label_count_text_contract(failures)
-	_test_demo_arena_uses_place_item_service(failures)
+	_test_demo_map_uses_place_item_service(failures)
 	if failures.is_empty():
 		print("validate_equipment_cycle: PASS")
 		quit(0)
@@ -257,15 +257,22 @@ func _test_equipment_label_count_text_contract(failures: Array[String]) -> void:
 	label.free()
 	controller.free()
 
-func _test_demo_arena_uses_place_item_service(failures: Array[String]) -> void:
-	var scene := load("res://scenes/gameplay/DemoArena.tscn") as PackedScene
-	_expect(scene != null, "DemoArena scene must load", failures)
+func _test_demo_map_uses_place_item_service(failures: Array[String]) -> void:
+	var scene := load("res://scenes/maps/demo/DemoMap.tscn") as PackedScene
+	_expect(scene != null, "DemoMap scene must load", failures)
 	if scene == null:
 		return
 	var arena := scene.instantiate()
-	_expect(arena.get_script() != null, "DemoArena root script must compile", failures)
-	_expect(arena.get_node_or_null("PlaceItemService") != null, "DemoArena must expose PlaceItemService", failures)
+	_expect(arena.get_script() != null, "GameplayArena root script must compile", failures)
+	_expect(
+		arena.get_node_or_null("PlaceItemService") != null,
+		"GameplayArena must expose PlaceItemService",
+		failures
+	)
+	var detached_team_state := arena.get("local_team_state") as Node
 	arena.free()
+	if detached_team_state != null and is_instance_valid(detached_team_state):
+		detached_team_state.free()
 
 func _build_controller(loadout: Array[PackedScene], starting_slot: int):
 	var controller := EquipmentController.new()

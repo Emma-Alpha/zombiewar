@@ -12,7 +12,7 @@ const RoomClientScript = preload("res://scripts/net/room_client.gd")
 const NetConfigScript = preload("res://scripts/net/net_config.gd")
 const LobbyProtocolScript = preload("res://scripts/net/lobby_protocol.gd")
 
-@export_file("*.tscn") var game_scene_path := "res://scenes/gameplay/DemoArena.tscn"
+@export_file("*.tscn") var game_scene_path := "res://scenes/maps/demo/DemoMap.tscn"
 @export_file("*.tscn") var main_menu_scene_path := "res://scenes/menu/MainMenu.tscn"
 
 @onready var status_label: Label = %StatusLabel

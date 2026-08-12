@@ -1,36 +1,60 @@
 extends SceneTree
 
-const ZombieScene = preload("res://scenes/targets/ZombieTarget.tscn")
-const SimWorldScript = preload("res://scripts/sim/sim_world.gd")
-const PlayerScene = preload("res://scenes/player/Player.tscn")
-const SpawnPointScene = preload("res://scenes/gameplay/PickupSpawnPoint.tscn")
-const OilBarrelDefinition = preload(
-	"res://resources/pickups/oil_barrel_pickup.tres"
-)
-const SmgAmmoDefinition = preload(
-	"res://resources/pickups/smg_ammo_pickup.tres"
-)
-const SmgDefinition = preload("res://resources/pickups/smg_pickup.tres")
-const DROP_MANAGER_SCENE_PATH := (
-	"res://scenes/gameplay/RandomPickupDropManager.tscn"
-)
-const DemoArenaScene = preload("res://scenes/gameplay/DemoArena.tscn")
+const REMOVED_PATHS := [
+	"res://scripts/gameplay/random_pickup_drop_manager.gd",
+	"res://scripts/gameplay/random_pickup_drop_manager.gd.uid",
+	"res://scenes/gameplay/RandomPickup" + "DropManager.tscn",
+]
 
 func _init() -> void:
 	call_deferred("_run")
 
 func _run() -> void:
 	var failures: Array[String] = []
-	var camera := Camera3D.new()
-	camera.current = true
-	root.add_child(camera)
-	await _test_zombie_emits_one_death_position(failures)
-	await _test_one_shot_spawn_point_reclaims_after_success(failures)
-	await _test_unusable_reward_is_still_consumed(failures)
-	await _test_random_drop_manager_probability_and_spawn_contract(failures)
-	await _test_demo_routes_zombie_death_to_drop_manager(failures)
-	camera.queue_free()
-	await process_frame
+	for path in REMOVED_PATHS:
+		_expect(not FileAccess.file_exists(path), "legacy random drop manager must be removed: %s" % path, failures)
+	var manager_token := "RandomPickup" + "DropManager"
+	var rng_token := "RandomNumber" + "Generator"
+	for path in _runtime_source_paths():
+		var source := FileAccess.get_file_as_string(path)
+		_expect(
+			not source.contains(manager_token),
+			"runtime source must not retain %s: %s" % [manager_token, path],
+			failures
+		)
+		var drives_pickup_drop := (
+			source.contains("try_spawn_drop") or
+			source.contains("drop_chance") or
+			source.contains("pickup_definitions")
+		)
+		_expect(
+			not (source.contains(rng_token) and drives_pickup_drop),
+			"pickup drops must not be driven by presentation RNG: %s" % path,
+			failures
+		)
+	_finish(failures)
+
+func _runtime_source_paths() -> PackedStringArray:
+	var paths := PackedStringArray()
+	_collect_runtime_sources("res://scripts", paths)
+	_collect_runtime_sources("res://scenes", paths)
+	return paths
+
+func _collect_runtime_sources(directory_path: String, paths: PackedStringArray) -> void:
+	var directory := DirAccess.open(directory_path)
+	if directory == null:
+		return
+	for file_name in directory.get_files():
+		if file_name.ends_with(".gd") or file_name.ends_with(".tscn"):
+			paths.append(directory_path.path_join(file_name))
+	for child_name in directory.get_directories():
+		_collect_runtime_sources(directory_path.path_join(child_name), paths)
+
+func _expect(condition: bool, message: String, failures: Array[String]) -> void:
+	if not condition:
+		failures.append(message)
+
+func _finish(failures: Array[String]) -> void:
 	if failures.is_empty():
 		print("validate_random_pickup_drops: PASS")
 		quit(0)
@@ -38,292 +62,3 @@ func _run() -> void:
 	for failure in failures:
 		push_error(failure)
 	quit(1)
-
-## 掉落机会现在由模拟层的击杀事件给出，而不是僵尸节点的 died 信号。
-## 换接缝的理由不是好看：近景视图是池化的，远处的僵尸压根没有节点，
-## 挂节点信号会让视野外的击杀一个都不掉东西——而尸潮里绝大多数击杀都在视野外。
-## 这里守的仍是同一条不变量：一次死亡恰好给出一次掉落机会。
-func _test_zombie_emits_one_death_position(failures: Array[String]) -> void:
-	var world = SimWorldScript.new()
-	world.configure(Vector2(-24.5, -19.5), 1.0, 49, 39)
-	world.reset(20260810)
-	var expected_position := Vector2(2.0, -2.0)
-	world.spawn_zombie(expected_position, 0.0, 50.0)
-	world.step_tick()
-
-	# 连打三次，只扫一次事件表：tick_hit_events 要到下一个 step_tick() 才清空，
-	# 在循环里边打边扫会把同一条击杀事件重复计进去，于是一条「补刀不该再掉一次」
-	# 的断言反而会被测试自己的重复计数弄假。
-	for _attempt in range(3):
-		world.apply_zombie_damage(
-			0, 100 * 100, expected_position, 1.0, Vector2.RIGHT, &"body"
-		)
-	var kill_events: Array = []
-	for event in world.tick_hit_events:
-		if bool(event.get("killed", false)):
-			kill_events.append(event)
-	_expect(
-		kill_events.size() == 1,
-		"one zombie death must emit exactly one drop opportunity",
-		failures
-	)
-	if kill_events.size() == 1:
-		var reported: Vector2 = kill_events[0]["position"]
-		_expect(
-			reported.is_equal_approx(expected_position),
-			"death event must carry the zombie world position",
-			failures
-		)
-
-func _test_one_shot_spawn_point_reclaims_after_success(
-	failures: Array[String]
-) -> void:
-	var spawner = SpawnPointScene.instantiate()
-	var player := PlayerScene.instantiate() as PlayerController
-	_expect(
-		"remove_after_collection" in spawner,
-		"PickupSpawnPoint must support one-shot collection cleanup",
-		failures
-	)
-	if not "remove_after_collection" in spawner:
-		spawner.free()
-		player.free()
-		return
-	spawner.pickup_definition = OilBarrelDefinition
-	spawner.respawn_enabled = false
-	spawner.remove_after_collection = true
-	player.position = Vector3(100.0, 0.0, 100.0)
-	var blocker_states: Array[bool] = []
-	spawner.blocker_changed.connect(
-		func(_world_aabb: AABB, blocked: bool) -> void:
-			blocker_states.append(blocked)
-	)
-	root.add_child(player)
-	root.add_child(spawner)
-	await process_frame
-	_expect(spawner.current_pickup != null, "one-shot spawner must create its pickup", failures)
-	if spawner.current_pickup != null:
-		# 领取判定已移入模拟层；这里直接调竞技场在收到 chest_claimed 事件后
-		# 调的那个入口，而不是再去打已经关掉的 ClaimArea。
-		spawner.current_pickup.claim_by(player)
-	await process_frame
-	await process_frame
-	_expect(
-		not is_instance_valid(spawner),
-		"successful one-shot pickup must reclaim its spawn point",
-		failures
-	)
-	_expect(
-		blocker_states == [true, false],
-		"one-shot pickup must publish blocker insertion then removal",
-		failures
-	)
-	if is_instance_valid(spawner):
-		spawner.queue_free()
-	player.queue_free()
-	await process_frame
-
-func _test_random_drop_manager_probability_and_spawn_contract(
-	failures: Array[String]
-) -> void:
-	_expect(
-		ResourceLoader.exists(DROP_MANAGER_SCENE_PATH),
-		"random pickup drop manager scene must exist",
-		failures
-	)
-	if not ResourceLoader.exists(DROP_MANAGER_SCENE_PATH):
-		return
-	var manager_scene := load(DROP_MANAGER_SCENE_PATH) as PackedScene
-	var manager = manager_scene.instantiate()
-	_expect(
-		manager.get_script() != null,
-		"random pickup drop manager scene must attach its manager script",
-		failures
-	)
-	if manager.get_script() == null:
-		manager.free()
-		return
-	_expect(
-		manager.has_method(&"try_spawn_drop"),
-		"random pickup drop manager must expose try_spawn_drop",
-		failures
-	)
-	if not manager.has_method(&"try_spawn_drop"):
-		manager.free()
-		return
-	_expect(
-		manager.has_method(&"_passes_drop_chance"),
-		"random pickup drop manager must expose deterministic chance evaluation",
-		failures
-	)
-	if not manager.has_method(&"_passes_drop_chance"):
-		manager.free()
-		return
-	_expect(
-		is_equal_approx(manager.drop_chance, 0.2),
-		"random pickup drop chance must default to 0.2",
-		failures
-	)
-	manager.drop_chance = 0.0
-	_expect(
-		not manager._passes_drop_chance(0.0),
-		"zero drop chance must reject a zero roll",
-		failures
-	)
-	manager.drop_chance = 1.0
-	_expect(
-		manager._passes_drop_chance(1.0),
-		"full drop chance must accept the inclusive 1.0 roll",
-		failures
-	)
-	manager.drop_chance = 0.2
-	_expect(
-		not manager._passes_drop_chance(0.2),
-		"a roll equal to a fractional drop chance must be rejected",
-		failures
-	)
-	_expect(
-		manager._passes_drop_chance(0.199),
-		"a roll below a fractional drop chance must be accepted",
-		failures
-	)
-	manager.random_seed = 4399
-	var definitions: Array[PickupDefinition] = []
-	definitions.append(SmgDefinition)
-	definitions.append(SmgAmmoDefinition)
-	definitions.append(OilBarrelDefinition)
-	manager.pickup_definitions = definitions
-	root.add_child(manager)
-	await process_frame
-	manager.drop_chance = 0.0
-	_expect(
-		manager.try_spawn_drop(Vector3.ONE) == null,
-		"zero drop chance must never create a pickup",
-		failures
-	)
-	manager.drop_chance = 1.0
-	var expected_position := Vector3(4.0, 0.0, -3.0)
-	var spawner = manager.try_spawn_drop(expected_position)
-	_expect(spawner != null, "full drop chance must create a pickup", failures)
-	if spawner != null:
-		_expect(
-			spawner.global_position.is_equal_approx(expected_position),
-			"random pickup must spawn at the zombie death position",
-			failures
-		)
-		_expect(
-			spawner.remove_after_collection and not spawner.respawn_enabled,
-			"random pickup spawn points must be one-shot without respawn",
-			failures
-		)
-		_expect(
-			manager.pickup_definitions.has(spawner.pickup_definition),
-			"random pickup content must come from the configured Definition pool",
-			failures
-		)
-	manager.queue_free()
-	await process_frame
-
-func _test_demo_routes_zombie_death_to_drop_manager(
-	failures: Array[String]
-) -> void:
-	var arena := DemoArenaScene.instantiate()
-	root.add_child(arena)
-	await process_frame
-	var manager = arena.get_node_or_null("World/Props/RandomPickupDrops")
-	_expect(
-		manager != null,
-		"DemoArena must own a scene-level random pickup drop manager",
-		failures
-	)
-	if manager == null:
-		arena.queue_free()
-		await process_frame
-		return
-	_expect(
-		is_equal_approx(manager.drop_chance, 0.2) and
-		manager.pickup_definitions.size() == 3,
-		"DemoArena drop manager must use 20 percent and all three Definitions",
-		failures
-	)
-	manager.drop_chance = 1.0
-	# 打模拟层的击杀事件，而不是某个僵尸节点：竞技场就是从这里接掉落的，
-	# 而视野外的击杀根本没有对应的节点可打。
-	var drop_count_before := manager.get_child_count()
-	var death_position := Vector3(2.0, 0.0, -2.0)
-	arena._on_sim_hit_event({
-		"zombie_id": 1,
-		"position": Vector2(death_position.x, death_position.z),
-		"height": 1.0,
-		"direction": Vector2.RIGHT,
-		"damage": 50.0,
-		"zone": &"body",
-		"killed": true,
-	})
-	_expect(
-		manager.get_child_count() == drop_count_before + 1,
-		"zombie death must request one random drop from the Demo manager",
-		failures
-	)
-	if manager.get_child_count() > drop_count_before:
-		var drop_spawner = manager.get_child(manager.get_child_count() - 1)
-		_expect(
-			drop_spawner.global_position.is_equal_approx(death_position),
-			"Demo death wiring must preserve the zombie world position",
-			failures
-		)
-		# 掉落出来的箱子也是阻挡几何，没接上标脏就会在被捡走后留下一格永久墙。
-		_expect(
-			drop_spawner.blocker_changed.is_connected(arena._on_pickup_blocker_changed),
-			"dropped pickup must be wired into the flow field blocker dirtying",
-			failures
-		)
-	arena.queue_free()
-	await process_frame
-
-## 兑现不了的补给**照样**被消耗掉——这是刻意的取舍，不是遗漏。
-##
-## 基线在兑现失败时把箱子留在地上（满弹走过不浪费）。那个判断读的是玩家当前
-## 弹药与存活，而这两个量在联机各端差着一个 RTT：开火的人自己那端立刻扣弹，
-## 别人那端要等帧到了才扣。于是同一个箱子一端消耗、一端留下，chest_state 分叉；
-## 箱子又是阻挡几何，流场跟着分叉，最终就是「他捡走了我这边还看得见」和
-## 「两边血量对不上」。
-##
-## 要把这份体贴找回来，唯一正确的做法是把「这个座位还收不收得下」做成随帧
-## 上行的输入，让各端读到同一个值——而不是让表现层回写模拟层。
-func _test_unusable_reward_is_still_consumed(
-	failures: Array[String]
-) -> void:
-	var spawner = SpawnPointScene.instantiate()
-	var player := PlayerScene.instantiate() as PlayerController
-	if not "remove_after_collection" in spawner:
-		spawner.free()
-		player.free()
-		return
-	spawner.pickup_definition = SmgAmmoDefinition
-	spawner.respawn_enabled = false
-	spawner.remove_after_collection = true
-	player.position = Vector3(100.0, 0.0, 100.0)
-	root.add_child(player)
-	root.add_child(spawner)
-	await process_frame
-	var pickup = spawner.current_pickup
-	_expect(pickup != null, "failed-claim fixture must create its pickup", failures)
-	if pickup != null:
-		# 玩家没有冲锋枪，这份弹药发不出去。
-		pickup.claim_by(player)
-	await process_frame
-	await process_frame
-	_expect(
-		not is_instance_valid(pickup),
-		"an unusable reward must still consume the chest, so every client agrees",
-		failures
-	)
-	if is_instance_valid(spawner):
-		spawner.queue_free()
-	player.queue_free()
-	await process_frame
-
-func _expect(condition: bool, message: String, failures: Array[String]) -> void:
-	if not condition:
-		failures.append(message)

@@ -16,12 +16,14 @@ const WeaponSpreadStateScript = preload(
 )
 const SimCombatScript = preload("res://scripts/sim/sim_combat.gd")
 const SimHitGeometryScript = preload("res://scripts/sim/sim_hit_geometry.gd")
+const SimWaveDirectorScript = preload("res://scripts/sim/sim_wave_director.gd")
 
 const MAX_PLAYER_SLOTS := 4
 const NO_TARGET_SLOT := 255
 const STATE_DEAD := 3
 const HEALTH_SCALE := 100
 const POSITION_QUANTIZATION := 1000.0
+const DROP_ITEM := 0
 
 ## 与 Godot 的 physics/3d/default_gravity 引擎缺省值一致；project.godot 未覆盖该项
 ## （基线的 zombie_target.gd 是用 ProjectSettings.get_setting(..., 9.8) 读到同一个缺省值的），
@@ -32,11 +34,11 @@ const ZOMBIE_RADIUS := 0.42
 const PLAYER_RADIUS := 0.45
 const ZOMBIE_SEPARATION_RATIO := 0.5
 
-## 感知半径不是常量：基线 spawn_wave() 会用 DemoArena.wave_perception_range（默认 60.0）
+## 感知半径不是常量：基线地图使用 MapDefinition.zombie_perception_range（默认 60.0）
 ## 覆盖 ZombieTarget.tscn 的导出默认值 7.0，波次僵尸实际用的是 60.0。
 ## 若在此把 7.0 固化成常量，僵尸只会在 7 m 内才注意到玩家，
 ## 而生成角在 (±19, ±14)、场地 48 × 38，新生成的僵尸会原地游荡不再汇聚。
-## 因此由装配方（DemoArena._setup_simulation()）通过 set_perception_range() 注入。
+## 因此由地图运行时装配层通过 set_perception_range() 注入。
 const DEFAULT_PERCEPTION_RANGE := 60.0
 var perception_range := DEFAULT_PERCEPTION_RANGE
 
@@ -89,6 +91,7 @@ const BARREL_MIN_CHAIN_TICKS := 1
 
 # ---- spec 指定的 SoA 字段 ----
 var zombie_id := PackedInt32Array()
+var zombie_profile_index := PackedInt32Array()
 var zombie_position := PackedVector2Array()
 var zombie_height := PackedFloat32Array()
 var zombie_facing := PackedFloat32Array()
@@ -110,6 +113,12 @@ var zombie_wander_pause_ticks := PackedInt32Array()
 var zombie_hit_stun_ticks := PackedInt32Array()
 var zombie_move_speed := PackedFloat32Array()
 var zombie_attack_state := PackedInt32Array()
+
+# ---- 僵尸档案 ----
+## 装配层只在每局 reset() 后以稳定下标注册数值；模拟层不读取 Resource。
+var zombie_profiles: Array[Dictionary] = []
+## 装配层将地图 Resource 编译为整数/字典后按僵尸档案下标注入；模拟层不读取 Resource。
+var zombie_death_groups: Array[Array] = []
 
 # ---- 爆炸桶 SoA ----
 ## 油桶**不做压缩删除**：数量是个位数，且引爆是在 tick 中途发生的
@@ -139,14 +148,12 @@ var player_present := PackedByteArray()
 var rng: DeterministicRng
 var grid: FlowFieldGrid
 var flow_field: FlowField
+var wave_director
 
 var tick_index := 0
 var next_entity_id := 1
 var default_move_speed := DEFAULT_PERCEPTION_MOVE_SPEED
-var pending_spawn_waves: Array = []
-## 已排队但尚未在 tick 中兑现的生成名额。表现层用它把「排队中」计入活跃数，
-## 避免同一物理帧内两次排队各自看到同一个 remaining_capacity 而突破上限。
-var pending_spawn_capacity := 0
+var pending_spawn_requests: Array[Dictionary] = []
 
 # ---- 本 tick 产生的表现层事件（每 tick 开头清空） ----
 var tick_hit_events: Array = []
@@ -156,6 +163,8 @@ var tick_player_damage_events: Array = []
 var tick_shot_events: Array = []
 var tick_barrel_events: Array = []
 var tick_chest_events: Array = []
+var tick_wave_events: Array[Dictionary] = []
+var tick_death_rule_events: Array[Dictionary] = []
 
 ## 补给箱的领取判定住在模拟层，理由与爆炸桶完全相同：它改变对局状态。
 ##
@@ -165,15 +174,24 @@ var tick_chest_events: Array = []
 ## 几何，它消失的时刻不同，各端的流场就在不同的 tick 上重算，僵尸从此分道扬镳。
 ## 那正是「两边刷出来的道具不一样、存活数也不一样」的成因。
 const CHEST_STATE_ACTIVE := 0
-const CHEST_STATE_CLAIMED := 1
+const CHEST_STATE_WAITING_RESPAWN := 1
+const CHEST_STATE_CONSUMED := 2
 ## 与 scenes/gameplay/PickupChest.tscn 里 ClaimArea 的圆柱半径一致。
 ## 改了那边就必须改这里，否则领取手感与判定对不上。
 const CHEST_CLAIM_RADIUS := 1.15
+## 与 PickupChest.tscn 的 StaticBody3D BoxShape3D 半尺寸一致。
+const CHEST_BLOCKER_HALF_SIZE := Vector2(0.24, 0.18)
 
 var chest_id := PackedInt32Array()
 var chest_position := PackedVector2Array()
 var chest_radius := PackedFloat32Array()
 var chest_state := PackedByteArray()
+var chest_reward_profile := PackedInt32Array()
+var chest_amount := PackedInt32Array()
+var chest_respawn_delay_ticks := PackedInt32Array()
+var chest_respawn_at_tick := PackedInt32Array()
+var chest_blocker_min := PackedVector2Array()
+var chest_blocker_max := PackedVector2Array()
 
 # ---- 武器档案与逐槽位散布状态 ----
 var weapon_profiles: Array = []
@@ -185,6 +203,7 @@ func _init() -> void:
 	rng = DeterministicRngScript.new()
 	grid = FlowFieldGridScript.new()
 	flow_field = FlowFieldScript.new()
+	wave_director = SimWaveDirectorScript.new()
 	player_position_quantized.resize(MAX_PLAYER_SLOTS * 2)
 	player_position_quantized.fill(0)
 	player_alive.resize(MAX_PLAYER_SLOTS)
@@ -211,6 +230,7 @@ func reset(room_seed: int) -> void:
 	tick_index = 0
 	next_entity_id = 1
 	zombie_id = PackedInt32Array()
+	zombie_profile_index = PackedInt32Array()
 	zombie_position = PackedVector2Array()
 	zombie_height = PackedFloat32Array()
 	zombie_facing = PackedFloat32Array()
@@ -230,6 +250,8 @@ func reset(room_seed: int) -> void:
 	zombie_hit_stun_ticks = PackedInt32Array()
 	zombie_move_speed = PackedFloat32Array()
 	zombie_attack_state = PackedInt32Array()
+	zombie_profiles = []
+	zombie_death_groups = []
 	barrel_id = PackedInt32Array()
 	barrel_position = PackedVector2Array()
 	barrel_base_height = PackedFloat32Array()
@@ -248,14 +270,20 @@ func reset(room_seed: int) -> void:
 	chest_position = PackedVector2Array()
 	chest_radius = PackedFloat32Array()
 	chest_state = PackedByteArray()
+	chest_reward_profile = PackedInt32Array()
+	chest_amount = PackedInt32Array()
+	chest_respawn_delay_ticks = PackedInt32Array()
+	chest_respawn_at_tick = PackedInt32Array()
+	chest_blocker_min = PackedVector2Array()
+	chest_blocker_max = PackedVector2Array()
 	player_position_quantized.fill(0)
 	player_alive.fill(0)
 	player_present.fill(0)
-	pending_spawn_waves = []
+	wave_director = SimWaveDirectorScript.new()
+	pending_spawn_requests = []
 	pending_events = []
 	player_spread_degrees.fill(0.0)
 	player_spread_profile.fill(-1)
-	pending_spawn_capacity = 0
 	_clear_tick_events()
 	grid.mark_dirty()
 	flow_field.setup(grid)
@@ -263,7 +291,7 @@ func reset(room_seed: int) -> void:
 func set_default_move_speed(value: float) -> void:
 	default_move_speed = maxf(value, 0.0)
 
-## 感知半径由装配方注入（DemoArena 传入 wave_perception_range，基线默认 60.0）。
+## 感知半径由地图运行时装配层从 MapDefinition 注入（基线默认 60.0）。
 func set_perception_range(value: float) -> void:
 	perception_range = maxf(value, 0.0)
 
@@ -284,9 +312,6 @@ func get_zombie_count() -> int:
 
 func get_next_entity_id() -> int:
 	return next_entity_id
-
-func get_pending_spawn_capacity() -> int:
-	return pending_spawn_capacity
 
 func get_zombie_id_array() -> PackedInt32Array:
 	return zombie_id
@@ -325,10 +350,13 @@ func get_zombie_health(index: int) -> int:
 func get_zombie_max_health(index: int) -> int:
 	return zombie_max_health[index]
 
+func get_zombie_profile_index(index: int) -> int:
+	return zombie_profile_index[index]
+
 ## ---- 爆炸桶 ----
 ## 注册一个爆炸桶实体。id 与僵尸共用同一个单调递增计数器，永不复用。
-## 装配方必须在 reset() **之后**、按固定顺序注册（DemoArena 按
-## World/Props/HazardZone/ExplosiveBarrels 的子节点顺序），否则各端的 id 分配会分叉。
+## 装配方必须在 reset() **之后**、按固定顺序注册（GameMapRuntime 按当前
+## content root 下的稳定相对路径排序），否则各端的 id 分配会分叉。
 ## 阻挡矩形的生命周期由模拟层独占：注册即标为阻挡，引爆/移除时清除。
 ## 这样「哪一 tick 清掉的格」本身就是确定的，流场重算也逐 tick 对齐。
 func spawn_barrel(
@@ -374,13 +402,35 @@ func spawn_barrel(
 
 ## 注册一个补给箱。id 由与僵尸、油桶共用的实体计数器分配，所以各端只要
 ## 按同样的顺序注册，就拿到同样的 id。
-func spawn_chest(position_xz: Vector2, claim_radius: float = CHEST_CLAIM_RADIUS) -> int:
+func spawn_chest(
+	position_xz: Vector2,
+	reward_profile_index: int,
+	amount: int,
+	respawn_delay_ticks: int,
+	blocker_min_xz: Vector2,
+	blocker_max_xz: Vector2,
+	claim_radius: float
+) -> int:
 	var new_id := next_entity_id
 	next_entity_id += 1
 	chest_id.append(new_id)
 	chest_position.append(position_xz)
 	chest_radius.append(maxf(claim_radius, 0.0))
 	chest_state.append(CHEST_STATE_ACTIVE)
+	chest_reward_profile.append(reward_profile_index)
+	chest_amount.append(amount)
+	chest_respawn_delay_ticks.append(respawn_delay_ticks)
+	chest_respawn_at_tick.append(-1)
+	chest_blocker_min.append(blocker_min_xz)
+	chest_blocker_max.append(blocker_max_xz)
+	set_blocker_world_rect(blocker_min_xz, blocker_max_xz, true)
+	tick_chest_events.append({
+		"kind": &"chest_spawned",
+		"chest_id": new_id,
+		"position": position_xz,
+		"reward_profile_index": reward_profile_index,
+		"amount": amount,
+	})
 	return new_id
 
 ## 刻意**没有** release_chest()。
@@ -407,8 +457,27 @@ func index_of_chest(chest_id_value: int) -> int:
 
 func get_chest_state(index: int) -> int:
 	if index < 0 or index >= chest_state.size():
-		return CHEST_STATE_CLAIMED
+		return CHEST_STATE_CONSUMED
 	return chest_state[index]
+
+func _update_chest_respawns() -> void:
+	for index in range(chest_id.size()):
+		if chest_state[index] != CHEST_STATE_WAITING_RESPAWN:
+			continue
+		if tick_index < chest_respawn_at_tick[index]:
+			continue
+		chest_state[index] = CHEST_STATE_ACTIVE
+		chest_respawn_at_tick[index] = -1
+		set_blocker_world_rect(
+			chest_blocker_min[index], chest_blocker_max[index], true
+		)
+		tick_chest_events.append({
+			"kind": &"chest_respawned",
+			"chest_id": chest_id[index],
+			"position": chest_position[index],
+			"reward_profile_index": chest_reward_profile[index],
+			"amount": chest_amount[index],
+		})
 
 ## 领取判定：箱子按注册顺序、玩家按槽位升序扫描，第一个够得着的活人拿走。
 ##
@@ -428,13 +497,25 @@ func _resolve_chest_claims() -> void:
 			var offset := get_player_position(slot) - chest_position[index]
 			if offset.length_squared() > claim_range_squared:
 				continue
-			chest_state[index] = CHEST_STATE_CLAIMED
+			set_blocker_world_rect(
+				chest_blocker_min[index], chest_blocker_max[index], false
+			)
 			tick_chest_events.append({
 				"kind": &"chest_claimed",
 				"chest_id": chest_id[index],
 				"slot": slot,
 				"position": chest_position[index],
+				"reward_profile_index": chest_reward_profile[index],
+				"amount": chest_amount[index],
 			})
+			if chest_respawn_delay_ticks[index] >= 0:
+				chest_state[index] = CHEST_STATE_WAITING_RESPAWN
+				chest_respawn_at_tick[index] = (
+					tick_index + chest_respawn_delay_ticks[index]
+				)
+			else:
+				chest_state[index] = CHEST_STATE_CONSUMED
+				chest_respawn_at_tick[index] = -1
 			break
 
 func get_barrel_count() -> int:
@@ -469,15 +550,17 @@ func get_barrel_fuse_ticks(index: int) -> int:
 func spawn_zombie(
 	position_xz: Vector2,
 	facing_yaw: float,
-	max_health_points: float
+	profile_index: int
 ) -> int:
+	var profile: Dictionary = zombie_profiles[profile_index]
 	var new_id := next_entity_id
 	next_entity_id += 1
 	var health_points := maxi(
-		roundi(maxf(max_health_points, 0.0) * float(HEALTH_SCALE)),
+		roundi(float(profile["max_health"]) * float(HEALTH_SCALE)),
 		1
 	)
 	zombie_id.append(new_id)
+	zombie_profile_index.append(profile_index)
 	zombie_position.append(position_xz)
 	zombie_height.append(0.0)
 	zombie_facing.append(facing_yaw)
@@ -495,34 +578,40 @@ func spawn_zombie(
 	zombie_wander_target.append(position_xz)
 	zombie_wander_pause_ticks.append(0)
 	zombie_hit_stun_ticks.append(0)
-	zombie_move_speed.append(default_move_speed)
+	zombie_move_speed.append(float(profile["move_speed"]))
 	for _state_slot in range(MeleeAttackCycleScript.STATE_SIZE):
 		zombie_attack_state.append(0)
 	tick_spawn_events.append(new_id)
 	_select_wander_target(zombie_id.size() - 1)
 	return new_id
 
-## 波次生成的全部随机取自 Stream.ZOMBIE_SPAWN，并在下一 tick 开头统一执行，
-## 使「哪一 tick 生成了哪些僵尸」本身也是确定的。
-func queue_spawn_wave(
-	centers: PackedVector2Array,
-	minimum_per_center: int,
-	maximum_per_center: int,
-	capacity: int,
-	radius: float,
-	minimum_spacing: float,
-	max_health_points: float
+func configure_wave_schedule(
+	waves: Array[Dictionary],
+	spawn_points: Array[Dictionary],
+	end_mode: int,
+	inter_wave_delay_ticks: int,
+	maximum_active_zombies: int
 ) -> void:
-	pending_spawn_waves.append({
-		"centers": centers.duplicate(),
-		"minimum_per_center": minimum_per_center,
-		"maximum_per_center": maximum_per_center,
-		"capacity": capacity,
-		"radius": radius,
-		"minimum_spacing": minimum_spacing,
-		"max_health_points": max_health_points,
-	})
-	pending_spawn_capacity += maxi(capacity, 0)
+	wave_director.configure(
+		waves,
+		spawn_points,
+		end_mode,
+		inter_wave_delay_ticks,
+		maximum_active_zombies
+	)
+	pending_spawn_requests = []
+
+func start_wave_schedule() -> void:
+	wave_director.start(tick_index)
+
+func request_advance_wave() -> void:
+	wave_director.request_advance(tick_index)
+
+func can_advance_wave() -> bool:
+	return wave_director.can_advance()
+
+func get_wave_state_words() -> PackedInt32Array:
+	return wave_director.get_state_words()
 
 func set_player_snapshot(
 	slot: int,
@@ -555,7 +644,10 @@ func is_player_present(slot: int) -> bool:
 ## 否则流场会停留在过期的通行图上。静态几何同时进通行图与静态阻挡图，
 ## 因此它既挡僵尸也截子弹。
 func set_blocker_world_rect(min_xz: Vector2, max_xz: Vector2, blocked: bool) -> void:
-	grid.set_blocked_world_rect(min_xz, max_xz, blocked)
+	if blocked:
+		grid.add_static_blocker_world_rect(min_xz, max_xz)
+	else:
+		grid.remove_static_blocker_world_rect(min_xz, max_xz)
 
 ## 爆炸桶专用：只进通行图，不进静态阻挡图。
 ## 桶仍然挡住僵尸的移动与视线（`line_is_clear()` 走通行图），但**不参与**
@@ -566,7 +658,10 @@ func set_blocker_world_rect(min_xz: Vector2, max_xz: Vector2, blocked: bool) -> 
 func set_barrel_blocker_world_rect(
 	min_xz: Vector2, max_xz: Vector2, blocked: bool
 ) -> void:
-	grid.set_entity_blocked_world_rect(min_xz, max_xz, blocked)
+	if blocked:
+		grid.add_entity_blocker_world_rect(min_xz, max_xz)
+	else:
+		grid.remove_entity_blocker_world_rect(min_xz, max_xz)
 
 ## 整数 Bresenham 逐 cell 判定视线；终点 cell 自身不算阻挡。
 func line_is_clear(from_xz: Vector2, to_xz: Vector2) -> bool:
@@ -673,6 +768,7 @@ func apply_zombie_damage(
 		zombie_state[index] = STATE_DEAD
 		zombie_radius[index] = 0.0
 		zombie_velocity[index] = Vector2.ZERO
+		_resolve_zombie_death_groups(index)
 		tick_death_events.append(zombie_id[index])
 	return true
 
@@ -800,8 +896,8 @@ func _resolve_barrel_removal_event(event: Dictionary) -> void:
 	)
 
 ## 推进一个模拟 tick。不接收任何真实帧时长形参：时间步长恒为 SimClock.TICK_SECONDS。
-## 顺序固定：生成 -> 散布回复 -> 油桶引信 -> 玩家事件结算 -> 流场 -> 僵尸推进 ->
-## 碰撞 -> 僵尸攻击 -> 压缩删除。任何调整都会改变哈希序列，必须同步全端。
+## 顺序固定：清事件 -> 波次状态机 -> 生成 -> 补给重生/领取 -> 散布回复 ->
+## 油桶与玩家事件 -> 死亡掉落物化 -> 流场 -> 僵尸推进 -> 碰撞 -> 攻击 -> 压缩删除。
 ##
 ## 引信推进排在事件结算**之前**是刻意的：本 tick 里被射击引爆的桶会给邻桶上引信，
 ## 若引信先减后点，实际连锁延时会比 chain_delay_seconds 短一整 tick。
@@ -810,16 +906,34 @@ func _resolve_barrel_removal_event(event: Dictionary) -> void:
 func step_tick() -> void:
 	tick_index += 1
 	_clear_tick_events()
-	_apply_pending_spawn_waves()
-	_recover_spread()
+	_queue_wave_spawn_requests()
+	_apply_pending_spawn_requests()
+	_update_chest_respawns()
 	_resolve_chest_claims()
+	_recover_spread()
 	_update_barrel_fuses()
 	_resolve_pending_events()
+	_materialize_death_rule_drops()
 	_update_flow_field()
 	_update_zombies()
 	_resolve_collisions()
 	_resolve_zombie_attacks()
 	_compact_dead()
+
+func _materialize_death_rule_drops() -> void:
+	for event in tick_death_rule_events:
+		if event.get("kind", StringName()) != &"drop_item":
+			continue
+		var position: Vector2 = event["position"]
+		spawn_chest(
+			position,
+			int(event["reward_profile_index"]),
+			int(event["amount"]),
+			-1,
+			position - CHEST_BLOCKER_HALF_SIZE,
+			position + CHEST_BLOCKER_HALF_SIZE,
+			CHEST_CLAIM_RADIUS
+		)
 
 func _clear_tick_events() -> void:
 	tick_hit_events = []
@@ -829,67 +943,66 @@ func _clear_tick_events() -> void:
 	tick_shot_events = []
 	tick_barrel_events = []
 	tick_chest_events = []
+	tick_wave_events = []
+	tick_death_rule_events = []
 
-func _apply_pending_spawn_waves() -> void:
-	pending_spawn_capacity = 0
-	if pending_spawn_waves.is_empty():
+func _queue_wave_spawn_requests() -> void:
+	var commands_and_events: Array[Dictionary] = wave_director.step_tick(
+		tick_index, zombie_id.size(), pending_spawn_requests.size()
+	)
+	for command_or_event in commands_and_events:
+		if command_or_event.get("kind", StringName()) == &"spawn_zombie":
+			pending_spawn_requests.append(command_or_event)
+		else:
+			tick_wave_events.append(command_or_event)
+
+func _apply_pending_spawn_requests() -> void:
+	if pending_spawn_requests.is_empty():
 		return
-	var waves := pending_spawn_waves
-	pending_spawn_waves = []
-	for wave in waves:
-		_spawn_wave(wave)
-
-func _spawn_wave(wave: Dictionary) -> int:
 	var spawn_stream: int = DeterministicRngScript.Stream.ZOMBIE_SPAWN
-	var centers: PackedVector2Array = wave["centers"]
-	var capacity: int = maxi(int(wave["capacity"]), 0)
-	var radius: float = maxf(float(wave["radius"]), 0.0)
-	var minimum_spacing: float = maxf(float(wave["minimum_spacing"]), 0.0)
-	var max_health_points: float = float(wave["max_health_points"])
+	var requests := pending_spawn_requests
+	pending_spawn_requests = []
 	var occupied := zombie_position.duplicate()
-	var spawned := 0
-	for center in centers:
-		var requested := rng.next_int_range(
-			spawn_stream,
-			int(wave["minimum_per_center"]),
-			int(wave["maximum_per_center"])
+	for request in requests:
+		var spawn_position = _sample_spawn_position(
+			request["center"],
+			float(request["radius"]),
+			float(request["minimum_spacing"]),
+			occupied
 		)
-		for _spawn_index in range(requested):
-			if spawned >= capacity:
-				return spawned
-			var spawn_position := _sample_spawn_position(
-				center, radius, minimum_spacing, occupied
-			)
-			var facing := rng.next_range(spawn_stream, 0.0, TAU)
-			spawn_zombie(spawn_position, facing, max_health_points)
-			occupied.append(spawn_position)
-			spawned += 1
-	return spawned
+		if spawn_position == null:
+			pending_spawn_requests.append(request)
+			continue
+		var facing := rng.next_range(spawn_stream, 0.0, TAU)
+		spawn_zombie(spawn_position, facing, int(request["profile_index"]))
+		occupied.append(spawn_position)
 
 func _sample_spawn_position(
 	center: Vector2,
 	radius: float,
 	minimum_spacing: float,
 	occupied: PackedVector2Array
-) -> Vector2:
+) -> Variant:
 	var spawn_stream: int = DeterministicRngScript.Stream.ZOMBIE_SPAWN
-	var fallback := center
 	for _attempt in range(16):
 		var angle := rng.next_range(spawn_stream, 0.0, TAU)
 		# sqrt 保留内置的：IEEE 754 要求它正确舍入，跨平台本来就逐位相同。
 		# 三角函数不是，见 SimMath。
 		var sample_radius := sqrt(rng.next_unit_float(spawn_stream)) * radius
 		var candidate := center + SimMathScript.direction_from_angle(angle) * sample_radius
-		fallback = candidate
 		if _has_spawn_clearance(candidate, minimum_spacing, occupied):
 			return candidate
-	return fallback
+	if not grid.is_blocked(grid.world_to_cell(center)):
+		return center
+	return null
 
 func _has_spawn_clearance(
 	candidate: Vector2,
 	minimum_spacing: float,
 	occupied: PackedVector2Array
 ) -> bool:
+	if grid.is_blocked(grid.world_to_cell(candidate)):
+		return false
 	for position in occupied:
 		if candidate.distance_to(position) < minimum_spacing:
 			return false
@@ -915,6 +1028,10 @@ func _update_zombies() -> void:
 		zombie_previous_position[index] = zombie_position[index]
 		zombie_previous_facing[index] = zombie_facing[index]
 		zombie_previous_height[index] = zombie_height[index]
+		# 生成命令的中心是本 tick 的确定性落点；新实体从下一 tick 才开始移动，
+		# 否则生成事件刚发出时位置已经被游荡推进改写。
+		if tick_spawn_events.has(zombie_id[index]):
+			continue
 		zombie_hit_stun_ticks[index] = maxi(zombie_hit_stun_ticks[index] - 1, 0)
 
 		var position := zombie_position[index]
@@ -1086,16 +1203,19 @@ func _approach_velocity(
 
 func _resolve_collisions() -> void:
 	var count := zombie_id.size()
-	if count == 0:
+	# 波次生成只会按 id 顺序追加实体，tick_spawn_events 因而对应数组尾部。
+	# 新实体从下一 tick 才参与碰撞配对，避免它只推动旧实体而自身不接收位移。
+	var collision_count := count - tick_spawn_events.size()
+	if collision_count <= 0:
 		return
 	var displacement := SimCollisionScript.accumulate_separation(
 		zombie_position,
 		zombie_radius,
-		count,
+		collision_count,
 		SimCollisionScript.DEFAULT_HASH_CELL_SIZE,
 		ZOMBIE_SEPARATION_RATIO
 	)
-	for index in range(count):
+	for index in range(collision_count):
 		if zombie_state[index] == STATE_DEAD:
 			continue
 		var radius := zombie_radius[index]
@@ -1159,6 +1279,7 @@ func _compact_dead() -> void:
 	if survivor_count == count:
 		return
 	var new_id := PackedInt32Array()
+	var new_profile_index := PackedInt32Array()
 	var new_position := PackedVector2Array()
 	var new_height := PackedFloat32Array()
 	var new_facing := PackedFloat32Array()
@@ -1182,6 +1303,7 @@ func _compact_dead() -> void:
 		if zombie_state[index] == STATE_DEAD:
 			continue
 		new_id.append(zombie_id[index])
+		new_profile_index.append(zombie_profile_index[index])
 		new_position.append(zombie_position[index])
 		new_height.append(zombie_height[index])
 		new_facing.append(zombie_facing[index])
@@ -1205,6 +1327,7 @@ func _compact_dead() -> void:
 				zombie_attack_state[index * MeleeAttackCycleScript.STATE_SIZE + state_slot]
 			)
 	zombie_id = new_id
+	zombie_profile_index = new_profile_index
 	zombie_position = new_position
 	zombie_height = new_height
 	zombie_facing = new_facing
@@ -1224,6 +1347,69 @@ func _compact_dead() -> void:
 	zombie_hit_stun_ticks = new_hit_stun_ticks
 	zombie_move_speed = new_move_speed
 	zombie_attack_state = new_attack_state
+
+func configure_zombie_profile(
+	profile_index: int,
+	max_health: int,
+	move_speed: float
+) -> void:
+	if profile_index < 0:
+		return
+	while zombie_profiles.size() <= profile_index:
+		zombie_profiles.append({})
+	zombie_profiles[profile_index] = {
+		"max_health": maxi(max_health, 1),
+		"move_speed": maxf(move_speed, 0.0),
+	}
+
+## 每个组独立掷触发概率；单个命中组仅按正整数权重选择一个事件。
+func configure_zombie_death_groups(profile_index: int, groups: Array[Dictionary]) -> void:
+	if profile_index < 0:
+		return
+	while zombie_death_groups.size() <= profile_index:
+		zombie_death_groups.append([])
+	zombie_death_groups[profile_index] = groups
+
+func _resolve_zombie_death_groups(index: int) -> void:
+	var profile_index := zombie_profile_index[index]
+	if profile_index < 0 or profile_index >= zombie_death_groups.size():
+		return
+	for group_variant in zombie_death_groups[profile_index]:
+		var group: Dictionary = group_variant
+		var trigger_chance_per_10000 := int(group.get("trigger_chance_per_10000", 0))
+		var chance_roll := rng.next_uint32(DeterministicRngScript.Stream.LOOT_DROP) % 10000
+		if chance_roll >= trigger_chance_per_10000:
+			continue
+		var events: Array = group.get("events", [])
+		var total_weight := 0
+		for event_variant in events:
+			var event: Dictionary = event_variant
+			total_weight += maxi(int(event.get("weight", 0)), 0)
+		if total_weight <= 0:
+			continue
+		var choice := rng.next_uint32(DeterministicRngScript.Stream.LOOT_DROP) % total_weight
+		var accumulated_weight := 0
+		for event_variant in events:
+			var event: Dictionary = event_variant
+			var weight := int(event.get("weight", 0))
+			if weight <= 0:
+				continue
+			accumulated_weight += weight
+			if choice >= accumulated_weight:
+				continue
+			if int(event.get("event_type", -1)) != DROP_ITEM:
+				push_error("unsupported zombie death event type: %d" % int(event.get("event_type", -1)))
+				break
+			tick_death_rule_events.append({
+				"kind": &"drop_item",
+				"zombie_id": zombie_id[index],
+				"profile_index": zombie_profile_index[index],
+				"group_id": group["group_id"],
+				"reward_profile_index": event["reward_profile_index"],
+				"amount": event["amount"],
+				"position": zombie_position[index],
+			})
+			break
 
 ## ---- 武器档案 ----
 ## 由表现层在装配时按 weapon_id 注册；模拟层只认下标，不认资源。

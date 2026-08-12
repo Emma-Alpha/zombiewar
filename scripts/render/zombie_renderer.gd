@@ -20,52 +20,52 @@ const FADE_SECONDS := 0.18
 const MULTI_MESH_MINIMUM_CAPACITY := 64
 const RUN_ANIMATION_SPEED := 0.2
 
-@export var zombie_scene: PackedScene
-
 var camera_anchor: Node3D
-var multi_mesh_instance: MultiMeshInstance3D
-var multi_mesh: MultiMesh
-var far_lod_material: Material
+var zombie_scenes: Array[PackedScene] = []
+var type_buckets: Array[Dictionary] = []
 var near_views: Dictionary = {}
+var near_view_profile: Dictionary = {}
+var dying_view_records: Dictionary = {}
 var view_alpha: Dictionary = {}
-var free_views: Array[ZombieTarget] = []
+var total_near_view_count := 0
+var allocated_near_views: Array[ZombieTarget] = []
 var lod_scratch: Array = []
+
+func configure_zombie_scenes(value: Array[PackedScene]) -> void:
+	if not type_buckets.is_empty():
+		_discard_render_resources()
+	zombie_scenes.clear()
+	zombie_scenes.append_array(value)
+	if camera_anchor != null:
+		_create_type_buckets()
 
 func setup(anchor: Node3D) -> void:
 	camera_anchor = anchor
-	if multi_mesh_instance == null:
-		multi_mesh = MultiMesh.new()
-		multi_mesh.transform_format = MultiMesh.TRANSFORM_3D
-		multi_mesh.mesh = _extract_far_lod_mesh()
-		multi_mesh.instance_count = MULTI_MESH_MINIMUM_CAPACITY
-		multi_mesh.visible_instance_count = 0
-		multi_mesh_instance = MultiMeshInstance3D.new()
-		multi_mesh_instance.name = "FarLodMultiMesh"
-		multi_mesh_instance.multimesh = multi_mesh
-		multi_mesh_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		if far_lod_material != null:
-			multi_mesh_instance.material_override = far_lod_material
-		add_child(multi_mesh_instance)
-		# project.godot 开着 common/physics_interpolation=true；本渲染器已经在
-		# render_frame() 里自己做完了 tick 间插值，必须关掉引擎插值，
-		# 否则近景 ZombieTarget 与远景实例会错开一帧。
-		physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
-	while free_views.size() + near_views.size() < NEAR_LOD_COUNT:
-		var view := zombie_scene.instantiate() as ZombieTarget
-		view.name = "ZombieView%02d" % (free_views.size() + near_views.size())
-		add_child(view)
-		view.death_finished.connect(_on_view_death_finished)
-		view.visible = false
-		view.set_blocker_enabled(false)
-		free_views.append(view)
+	if type_buckets.is_empty():
+		_create_type_buckets()
+	# project.godot 开着 common/physics_interpolation=true；本渲染器已经在
+	# render_frame() 里自己做完了 tick 间插值，必须关掉引擎插值，
+	# 否则近景 ZombieTarget 与远景实例会错开一帧。
+	physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
 
 func clear() -> void:
 	for zombie_id_value in near_views.keys():
 		_release_view(zombie_id_value, near_views[zombie_id_value])
+	for record in dying_view_records.values():
+		var view := record["view"] as ZombieTarget
+		if view == null or not is_instance_valid(view):
+			continue
+		# clear() 中断死亡表现，避免 setup 重入后仍有旧动画在池外占用名额。
+		view.bind_zombie(0, Vector3.ZERO, 0.0)
+		_release_view_to_profile(view, int(record["profile_index"]))
 	near_views = {}
+	near_view_profile = {}
+	dying_view_records = {}
 	view_alpha = {}
-	if multi_mesh != null:
-		multi_mesh.visible_instance_count = 0
+	for bucket in type_buckets:
+		var multi_mesh := bucket["multi_mesh"] as MultiMesh
+		if multi_mesh != null:
+			multi_mesh.visible_instance_count = 0
 
 ## 每 tick 重算 LOD 归属。距离取共享镜头锚点到僵尸的 XZ 平面平方距离，
 ## 同距按实体 id 升序决定，避免抖动。
@@ -106,10 +106,11 @@ func sync_lod(world: SimWorld) -> void:
 	for zombie_id_value in wanted.keys():
 		if near_views.has(zombie_id_value):
 			continue
-		var view := _acquire_view()
-		if view == null:
-			break
 		var index: int = wanted[zombie_id_value]
+		var profile_index := world.get_zombie_profile_index(index)
+		var view := _acquire_view(profile_index)
+		if view == null:
+			continue
 		view.bind_zombie(
 			zombie_id_value,
 			_world_origin(world, index, 1.0),
@@ -117,6 +118,7 @@ func sync_lod(world: SimWorld) -> void:
 		)
 		view.set_visual_alpha(0.0)
 		near_views[zombie_id_value] = view
+		near_view_profile[zombie_id_value] = profile_index
 		view_alpha[zombie_id_value] = 0.0
 
 ## 渲染帧之间对 SimWorld 的上一 tick 与当前 tick 做线性插值。
@@ -125,13 +127,17 @@ func render_frame(
 	interpolation_alpha: float,
 	frame_delta: float
 ) -> void:
-	if multi_mesh == null:
+	if type_buckets.is_empty():
 		return
 	var count := world.get_zombie_count()
-	if multi_mesh.instance_count < count:
-		multi_mesh.instance_count = maxi(count, MULTI_MESH_MINIMUM_CAPACITY)
+	for bucket_index in range(type_buckets.size()):
+		var bucket := type_buckets[bucket_index]
+		var multi_mesh := bucket["multi_mesh"] as MultiMesh
+		if multi_mesh != null and multi_mesh.instance_count < count:
+			multi_mesh.instance_count = maxi(count, MULTI_MESH_MINIMUM_CAPACITY)
+		bucket["far_slot"] = 0
+		type_buckets[bucket_index] = bucket
 	var ids := world.get_zombie_id_array()
-	var far_slot := 0
 	for index in range(count):
 		var zombie_id_value := ids[index]
 		var previous := world.get_zombie_previous_position(index)
@@ -156,12 +162,24 @@ func render_frame(
 				view_alpha[zombie_id_value] = current_alpha
 				view.set_visual_alpha(current_alpha)
 			continue
+		var profile_index := world.get_zombie_profile_index(index)
+		if profile_index < 0 or profile_index >= type_buckets.size():
+			continue
+		var bucket := type_buckets[profile_index]
+		var multi_mesh := bucket["multi_mesh"] as MultiMesh
+		if multi_mesh == null:
+			continue
+		var far_slot: int = bucket["far_slot"]
 		multi_mesh.set_instance_transform(
 			far_slot,
 			Transform3D(Basis(Vector3.UP, facing), origin)
 		)
-		far_slot += 1
-	multi_mesh.visible_instance_count = far_slot
+		bucket["far_slot"] = far_slot + 1
+		type_buckets[profile_index] = bucket
+	for bucket in type_buckets:
+		var multi_mesh := bucket["multi_mesh"] as MultiMesh
+		if multi_mesh != null:
+			multi_mesh.visible_instance_count = int(bucket["far_slot"])
 
 ## 本 tick 死亡的僵尸：近景表现件脱离池子播放死亡动画，播完自行归还。
 func notify_deaths(world: SimWorld) -> void:
@@ -169,12 +187,24 @@ func notify_deaths(world: SimWorld) -> void:
 		if not near_views.has(zombie_id_value):
 			continue
 		var view: ZombieTarget = near_views[zombie_id_value]
+		var profile_index: int = near_view_profile.get(zombie_id_value, -1)
 		near_views.erase(zombie_id_value)
+		near_view_profile.erase(zombie_id_value)
 		view_alpha.erase(zombie_id_value)
+		dying_view_records[view.get_instance_id()] = {
+			"view": view,
+			"profile_index": profile_index,
+		}
 		view.begin_death()
 
 func get_near_view(zombie_id_value: int) -> ZombieTarget:
 	return near_views.get(zombie_id_value, null) as ZombieTarget
+
+func get_type_bucket_count() -> int:
+	return type_buckets.size()
+
+func get_near_view_profile(zombie_id_value: int) -> int:
+	return int(near_view_profile.get(zombie_id_value, -1))
 
 func _world_origin(world: SimWorld, index: int, alpha: float) -> Vector3:
 	var blended := world.get_zombie_previous_position(index).lerp(
@@ -187,43 +217,146 @@ func _world_origin(world: SimWorld, index: int, alpha: float) -> Vector3:
 	)
 	return Vector3(blended.x, height, blended.y)
 
-func _acquire_view() -> ZombieTarget:
-	if free_views.is_empty():
+func _acquire_view(profile_index: int) -> ZombieTarget:
+	if profile_index < 0 or profile_index >= type_buckets.size():
 		return null
-	var view: ZombieTarget = free_views.pop_back()
+	var bucket := type_buckets[profile_index]
+	var free_views: Array = bucket["free_views"]
+	var view: ZombieTarget = null
+	if not free_views.is_empty():
+		view = free_views.pop_back() as ZombieTarget
+	elif total_near_view_count < NEAR_LOD_COUNT:
+		var scene := bucket["scene"] as PackedScene
+		if scene == null:
+			return null
+		view = scene.instantiate() as ZombieTarget
+		if view == null:
+			return null
+		view.name = "ZombieView%02d" % total_near_view_count
+		add_child(view)
+		view.death_finished.connect(_on_view_death_finished)
+		total_near_view_count += 1
+		allocated_near_views.append(view)
+	else:
+		view = _take_idle_view_from_other_profile(profile_index)
+		if view == null:
+			return null
 	view.visible = true
 	view.set_blocker_enabled(true)
 	return view
 
-func _release_view(_zombie_id_value: int, view: ZombieTarget) -> void:
+## 全局名额已满时，其他 profile 的 idle View 不能把本 profile 永久饿死。
+## death View 不在 free list，因此不会在动画中途被换走；不同场景则保持
+## total_near_view_count 不变，用目标场景实例原位替换空闲实例。
+func _take_idle_view_from_other_profile(profile_index: int) -> ZombieTarget:
+	var target_scene := type_buckets[profile_index]["scene"] as PackedScene
+	if target_scene == null:
+		return null
+	for donor_profile_index in range(type_buckets.size()):
+		if donor_profile_index == profile_index:
+			continue
+		var donor_bucket := type_buckets[donor_profile_index]
+		var free_views: Array = donor_bucket["free_views"]
+		if free_views.is_empty():
+			continue
+		var idle_view := free_views.pop_back() as ZombieTarget
+		if idle_view == null or not is_instance_valid(idle_view):
+			continue
+		var donor_scene := donor_bucket["scene"] as PackedScene
+		if donor_scene == target_scene:
+			return idle_view
+		var replacement_instance := target_scene.instantiate()
+		var replacement := replacement_instance as ZombieTarget
+		if replacement == null:
+			if replacement_instance != null:
+				replacement_instance.free()
+			free_views.append(idle_view)
+			continue
+		var recycled_name := idle_view.name
+		allocated_near_views.erase(idle_view)
+		idle_view.free()
+		replacement.name = recycled_name
+		add_child(replacement)
+		replacement.death_finished.connect(_on_view_death_finished)
+		allocated_near_views.append(replacement)
+		return replacement
+	return null
+
+func _release_view(zombie_id_value: int, view: ZombieTarget) -> void:
+	var profile_index: int = near_view_profile.get(zombie_id_value, -1)
+	near_view_profile.erase(zombie_id_value)
+	_release_view_to_profile(view, profile_index)
+
+func _release_view_to_profile(view: ZombieTarget, profile_index: int) -> void:
 	view.visible = false
 	view.set_blocker_enabled(false)
 	view.set_visual_alpha(1.0)
-	if not free_views.has(view):
-		free_views.append(view)
+	if profile_index >= 0 and profile_index < type_buckets.size():
+		var bucket := type_buckets[profile_index]
+		var free_views: Array = bucket["free_views"]
+		if not free_views.has(view):
+			free_views.append(view)
 
 func _on_view_death_finished(view: ZombieTarget) -> void:
-	view.set_blocker_enabled(false)
-	view.set_visual_alpha(1.0)
-	if not free_views.has(view):
-		free_views.append(view)
+	var view_instance_id := view.get_instance_id()
+	if not dying_view_records.has(view_instance_id):
+		return
+	var record: Dictionary = dying_view_records[view_instance_id]
+	dying_view_records.erase(view_instance_id)
+	_release_view_to_profile(view, int(record["profile_index"]))
+
+func _discard_render_resources() -> void:
+	for view in allocated_near_views:
+		if is_instance_valid(view):
+			view.queue_free()
+	allocated_near_views = []
+	for bucket in type_buckets:
+		var multi_mesh_instance := bucket["multi_mesh_instance"] as MultiMeshInstance3D
+		if multi_mesh_instance != null and is_instance_valid(multi_mesh_instance):
+			multi_mesh_instance.queue_free()
+	type_buckets = []
+	near_views = {}
+	near_view_profile = {}
+	dying_view_records = {}
+	view_alpha = {}
+	total_near_view_count = 0
+
+func _create_type_buckets() -> void:
+	for scene in zombie_scenes:
+		type_buckets.append(_create_type_bucket(scene))
 
 ## 远景使用僵尸模型的绑定姿势网格。MultiMesh 不驱动骨骼，
 ## 因此这里拿到的就是 spec 要求的静态姿势。
-func _extract_far_lod_mesh() -> Mesh:
-	if zombie_scene == null:
-		return null
-	var probe := zombie_scene.instantiate()
-	var resolved_mesh: Mesh = null
-	for candidate in probe.find_children("*", "MeshInstance3D", true, false):
-		var mesh_instance := candidate as MeshInstance3D
-		if mesh_instance == null or mesh_instance.mesh == null:
-			continue
-		resolved_mesh = mesh_instance.mesh
-		far_lod_material = mesh_instance.get_active_material(0)
-		break
-	probe.free()
-	return resolved_mesh
+func _create_type_bucket(scene: PackedScene) -> Dictionary:
+	var multi_mesh := MultiMesh.new()
+	multi_mesh.transform_format = MultiMesh.TRANSFORM_3D
+	multi_mesh.instance_count = MULTI_MESH_MINIMUM_CAPACITY
+	multi_mesh.visible_instance_count = 0
+	var far_lod_material: Material = null
+	if scene != null:
+		var probe := scene.instantiate()
+		for candidate in probe.find_children("*", "MeshInstance3D", true, false):
+			var mesh_instance := candidate as MeshInstance3D
+			if mesh_instance == null or mesh_instance.mesh == null:
+				continue
+			multi_mesh.mesh = mesh_instance.mesh
+			far_lod_material = mesh_instance.get_active_material(0)
+			break
+		probe.free()
+	var multi_mesh_instance := MultiMeshInstance3D.new()
+	multi_mesh_instance.name = "FarLodMultiMesh%02d" % type_buckets.size()
+	multi_mesh_instance.multimesh = multi_mesh
+	multi_mesh_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	if far_lod_material != null:
+		multi_mesh_instance.material_override = far_lod_material
+	add_child(multi_mesh_instance)
+	return {
+		"scene": scene,
+		"multi_mesh": multi_mesh,
+		"multi_mesh_instance": multi_mesh_instance,
+		"free_views": [],
+		"far_slot": 0,
+	}
 
 static func _compare_lod(left: Array, right: Array) -> bool:
 	var left_distance: float = left[0]

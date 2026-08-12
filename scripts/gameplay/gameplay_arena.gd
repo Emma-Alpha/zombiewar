@@ -9,8 +9,6 @@ const SinglePlayerInputSourceScript = preload(
 )
 const LocalTeamStateScript = preload("res://scripts/gameplay/local_team_state.gd")
 const BARREL_PLACE_SOUND := preload("res://assets/sfx/boxhead/barrel_place.mp3")
-const AUTO_WAVE_STATUS := "下一波即将到来"
-const ARENA_CAMERA_BOUNDS := Rect2(Vector2(-10.0, -7.0), Vector2(20.0, 14.0))
 const SimClockScript = preload("res://scripts/sim/sim_clock.gd")
 const SimWorldScript = preload("res://scripts/sim/sim_world.gd")
 const PlaceItemGridScript = preload("res://scripts/gameplay/place_item_grid.gd")
@@ -19,33 +17,15 @@ const SimHasherScript = preload("res://scripts/sim/sim_hasher.gd")
 const LobbyProtocolScript = preload("res://scripts/net/lobby_protocol.gd")
 const GameSessionScript = preload("res://scripts/gameplay/game_session.gd")
 const BLOOD_IMPACT_SCENE := preload("res://scenes/fx/BloodImpact.tscn")
-const ARENA_SIM_GRID_ORIGIN := Vector2(-24.5, -19.5)
-const ARENA_SIM_CELL_SIZE := 1.0
-const ARENA_SIM_GRID_WIDTH := 49
-const ARENA_SIM_GRID_HEIGHT := 39
+const PICKUP_CHEST_SCENE := preload("res://scenes/gameplay/PickupChest.tscn")
 const DEFAULT_SIM_SEED := 20260807
-const ZOMBIE_MAX_HEALTH := 50.0
 ## 延迟 HUD 的刷新节流（秒）。RTT 本身更新更慢，更频繁地读没有信息量。
 const PING_HUD_INTERVAL_SECONDS := 0.5
-const BLOCKER_GROUP: StringName = &"place_item_obstacle"
 const PISTOL_DEFINITION := preload("res://resources/weapons/pistol.tres")
 const SMG_DEFINITION := preload("res://resources/weapons/smg.tres")
-const SPAWN_POINT_NAMES: Array[StringName] = [
-	&"NorthWest",
-	&"NorthEast",
-	&"SouthWest",
-	&"SouthEast",
-]
 
+@export var map_definition: MapDefinition
 @export var zombie_difficulty: ZombieDifficultyProfile
-
-@export_group("Wave Spawning")
-@export_range(1, 40, 1) var minimum_zombies_per_corner := 12
-@export_range(1, 40, 1) var maximum_zombies_per_corner := 18
-@export_range(4, 400, 1) var maximum_active_zombies := 300
-@export_range(0.0, 8.0, 0.05) var spawn_radius := 1.75
-@export_range(0.0, 4.0, 0.05) var minimum_spawn_spacing := 1.1
-@export_range(1.0, 100.0, 0.5) var wave_perception_range := 60.0
 @export var random_seed: int = 0
 
 @onready var game_over_audio: AudioStreamPlayer = $GameOverAudio
@@ -54,6 +34,7 @@ var hit_confirm_tween: Tween
 var damage_flash_tween: Tween
 var sim_clock = SimClockScript.new()
 var sim_world = SimWorldScript.new()
+var map_runtime := GameMapRuntime.new()
 var zombie_renderer: ZombieRenderer
 var weapon_profile_indices: Dictionary = {}
 ## 模拟层油桶 id -> 表现节点。只做按 id 的键值查找，不遍历它驱动任何判定。
@@ -70,10 +51,6 @@ var single_player_input = SinglePlayerInputSourceScript.new()
 var players: Array[PlayerController] = []
 var local_team_state = LocalTeamStateScript.new()
 
-## 空场后自动开下一波所需的 tick 数，等于 AutoWaveTimer 的 1.5 秒。
-## 联机下必须换成 tick：墙钟计时器在各端的到点时刻不同，同一波僵尸会
-## 落在不同的 tick 上，之后每一次随机取样都错位。
-const ONLINE_AUTO_WAVE_TICKS := 30
 ## 每隔这么多 tick 附一次帧哈希给服务端对拍。每 tick 都发是浪费，
 ## 隔太久则不同步会在被发现前先积累出一整场错误的战斗。
 const ONLINE_HASH_INTERVAL_TICKS := 20
@@ -89,7 +66,6 @@ var online_accumulator := 0.0
 ## 而是发给服务端、等它随帧回来再统一应用——各端于是在同一个 tick 上开火。
 var pending_local_events: Array = []
 var pending_wave_request := false
-var online_empty_ticks := 0
 var online_started := false
 var online_result_reported := false
 var net_input_sources: Dictionary = {}
@@ -108,17 +84,28 @@ func _enter_tree() -> void:
 	_wire_dependencies()
 
 func _ready() -> void:
+	startup_pending = true
 	add_child(local_team_state)
 	_detect_online_mode()
+	_wire_dependencies()
+	var map_errors := _setup_simulation()
+	if not map_errors.is_empty():
+		_handle_startup_failure("; ".join(map_errors))
+		return
+	if not _setup_map_renderer():
+		_handle_startup_failure("GameplayArena renderer nodes are missing")
+		return
+	_register_map_entities()
 	if not _spawn_session_players():
 		_handle_player_spawn_failure()
 		return
 	local_team_state.all_players_defeated.connect(_on_all_players_defeated)
 	local_team_state.setup(players)
 	_set_touch_game_over_active(false)
-	_wire_dependencies()
-	_setup_simulation()
-	startup_pending = true
+	_wire_runtime_dependencies()
+	sim_world.start_wave_schedule()
+	_update_wave_hud()
+	_sync_command_controls()
 	if DisplayServer.get_name() == "headless":
 		_complete_combat_startup(false)
 		return
@@ -172,12 +159,6 @@ func _detect_online_mode() -> void:
 		return
 	var net := get_node_or_null("/root/NetSession")
 	online_slot = net.local_slot if net != null else -1
-	# 墙钟驱动的自动开波在联机下必须闭嘴：它的到点时刻各端不同，
-	# 同一波僵尸会落在不同的 tick 上。联机版本按 tick 计数，见
-	# _tick_online_auto_wave()。
-	var auto_wave_timer := get_node_or_null("AutoWaveTimer") as Timer
-	if auto_wave_timer != null:
-		auto_wave_timer.stop()
 
 ## 联机的推进入口。
 ##
@@ -237,12 +218,11 @@ func _apply_online_frame(frame: Dictionary) -> void:
 			continue
 		_apply_slot_command(slot, command as Dictionary)
 	if bool(frame.get("w", false)):
-		spawn_wave()
+		sim_world.request_advance_wave()
 	sim_world.step_tick()
 	_consume_sim_events()
 	zombie_renderer.sync_lod(sim_world)
 	_tally_online_kills()
-	_tick_online_auto_wave()
 	_send_online_command(int(frame.get("t", -1)))
 
 ## 一个座位在这一 tick 做了什么。
@@ -304,15 +284,6 @@ func _tally_online_kills() -> void:
 			var slot := int(event.get("slot", -1))
 			if slot >= 0:
 				online_kills[slot] = int(online_kills.get(slot, 0)) + 1
-
-func _tick_online_auto_wave() -> void:
-	if team_defeated or get_active_zombie_count() != 0:
-		online_empty_ticks = 0
-		return
-	online_empty_ticks += 1
-	if online_empty_ticks >= ONLINE_AUTO_WAVE_TICKS:
-		online_empty_ticks = 0
-		spawn_wave()
 
 ## 把本机这一 tick 的输入、位置与请求发出去。
 ## 发送频率天然等于服务端泵帧频率：每消费一帧就回一条。
@@ -377,14 +348,7 @@ func _report_online_result() -> void:
 		kills[str(slot)] = int(online_kills[slot])
 	net.room.report_result(wave_number, kills)
 
-func _setup_simulation() -> void:
-	sim_world.configure(
-		ARENA_SIM_GRID_ORIGIN,
-		ARENA_SIM_CELL_SIZE,
-		ARENA_SIM_GRID_WIDTH,
-		ARENA_SIM_GRID_HEIGHT
-	)
-	_bake_static_blockers()
+func _setup_simulation() -> PackedStringArray:
 	# 联机的种子来自房间，不是任何一个客户端：每端的 DeterministicRng 都由它
 	# 派生，谁自己挑一个都必然分叉。
 	var resolved_seed := DEFAULT_SIM_SEED if random_seed == 0 else random_seed
@@ -392,25 +356,52 @@ func _setup_simulation() -> void:
 		var net := get_node_or_null("/root/NetSession")
 		if net != null and net.match_seed != 0:
 			resolved_seed = net.match_seed
-	sim_world.reset(resolved_seed)
-	# 随机掉落是表现层的 RNG，但它掉出来的弹药会改变战局，所以联机下必须
-	# 与房间同种子：击杀事件在各端顺序一致，同种子的同序消费就给出同一批掉落。
-	# 单机保持原有的 randomize() 行为不变。
-	if online_mode:
-		var drops := get_node_or_null(
-			"World/Props/RandomPickupDrops"
-		) as RandomPickupDropManager
-		if drops != null:
-			drops.rng.seed = resolved_seed
-	_register_scene_barrels()
-	if zombie_difficulty != null:
-		sim_world.set_default_move_speed(zombie_difficulty.perception_move_speed)
-	# 基线的 spawn_wave() 用 wave_perception_range（默认 60.0）覆盖 ZombieTarget 的
-	# 导出默认值 7.0；模拟层没有这一步的话，生成角 (±19, ±14) 上的僵尸
-	# 在 48 × 38 的场地里永远够不到玩家，会原地游荡而不汇聚。
-	sim_world.set_perception_range(wave_perception_range)
+	var errors := map_runtime.load(
+		map_definition,
+		sim_world,
+		get_node_or_null("World/MapContent") as Node3D,
+		zombie_difficulty,
+		resolved_seed
+	)
+	if not errors.is_empty():
+		return errors
+	var place_grid := get_node_or_null(
+		"World/Placement/PlaceItemGrid"
+	) as PlaceItemGrid
+	if place_grid == null:
+		return PackedStringArray(["GameplayArena PlaceItemGrid is missing"])
+	place_grid.cell_size = map_definition.grid_cell_size
+	var first_cell_center := (
+		map_definition.grid_origin
+		+ Vector2.ONE * map_definition.grid_cell_size * 0.5
+	)
+	place_grid.grid_origin = Vector3(
+		first_cell_center.x, 0.0, first_cell_center.y
+	)
 	register_weapon_profiles()
 	sim_clock.reset()
+	return PackedStringArray()
+
+func _setup_map_renderer() -> bool:
+	zombie_renderer = get_node_or_null(
+		"World/Targets/ZombieRenderer"
+	) as ZombieRenderer
+	var follow_camera := get_node_or_null("FollowCamera") as Node3D
+	if zombie_renderer == null or follow_camera == null:
+		return false
+	var zombie_scenes: Array[PackedScene] = []
+	for definition in map_runtime.zombie_definitions:
+		zombie_scenes.append(definition.view_scene)
+	zombie_renderer.configure_zombie_scenes(zombie_scenes)
+	zombie_renderer.setup(follow_camera)
+	return true
+
+func _register_map_entities() -> void:
+	barrel_views = {}
+	for barrel in map_runtime.scene_barrels():
+		_register_barrel(barrel)
+	for event in map_runtime.initial_chest_events:
+		_create_chest_view(event)
 
 ## 模拟层只认档案下标；这里把 weapon_id 映射到下标，顺序即注册顺序。
 func register_weapon_profiles() -> void:
@@ -545,20 +536,6 @@ func _on_sim_shot_event(event: Dictionary) -> void:
 	hit_confirm_tween = create_tween()
 	hit_confirm_tween.tween_property(label, "modulate:a", 0.0, 0.18)
 
-## 爆炸桶也挂在 place_item_obstacle 组里，但它的阻挡格由 SimWorld 在
-## spawn_barrel() / 引爆时**独占**维护，这里必须跳过：静态阻挡图会参与
-## ray_blocked_distance() 的射程截断，把桶的格烘进去等于让桶挡在自己前面，
-## 桶就永远打不爆（见 FlowFieldGrid.static_blocked 的说明）。
-func _bake_static_blockers() -> void:
-	if not is_inside_tree():
-		return
-	for node in get_tree().get_nodes_in_group(BLOCKER_GROUP):
-		if node is ExplosiveBarrel:
-			continue
-		var obstacle := node as CollisionObject3D
-		if obstacle != null:
-			mark_blocker(obstacle, true)
-
 ## 运行时增删阻挡几何的统一入口。任何调用都会置脏对应 cell，
 ## 下一 tick 的 FlowField.update() 会同步重算。
 func mark_blocker(obstacle: CollisionObject3D, blocked: bool) -> void:
@@ -570,19 +547,6 @@ func mark_blocker(obstacle: CollisionObject3D, blocked: bool) -> void:
 		Vector2(bounds.end.x, bounds.end.z),
 		blocked
 	)
-
-## 场景自带的爆炸桶按 ExplosiveBarrels 的子节点顺序注册，顺序即 id 分配顺序，
-## 各端读同一个 .tscn，因此顺序天然一致。
-## 必须在 sim_world.reset() 之后调用：reset() 会把实体 id 计数器归 1 并清空油桶数组。
-func _register_scene_barrels() -> void:
-	barrel_views = {}
-	var barrels_root := get_node_or_null(
-		"World/Props/HazardZone/ExplosiveBarrels"
-	)
-	if barrels_root == null:
-		return
-	for child in barrels_root.get_children():
-		_register_barrel(child as ExplosiveBarrel)
 
 ## 把一个爆炸桶节点注册成模拟层实体。幂等：已注册过的桶直接返回。
 ## 阻挡矩形取自碰撞体世界 AABB；拿不到（形状被禁用等）时退回按桶半径的方形，
@@ -672,37 +636,56 @@ func _on_item_removed(item: Node3D, world_aabb: AABB) -> void:
 		return
 	_apply_blocker_bounds(world_aabb, false)
 
-## 把一个补给箱注册成模拟层实体。注册顺序即 id 分配顺序，而各端的注册顺序
-## 由同一个场景与同一串模拟层击杀事件决定，因此 id 天然一致。
-func _register_chest(pickup: PickupChest) -> void:
-	if pickup == null or pickup.get_sim_chest_id() != 0:
-		return
-	var origin := pickup.global_position
-	var chest_id_value := sim_world.spawn_chest(
-		Vector2(origin.x, origin.z), pickup.get_claim_radius()
-	)
-	pickup.bind_sim_chest(chest_id_value)
-	chest_views[chest_id_value] = pickup
-	# 刻意**不**在 tree_exiting 上把实体删掉。节点的释放时机是帧驱动的，
-	# 不对齐 tick：各端在不同的 tick 上改动模拟层数组，本身就是一次分叉，
-	# 而它换来的只是省下几十字节。已领取的箱子留在数组里保持 CLAIMED，
-	# 与爆炸桶保留 DESTROYED 是同一条规矩。
-
-## 领取已经由模拟层判完了，这里只兑现奖励并演出。
 func _on_sim_chest_event(event: Dictionary) -> void:
-	if event["kind"] != &"chest_claimed":
+	var kind: StringName = event.get("kind", StringName())
+	if kind == &"chest_spawned" or kind == &"chest_respawned":
+		_create_chest_view(event)
+		return
+	if kind != &"chest_claimed":
 		return
 	var chest_id_value := int(event["chest_id"])
 	var view = chest_views.get(chest_id_value, null)
 	chest_views.erase(chest_id_value)
 	if view == null or not is_instance_valid(view):
 		return
+	var place_grid := get_node_or_null(
+		"World/Placement/PlaceItemGrid"
+	) as PlaceItemGrid
+	if place_grid != null:
+		# queue_free() 要到帧末才触发 tree_exiting；catch-up 可在同一渲染帧
+		# 先消费 claimed、再消费 respawned，所以旧 owner 必须在这里同步释放。
+		place_grid.release_owner(view as Node)
 	# 领取已成定局，表现层没有否决权：能不能兑现取决于各端并不同步的弹药状态，
 	# 让它回写模拟层就是把分叉重新引进来。
 	(view as PickupChest).claim_by(_player_for_slot(int(event["slot"])))
 
-func _on_pickup_blocker_changed(world_aabb: AABB, blocked: bool) -> void:
-	_apply_blocker_bounds(world_aabb, blocked)
+func _create_chest_view(event: Dictionary) -> void:
+	var chest_id_value := int(event.get("chest_id", 0))
+	var reward_profile_index := int(event.get("reward_profile_index", -1))
+	var definition := map_runtime.reward_definition(reward_profile_index)
+	var pickups := get_node_or_null("World/Pickups") as Node3D
+	var place_grid := get_node_or_null(
+		"World/Placement/PlaceItemGrid"
+	) as PlaceItemGrid
+	if chest_id_value <= 0 or definition == null or pickups == null or place_grid == null:
+		push_error("cannot create simulated pickup chest view")
+		return
+	var view := PICKUP_CHEST_SCENE.instantiate() as PickupChest
+	if view == null:
+		push_error("PickupChest scene root must be PickupChest")
+		return
+	pickups.add_child(view)
+	var position: Vector2 = event["position"]
+	view.global_position = Vector3(position.x, 0.0, position.y)
+	view.configure(definition, int(event["amount"]))
+	view.bind_sim_chest(chest_id_value)
+	if not place_grid.register_shared_obstacle(view):
+		push_error(
+			"cannot reserve simulated pickup chest view: %d" % chest_id_value
+		)
+		view.free()
+		return
+	chest_views[chest_id_value] = view
 
 func _apply_blocker_bounds(world_aabb: AABB, blocked: bool) -> void:
 	if world_aabb.size == Vector3.ZERO:
@@ -734,6 +717,8 @@ func _push_player_snapshot() -> void:
 		)
 
 func _consume_sim_events() -> void:
+	for event in sim_world.tick_wave_events:
+		_on_sim_wave_event(event)
 	for event in sim_world.tick_shot_events:
 		_on_sim_shot_event(event)
 	for event in sim_world.tick_barrel_events:
@@ -747,6 +732,14 @@ func _consume_sim_events() -> void:
 	if sim_world.tick_death_events.size() > 0:
 		zombie_renderer.notify_deaths(sim_world)
 		call_deferred("_refresh_wave_state_after_deaths")
+	_update_wave_hud()
+	_sync_command_controls()
+
+func _on_sim_wave_event(event: Dictionary) -> void:
+	if event.get("kind", StringName()) != &"wave_started":
+		return
+	wave_number = int(event.get("wave_number", wave_number))
+	_update_wave_hud()
 
 func _on_sim_hit_event(event: Dictionary) -> void:
 	var planar: Vector2 = event["position"]
@@ -770,27 +763,6 @@ func _on_sim_hit_event(event: Dictionary) -> void:
 	manager.queue_hit_splat(hit_position, direction, 1.0)
 	if bool(event["killed"]):
 		manager.queue_death_pool(Vector3(planar.x, 0.0, planar.y), 1.25)
-		_try_random_pickup_drop(Vector3(planar.x, 0.0, planar.y))
-
-## 随机掉落改由模拟层的击杀事件驱动，而不是挂在僵尸节点的 died 信号上。
-## 近景视图是池化的，远处的僵尸根本没有节点——挂节点信号会让视野外的击杀
-## 一个都不掉东西，而那恰恰是尸潮里绝大多数的击杀。
-func _try_random_pickup_drop(world_position: Vector3) -> void:
-	var drops := get_node_or_null(
-		"World/Props/RandomPickupDrops"
-	) as RandomPickupDropManager
-	if drops == null:
-		return
-	var spawner := drops.try_spawn_drop(world_position)
-	if spawner == null:
-		return
-	# 掉落生成的拾取箱同样是阻挡几何，必须接上标脏这条线，
-	# 否则箱子被捡走后那一格会永远堵着；也同样要注册成模拟层实体，
-	# 否则它的领取会退回表现层判定，各端就又分叉了。
-	if not spawner.blocker_changed.is_connected(_on_pickup_blocker_changed):
-		spawner.blocker_changed.connect(_on_pickup_blocker_changed)
-	if not spawner.pickup_spawned.is_connected(_register_chest):
-		spawner.pickup_spawned.connect(_register_chest)
 
 func _on_sim_player_damage_event(event: Dictionary) -> void:
 	var view := zombie_renderer.get_near_view(int(event["zombie_id"]))
@@ -811,7 +783,7 @@ func _spawn_blood_impact(hit_position: Vector3, direction: Vector3) -> void:
 
 func _refresh_wave_state_after_deaths() -> void:
 	_update_wave_hud()
-	_schedule_auto_wave_if_empty()
+	_sync_command_controls()
 
 func _exit_tree() -> void:
 	_set_touch_game_over_active(false)
@@ -829,16 +801,15 @@ func _unhandled_input(event: InputEvent) -> void:
 		request_restart()
 		get_viewport().set_input_as_handled()
 
-## 返回本次授予的生成上限（不是实际生成数）：实际生成在下一个模拟 tick 才兑现。
+## 离线休整可被跳过时返回 1；其余情况（含联机仅上行请求）返回 0。
 func request_spawn_wave() -> int:
-	if startup_pending or team_defeated:
+	if startup_pending or team_defeated or not sim_world.can_advance_wave():
 		return 0
 	# 联机下玩家按 T 只是提出请求：它随下一条命令上行，服务端把它 OR 进某一帧，
 	# 各端于是在**同一个 tick** 上排队同一波。本机自己先开一波就是分叉。
 	if online_mode:
 		pending_wave_request = true
 		return 0
-	_cancel_auto_wave()
 	return spawn_wave()
 
 func request_restart() -> void:
@@ -887,11 +858,7 @@ func _complete_combat_startup(animate_overlay: bool) -> void:
 	for player in players:
 		player.set_physics_process(true)
 	startup_pending = false
-	# 联机下开场第一波也走确定性路径：各端的开场时刻本来就差着几十毫秒，
-	# 在这里直接开一波会让第一波僵尸落在不同的 tick 上。空场满 30 tick 后
-	# _tick_online_auto_wave() 会在同一个 tick 上把它开出来。
-	if not online_mode:
-		spawn_wave()
+	_sync_command_controls()
 	var warmup_layer := get_node_or_null("WarmupLayer") as CanvasLayer
 	var overlay := get_node_or_null("WarmupLayer/Overlay") as ColorRect
 	if warmup_layer == null or overlay == null:
@@ -915,16 +882,6 @@ func _release_startup_actions() -> void:
 		Input.action_release(action)
 
 func _wire_dependencies() -> void:
-	var pickup_spawners := get_node_or_null("World/Props/PickupSpawners")
-	if pickup_spawners != null:
-		for child in pickup_spawners.get_children():
-			var spawner := child as PickupSpawnPoint
-			if spawner == null:
-				continue
-			if not spawner.blocker_changed.is_connected(_on_pickup_blocker_changed):
-				spawner.blocker_changed.connect(_on_pickup_blocker_changed)
-			if not spawner.pickup_spawned.is_connected(_register_chest):
-				spawner.pickup_spawned.connect(_register_chest)
 	var spawn_button := get_node_or_null("HUD/SpawnWaveButton") as Button
 	if spawn_button != null and not spawn_button.pressed.is_connected(request_spawn_wave):
 		spawn_button.pressed.connect(request_spawn_wave)
@@ -935,30 +892,20 @@ func _wire_dependencies() -> void:
 	var mobile_controls := get_node_or_null("MobileControls") as MobileControls
 	if mobile_controls != null:
 		single_player_input.set_touch_source(mobile_controls.get_input_source())
-	var place_item_service = get_node_or_null("PlaceItemService")
-	if place_item_service != null:
-		if not place_item_service.item_placed.is_connected(_on_item_placed):
-			place_item_service.item_placed.connect(_on_item_placed)
-		if not place_item_service.item_removed.is_connected(_on_item_removed):
-			place_item_service.item_removed.connect(_on_item_removed)
-	var renderer := get_node_or_null(
-		"World/Targets/ZombieRenderer"
-	) as ZombieRenderer
-	if renderer != null and zombie_renderer != renderer:
-		zombie_renderer = renderer
-		zombie_renderer.setup(get_node_or_null("FollowCamera") as Node3D)
 	var status_timer := get_node_or_null("WaveStatusTimer") as Timer
 	if (
 		status_timer != null and
 		not status_timer.timeout.is_connected(_hide_wave_status)
 	):
 		status_timer.timeout.connect(_hide_wave_status)
-	var auto_wave_timer := get_node_or_null("AutoWaveTimer") as Timer
-	if (
-		auto_wave_timer != null and
-		not auto_wave_timer.timeout.is_connected(_on_auto_wave_timeout)
-	):
-		auto_wave_timer.timeout.connect(_on_auto_wave_timeout)
+
+func _wire_runtime_dependencies() -> void:
+	var place_item_service = get_node_or_null("PlaceItemService")
+	if place_item_service != null:
+		if not place_item_service.item_placed.is_connected(_on_item_placed):
+			place_item_service.item_placed.connect(_on_item_placed)
+		if not place_item_service.item_removed.is_connected(_on_item_removed):
+			place_item_service.item_removed.connect(_on_item_removed)
 	var follow_camera := get_node_or_null("FollowCamera") as FollowCamera
 	var movement_camera := get_node_or_null(
 		"FollowCamera/VisualOffset/Camera3D"
@@ -968,7 +915,7 @@ func _wire_dependencies() -> void:
 		return
 	var player_registry := get_node_or_null("PlayerRegistry") as PlayerRegistry
 	follow_camera.set_player_registry(player_registry)
-	follow_camera.set_world_bounds(ARENA_CAMERA_BOUNDS)
+	follow_camera.set_world_bounds(map_runtime.camera_bounds())
 	for slot_index in range(current_players.size()):
 		var player := current_players[slot_index]
 		player.set_movement_camera(movement_camera)
@@ -992,7 +939,7 @@ func _spawn_session_players() -> bool:
 	if spawner == null or container == null:
 		var session := get_node_or_null("/root/GameSession")
 		if session != null:
-			session.last_error = "DemoArena player spawning nodes are missing"
+			session.last_error = "GameplayArena player spawning nodes are missing"
 		return false
 	players = spawner.spawn_players(
 		container,
@@ -1022,12 +969,19 @@ func _collect_network_input_sources() -> void:
 
 func _get_player_spawn_points() -> Array[Marker3D]:
 	var points: Array[Marker3D] = []
-	for index in range(1, 5):
-		var marker := get_node_or_null(
-			"PlayerSpawnPoints/P%d" % index
-		) as Marker3D
-		if marker == null:
-			return []
+	var marker_root := get_node_or_null("RuntimePlayerSpawnPoints") as Node3D
+	if marker_root == null:
+		marker_root = Node3D.new()
+		marker_root.name = "RuntimePlayerSpawnPoints"
+		add_child(marker_root)
+	for child in marker_root.get_children():
+		child.free()
+	var positions := map_runtime.player_spawn_positions()
+	for index in range(positions.size()):
+		var marker := Marker3D.new()
+		marker.name = "P%d" % (index + 1)
+		marker_root.add_child(marker)
+		marker.global_position = positions[index]
 		points.append(marker)
 	return points
 
@@ -1054,6 +1008,12 @@ func _handle_player_spawn_failure() -> void:
 		elif session.mode == GameSessionScript.Mode.ONLINE_MULTIPLAYER:
 			destination = "res://scenes/menu/OnlineLobby.tscn"
 	get_tree().change_scene_to_file.call_deferred(destination)
+
+func _handle_startup_failure(message: String) -> void:
+	var session := get_node_or_null("/root/GameSession")
+	if session != null:
+		session.last_error = message
+	_handle_player_spawn_failure()
 
 ## 镜头后坐力是纯表现，命中确认改由模拟层的射击事件驱动。
 func _on_player_attack(
@@ -1082,7 +1042,6 @@ func _on_all_players_defeated() -> void:
 	team_defeated = true
 	if game_over_audio != null:
 		game_over_audio.play()
-	_cancel_auto_wave()
 	var game_over := get_node_or_null("HUD/GameOver") as Label
 	if game_over != null:
 		game_over.text = "全员倒地"
@@ -1105,118 +1064,35 @@ func _sync_command_controls() -> void:
 	var spawn_button := get_node_or_null("HUD/SpawnWaveButton") as Button
 	if spawn_button != null:
 		spawn_button.visible = not team_defeated
+		spawn_button.disabled = (
+			startup_pending or
+			team_defeated or
+			not sim_world.can_advance_wave()
+		)
 	var restart_button := get_node_or_null("HUD/RestartButton") as Button
 	if restart_button != null:
 		restart_button.visible = team_defeated
 
-## 把一次波次生成排入模拟层，由下一 tick 在 Stream.ZOMBIE_SPAWN 上确定性执行。
-## 返回本次授予的生成上限；实际生成数在下一 tick 后才可由
-## get_active_zombie_count() 读到。
-##
-## 返回值语义相对基线有变：基线返回「本次实际生成数」，这里返回「本次授予的名额」。
-## 三个调用点（spawn_wave 输入动作、HUD 生成按钮、_on_auto_wave_timeout）都只判
-## `> 0`，语义变化不影响它们；但 request_spawn_wave() -> int 的文档注释必须同步改成
-## 「本次授予的生成上限」，不要留着「实际生成数」的旧措辞。
+## 手动请求只跳过模拟层的休整状态；生成中和等待清场时不会叠加下一波。
 func spawn_wave() -> int:
-	if team_defeated:
+	if startup_pending or team_defeated or not sim_world.can_advance_wave():
 		return 0
-	var spawn_points := _get_spawn_points()
-	if spawn_points.size() != SPAWN_POINT_NAMES.size():
-		_report_wave_problem("MISSING CORNER SPAWN POINT")
-		return 0
-	var remaining_capacity := maximum_active_zombies - get_active_zombie_count()
-	if remaining_capacity <= 0:
-		_show_wave_status("MAX ZOMBIES: %d" % maximum_active_zombies)
-		return 0
-	var centers := PackedVector2Array()
-	for marker in spawn_points:
-		centers.append(
-			Vector2(marker.global_position.x, marker.global_position.z)
-		)
-	sim_world.queue_spawn_wave(
-		centers,
-		minimum_zombies_per_corner,
-		maximum_zombies_per_corner,
-		remaining_capacity,
-		spawn_radius,
-		minimum_spawn_spacing,
-		ZOMBIE_MAX_HEALTH
-	)
-	# 与基线一致：只有真的授出了名额才推进波次号，避免 HUD 波次在空转的
-	# 波次请求上虚增。上面的 `remaining_capacity <= 0` 分支已经提前 return，
-	# 走到这里必然 > 0，这一行是把基线的 `if spawned > 0` 守卫显式保留下来。
-	if remaining_capacity > 0:
-		wave_number += 1
+	sim_world.request_advance_wave()
 	_update_wave_hud()
-	return remaining_capacity
+	_sync_command_controls()
+	return 1
 
-## 必须把「已排队但尚未兑现」的名额算进来。sim_world.get_zombie_count() 要等
-## 下一个 step_tick() 才会变化，若只读它：
-##   1. 同一物理帧内连按两次 T，两次都看到同样的 remaining_capacity，
-##      _apply_pending_spawn_waves() 会把两批都放出来，突破 maximum_active_zombies；
-##   2. 排队后的那一 tick 里计数仍为 0，_schedule_auto_wave_if_empty() 会再排一次。
 func get_active_zombie_count() -> int:
-	return sim_world.get_zombie_count() + sim_world.get_pending_spawn_capacity()
-
-func _get_spawn_points() -> Array[Marker3D]:
-	var points: Array[Marker3D] = []
-	for point_name in SPAWN_POINT_NAMES:
-		var marker := get_node_or_null(
-			"World/SpawnPoints/%s" % String(point_name)
-		) as Marker3D
-		if marker == null:
-			return []
-		points.append(marker)
-	return points
-
-func _schedule_auto_wave_if_empty() -> bool:
-	# 联机走 _tick_online_auto_wave() 的 tick 计数，墙钟计时器在这里必须不参与。
-	if online_mode:
-		return false
-	if team_defeated or get_active_zombie_count() != 0:
-		return false
-	var timer := get_node_or_null("AutoWaveTimer") as Timer
-	if timer == null or not timer.is_stopped():
-		return false
-	var status_timer := get_node_or_null("WaveStatusTimer") as Timer
-	if status_timer != null:
-		status_timer.stop()
-	var status := get_node_or_null("HUD/WaveStatus") as Label
-	if status != null:
-		status.text = AUTO_WAVE_STATUS
-		status.visible = true
-	timer.start()
-	return true
-
-func _cancel_auto_wave() -> void:
-	var timer := get_node_or_null("AutoWaveTimer") as Timer
-	if timer != null:
-		timer.stop()
-	var status := get_node_or_null("HUD/WaveStatus") as Label
-	if status != null and status.text == AUTO_WAVE_STATUS:
-		status.visible = false
-
-func _on_auto_wave_timeout() -> void:
-	if team_defeated or get_active_zombie_count() != 0:
-		return
-	_hide_wave_status()
-	spawn_wave()
+	return sim_world.get_zombie_count()
 
 func _update_wave_hud() -> void:
 	var objective := get_node_or_null("HUD/Objective") as Label
 	if objective == null:
 		return
-	var active_count := get_active_zombie_count()
-	if team_defeated:
-		objective.text = "FINAL WAVE %d    ZOMBIES %d" % [
-			wave_number,
-			active_count,
-		]
-	else:
-		objective.text = "WAVE %d    ALIVE %d    T: NEW WAVE" % [
-			wave_number,
-			active_count,
-		]
+	objective.text = "WAVE %d    ALIVE %d" % [
+		wave_number,
+		get_active_zombie_count(),
+	]
 
 ## 王者荣耀式延迟显示：联机时右上角一个会按质量变色的毫秒数。
 ## 节流更新——延迟本身每 2s 才刷新一次，没必要每帧去查 NetSession。
@@ -1255,7 +1131,3 @@ func _hide_wave_status() -> void:
 	var label := get_node_or_null("HUD/WaveStatus") as Label
 	if label != null:
 		label.visible = false
-
-func _report_wave_problem(message: String) -> void:
-	push_warning(message)
-	_show_wave_status(message)

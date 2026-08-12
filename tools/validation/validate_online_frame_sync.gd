@@ -16,6 +16,7 @@ extends SceneTree
 
 const SimWorldScript = preload("res://scripts/sim/sim_world.gd")
 const SimHasherScript = preload("res://scripts/sim/sim_hasher.gd")
+const SimWaveDirectorScript = preload("res://scripts/sim/sim_wave_director.gd")
 const LobbyProtocolScript = preload("res://scripts/net/lobby_protocol.gd")
 const PlayerInputStateScript = preload("res://scripts/input/player_input_state.gd")
 
@@ -31,7 +32,8 @@ const PLAYER_SLOT_COUNT := 4
 const SHOT_INTERVAL_TICKS := 17
 const WAVE_INTERVAL_TICKS := 150
 const MUZZLE_HEIGHT := 1.1
-const ZOMBIE_MAX_HEALTH := 50.0
+const ZOMBIE_MAX_HEALTH := 50
+const ZOMBIE_PROFILE := 0
 
 const RIFLE_PROFILE := 0
 const RIFLE_DAMAGE := 25.0
@@ -51,13 +53,13 @@ const BLOCKER_RECTS: Array[Rect2] = [
 	Rect2(Vector2(-6.0, -2.0), Vector2(12.0, 1.0)),
 ]
 
-static func spawn_centers() -> PackedVector2Array:
-	return PackedVector2Array([
-		Vector2(-19.0, -14.0),
-		Vector2(19.0, -14.0),
-		Vector2(-19.0, 14.0),
-		Vector2(19.0, 14.0),
-	])
+static func spawn_points() -> Array[Dictionary]:
+	return [
+		{"spawn_id": &"north_east", "position": Vector2(19.0, -14.0), "radius": 1.75, "spacing": 1.1},
+		{"spawn_id": &"north_west", "position": Vector2(-19.0, -14.0), "radius": 1.75, "spacing": 1.1},
+		{"spawn_id": &"south_east", "position": Vector2(19.0, 14.0), "radius": 1.75, "spacing": 1.1},
+		{"spawn_id": &"south_west", "position": Vector2(-19.0, 14.0), "radius": 1.75, "spacing": 1.1},
+	]
 
 func _init() -> void:
 	call_deferred("_run")
@@ -260,6 +262,7 @@ func _replay(frames: Array) -> Array:
 	for rect in BLOCKER_RECTS:
 		world.set_blocker_world_rect(rect.position, rect.end, true)
 	world.reset(ROOM_SEED)
+	world.configure_zombie_profile(ZOMBIE_PROFILE, ZOMBIE_MAX_HEALTH, 1.30)
 	world.configure_weapon_profile(
 		RIFLE_PROFILE,
 		RIFLE_DAMAGE,
@@ -272,6 +275,14 @@ func _replay(frames: Array) -> Array:
 		0.65
 	)
 	world.set_perception_range(60.0)
+	var waves: Array[Dictionary] = [{
+		"spawn_interval_ticks": 0,
+		"entries": [{"profile_index": ZOMBIE_PROFILE, "count": 300}],
+	}]
+	world.configure_wave_schedule(
+		waves, spawn_points(), SimWaveDirectorScript.EndMode.LOOP, 30, 300
+	)
+	world.start_wave_schedule()
 
 	var hashes: Array = []
 	for frame in frames:
@@ -290,9 +301,7 @@ func _replay(frames: Array) -> Array:
 			for event in LobbyProtocolScript.command_events(command):
 				_apply_event(world, slot, event)
 		if bool(frame.get("w", false)):
-			world.queue_spawn_wave(
-				spawn_centers(), 12, 18, 300, 1.75, 1.1, ZOMBIE_MAX_HEALTH
-			)
+			world.request_advance_wave()
 		world.step_tick()
 		hashes.append(SimHasherScript.hash_world(world))
 	return hashes

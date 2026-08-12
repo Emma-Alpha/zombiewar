@@ -195,7 +195,7 @@ describe('mergeCommand', () => {
   });
 
   it('keeps the shots a caught-up client fired across the whole burst', () => {
-    // The regression this exists for: DemoArena sends one command per frame it
+    // The regression this exists for: GameplayArena sends one command per frame it
     // consumes, so catching up after a hitch delivers several at once.
     const burst = [
       base({ m: [1, 0], e: [shot(0)], b: BIT_ALIVE | BIT_PRESENT | BIT_USE_JUST_PRESSED }),

@@ -41,7 +41,7 @@ func _run() -> void:
 
 	var session = root.get_node("GameSession")
 	session.configure_single()
-	var arena_scene := load("res://scenes/gameplay/DemoArena.tscn") as PackedScene
+	var arena_scene := load("res://scenes/maps/demo/DemoMap.tscn") as PackedScene
 	var arena = arena_scene.instantiate()
 	root.add_child(arena)
 	await process_frame
@@ -52,8 +52,8 @@ func _run() -> void:
 		property_names.append(property["name"])
 	_expect(property_names.has(&"player_registry"), "FollowCamera must retain injected registry", failures)
 	if property_names.has(&"player_registry"):
-		_expect(arena_follow.player_registry == registry, "DemoArena must inject its PlayerRegistry into FollowCamera", failures)
-	_expect(arena.get_node_or_null("FollowCamera/VisualOffset/Camera3D") != null, "DemoArena consumers must use nested shared camera path", failures)
+		_expect(arena_follow.player_registry == registry, "GameplayArena must inject its PlayerRegistry into FollowCamera", failures)
+	_expect(arena.get_node_or_null("FollowCamera/VisualOffset/Camera3D") != null, "GameplayArena consumers must use nested shared camera path", failures)
 	arena.queue_free()
 	await process_frame
 	session.clear()

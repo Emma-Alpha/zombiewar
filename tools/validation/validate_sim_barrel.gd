@@ -12,6 +12,7 @@ const GRID_WIDTH := 49
 const GRID_HEIGHT := 39
 const ROOM_SEED := 20260807
 const PROFILE := 0
+const ZOMBIE_PROFILE := 0
 const SHOT_ORIGIN := Vector2(0.0, 0.0)
 const MUZZLE_HEIGHT := 1.1
 const AIM := Vector2(1.0, 0.0)
@@ -25,16 +26,16 @@ const EXPECTED_CHAIN_TICKS := 3    # ceili(0.12 / 0.05)
 ## 只测它们等于什么都没测：
 ## 直径 0.88 m 的桶只要中心不在 cell 中心（跨 cell 边界），而 ray_blocked_distance()
 ## 又把射程截到「第一个阻挡 cell 的**中心**」，截断点就落在桶的碰撞圆表面之前，
-## ray_circle_distance() 返回 -1，桶永远打不爆。DemoArena.tscn 里随包发布的
+## ray_circle_distance() 返回 -1，桶永远打不爆。DemoMapContent.tscn 里随包发布的
 ## ChainA(-14, -3.5) 与 ChainB(-11, -3.5) 正是这一类。
 ## 因此这里逐字覆盖场景里的三只桶，外加两个人造的半整数摆位。
 const OFFSET_BARRELS := [
 	Vector2(5.0, 0.0),      # cell 中心：对照组
 	Vector2(5.0, 3.5),      # 只有 z 压 cell 边界：ChainA / ChainB 的摆位类别
 	Vector2(5.5, 3.5),      # 两轴都压 cell 边界：最坏情况
-	Vector2(-14.0, -3.5),   # DemoArena.tscn 的 ChainA 实际坐标
-	Vector2(-11.0, -3.5),   # DemoArena.tscn 的 ChainB 实际坐标
-	Vector2(-15.0, 4.0),    # DemoArena.tscn 的 Solo 实际坐标（恰在 cell 中心）
+	Vector2(-14.0, -3.5),   # DemoMapContent.tscn 的 ChainA 实际坐标
+	Vector2(-11.0, -3.5),   # DemoMapContent.tscn 的 ChainB 实际坐标
+	Vector2(-15.0, 4.0),    # DemoMapContent.tscn 的 Solo 实际坐标（恰在 cell 中心）
 ]
 const CARDINALS := [
 	["+X", Vector2(1.0, 0.0)],
@@ -63,6 +64,7 @@ func _new_world() -> SimWorld:
 	var world: SimWorld = SimWorldScript.new()
 	world.configure(GRID_ORIGIN, GRID_CELL_SIZE, GRID_WIDTH, GRID_HEIGHT)
 	world.reset(ROOM_SEED)
+	world.configure_zombie_profile(ZOMBIE_PROFILE, 50, 1.30)
 	# 无散布、无穿透的步枪档案：射向恒等于瞄准方向，命中序列可断言。
 	world.configure_weapon_profile(PROFILE, 25.0, 30.0, 0.0, 0.0, 0.0, 0.0, 0, 0.0)
 	return world
@@ -178,7 +180,7 @@ func _check_ray_stops_at_barrel(failures: Array[String]) -> void:
 	_spawn_barrel(world, BARREL_A)
 	# 油桶正后方 2 m 的僵尸：基线的物理射线打中层 1 静态体后 break，
 	# 模拟层必须给出同样的结论。
-	world.spawn_zombie(Vector2(7.0, 0.0), 0.0, 50.0)
+	world.spawn_zombie(Vector2(7.0, 0.0), 0.0, ZOMBIE_PROFILE)
 	var full_health := world.get_zombie_health(0)
 	_fire_once(world)
 	_expect(
@@ -208,7 +210,7 @@ func _check_ray_stops_at_barrel(failures: Array[String]) -> void:
 func _check_explosion_damages_zombies(failures: Array[String]) -> void:
 	var world := _new_world()
 	_spawn_barrel(world, BARREL_A)
-	world.spawn_zombie(BARREL_A + Vector2(0.0, 2.0), 0.0, 50.0)
+	world.spawn_zombie(BARREL_A + Vector2(0.0, 2.0), 0.0, ZOMBIE_PROFILE)
 	var full_health := world.get_zombie_health(0)
 	_fire_once(world)
 	_fire_once(world)
@@ -317,8 +319,8 @@ func _run_chain_scenario() -> PackedStringArray:
 	var world := _new_world()
 	_spawn_barrel(world, BARREL_A)
 	_spawn_barrel(world, BARREL_B)
-	world.spawn_zombie(Vector2(6.0, 1.0), 0.0, 50.0)
-	world.spawn_zombie(Vector2(9.0, -1.0), 0.0, 50.0)
+	world.spawn_zombie(Vector2(6.0, 1.0), 0.0, ZOMBIE_PROFILE)
+	world.spawn_zombie(Vector2(9.0, -1.0), 0.0, ZOMBIE_PROFILE)
 	world.set_player_snapshot(0, Vector2(-6.0, 0.0), true, true)
 	var hashes := PackedStringArray()
 	for tick in range(24):

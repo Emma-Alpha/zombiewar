@@ -31,7 +31,7 @@ func sample():
 	_state.use_pressed = consumed.use_pressed
 	return consumed
 
-## 由 DemoArena 在应用每一帧时调用。
+## 由 GameplayArena 在应用每一帧时调用。
 func apply_command(command: Dictionary) -> void:
 	var state = PlayerInputStateScript.new()
 	state.move_vector = LobbyProtocolScript.command_move_vector(command)

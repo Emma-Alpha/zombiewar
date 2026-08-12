@@ -1,0 +1,478 @@
+[gd_scene load_steps=33 format=3]
+
+[ext_resource type="PackedScene" path="res://assets/vehicles/Vehicle_Pickup.gltf" id="1_pickup"]
+[ext_resource type="PackedScene" path="res://assets/environment/Container_Red.gltf" id="2_container"]
+[ext_resource type="FontFile" path="res://assets/fonts/NotoSansSC-UI.ttf" id="3_cjk_font"]
+[ext_resource type="PackedScene" path="res://scenes/props/ExplosiveBarrel.tscn" id="4_explosive_barrel"]
+[ext_resource type="PackedScene" path="res://scenes/props/TrafficBarrier.tscn" id="5_traffic_barrier"]
+[ext_resource type="PackedScene" path="res://scenes/props/PlasticBarrier.tscn" id="6_plastic_barrier"]
+[ext_resource type="PackedScene" path="res://assets/environment/TrafficCone_1.gltf" id="7_traffic_cone"]
+[ext_resource type="PackedScene" path="res://scenes/props/SupplyChest.tscn" id="8_supply_chest"]
+[ext_resource type="PackedScene" path="res://scenes/fx/GroundBloodSplat.tscn" id="9_story_blood"]
+
+[sub_resource type="Environment" id="Environment_arena"]
+background_mode = 1
+background_color = Color(0.0823529, 0.105882, 0.133333, 1)
+ambient_light_source = 2
+ambient_light_color = Color(0.560784, 0.639216, 0.721569, 1)
+ambient_light_energy = 0.55
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_ground"]
+albedo_color = Color(0.223529, 0.262745, 0.294118, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_ground"]
+material = SubResource("StandardMaterial3D_ground")
+size = Vector3(48, 0.3, 38)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_ground"]
+size = Vector3(48, 0.3, 38)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_boundary"]
+albedo_color = Color(0.2, 0.24, 0.27, 1)
+roughness = 0.9
+
+[sub_resource type="BoxMesh" id="BoxMesh_north_south"]
+material = SubResource("StandardMaterial3D_boundary")
+size = Vector3(48, 2, 0.5)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_north_south"]
+size = Vector3(48, 2, 0.5)
+
+[sub_resource type="BoxMesh" id="BoxMesh_east_west"]
+material = SubResource("StandardMaterial3D_boundary")
+size = Vector3(0.5, 2, 38)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_east_west"]
+size = Vector3(0.5, 2, 38)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_pickup"]
+size = Vector3(4.2, 1.8, 2.1)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_container"]
+size = Vector3(6.2, 2.8, 2.5)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_road"]
+albedo_color = Color(0.13, 0.16, 0.18, 1)
+roughness = 1.0
+
+[sub_resource type="BoxMesh" id="BoxMesh_road"]
+material = SubResource("StandardMaterial3D_road")
+size = Vector3(12, 0.02, 38)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_marking_white"]
+albedo_color = Color(0.72, 0.7, 0.58, 1)
+roughness = 0.95
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_marking_yellow"]
+albedo_color = Color(0.78, 0.55, 0.12, 1)
+roughness = 0.95
+
+[sub_resource type="BoxMesh" id="BoxMesh_lane_dash"]
+material = SubResource("StandardMaterial3D_marking_white")
+size = Vector3(0.18, 0.025, 3)
+
+[sub_resource type="BoxMesh" id="BoxMesh_stop_line"]
+material = SubResource("StandardMaterial3D_marking_white")
+size = Vector3(10, 0.025, 0.25)
+
+[sub_resource type="BoxMesh" id="BoxMesh_hazard_line"]
+material = SubResource("StandardMaterial3D_marking_yellow")
+size = Vector3(4, 0.025, 0.18)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_sign"]
+albedo_color = Color(0.38, 0.08, 0.07, 1)
+roughness = 0.72
+
+[sub_resource type="BoxMesh" id="BoxMesh_sign_board"]
+material = SubResource("StandardMaterial3D_sign")
+size = Vector3(5, 1.1, 0.15)
+
+[sub_resource type="BoxMesh" id="BoxMesh_sign_post"]
+material = SubResource("StandardMaterial3D_sign")
+size = Vector3(0.14, 2.4, 0.14)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_beacon"]
+albedo_color = Color(1, 0.04, 0.02, 1)
+emission_enabled = true
+emission = Color(1, 0.01, 0, 1)
+emission_energy_multiplier = 3.0
+
+[sub_resource type="SphereMesh" id="SphereMesh_beacon"]
+material = SubResource("StandardMaterial3D_beacon")
+radius = 0.18
+height = 0.36
+
+[node name="DemoMapContent" type="Node3D"]
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_arena")
+
+[node name="Sun" type="DirectionalLight3D" parent="."]
+rotation_degrees = Vector3(-55, -35, 0)
+light_energy = 1.2
+shadow_enabled = true
+
+[node name="Ground" type="StaticBody3D" parent="." groups=["blood_surface"]]
+collision_layer = 1
+collision_mask = 0
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Ground"]
+position = Vector3(0, -0.15, 0)
+mesh = SubResource("BoxMesh_ground")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Ground"]
+position = Vector3(0, -0.15, 0)
+shape = SubResource("BoxShape3D_ground")
+
+[node name="Boundaries" type="Node3D" parent="."]
+
+[node name="North" type="StaticBody3D" parent="Boundaries" groups=["place_item_obstacle"]]
+position = Vector3(0, 1, -19)
+collision_layer = 1
+collision_mask = 0
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Boundaries/North"]
+mesh = SubResource("BoxMesh_north_south")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Boundaries/North"]
+shape = SubResource("BoxShape3D_north_south")
+
+[node name="South" type="StaticBody3D" parent="Boundaries" groups=["place_item_obstacle"]]
+position = Vector3(0, 1, 19)
+collision_layer = 1
+collision_mask = 0
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Boundaries/South"]
+mesh = SubResource("BoxMesh_north_south")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Boundaries/South"]
+shape = SubResource("BoxShape3D_north_south")
+
+[node name="West" type="StaticBody3D" parent="Boundaries" groups=["place_item_obstacle"]]
+position = Vector3(-24, 1, 0)
+collision_layer = 1
+collision_mask = 0
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Boundaries/West"]
+mesh = SubResource("BoxMesh_east_west")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Boundaries/West"]
+shape = SubResource("BoxShape3D_east_west")
+
+[node name="East" type="StaticBody3D" parent="Boundaries" groups=["place_item_obstacle"]]
+position = Vector3(24, 1, 0)
+collision_layer = 1
+collision_mask = 0
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Boundaries/East"]
+mesh = SubResource("BoxMesh_east_west")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Boundaries/East"]
+shape = SubResource("BoxShape3D_east_west")
+
+[node name="Props" type="Node3D" parent="."]
+
+[node name="Checkpoint" type="Node3D" parent="Props"]
+
+[node name="ContainerBVisual" parent="Props/Checkpoint" instance=ExtResource("2_container")]
+position = Vector3(-11, 0, -10.8)
+
+[node name="ContainerBCollision" type="StaticBody3D" parent="Props/Checkpoint" groups=["place_item_obstacle"]]
+position = Vector3(-11, 1.4, -10.8)
+collision_layer = 1
+collision_mask = 0
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Props/Checkpoint/ContainerBCollision"]
+shape = SubResource("BoxShape3D_container")
+
+[node name="TrafficBarriers" type="Node3D" parent="Props/Checkpoint"]
+
+[node name="FarWest" parent="Props/Checkpoint/TrafficBarriers" instance=ExtResource("5_traffic_barrier")]
+position = Vector3(-6.4, 0, -10.5)
+
+[node name="WestInner" parent="Props/Checkpoint/TrafficBarriers" instance=ExtResource("5_traffic_barrier")]
+position = Vector3(-4.8, 0, -10.5)
+
+[node name="CenterLeft" parent="Props/Checkpoint/TrafficBarriers" instance=ExtResource("5_traffic_barrier")]
+position = Vector3(-0.8, 0, -10.5)
+
+[node name="CenterRight" parent="Props/Checkpoint/TrafficBarriers" instance=ExtResource("5_traffic_barrier")]
+position = Vector3(0.8, 0, -10.5)
+
+[node name="EastInner" parent="Props/Checkpoint/TrafficBarriers" instance=ExtResource("5_traffic_barrier")]
+position = Vector3(4.8, 0, -10.5)
+
+[node name="FarEast" parent="Props/Checkpoint/TrafficBarriers" instance=ExtResource("5_traffic_barrier")]
+position = Vector3(6.4, 0, -10.5)
+
+[node name="PlasticBarriers" type="Node3D" parent="Props/Checkpoint"]
+
+[node name="WestLaneOuter" parent="Props/Checkpoint/PlasticBarriers" instance=ExtResource("6_plastic_barrier")]
+position = Vector3(-3.9, 0, -7.8)
+rotation_degrees = Vector3(0, 90, 0)
+
+[node name="WestLaneInner" parent="Props/Checkpoint/PlasticBarriers" instance=ExtResource("6_plastic_barrier")]
+position = Vector3(-1.7, 0, -7.8)
+rotation_degrees = Vector3(0, 90, 0)
+
+[node name="EastLaneInner" parent="Props/Checkpoint/PlasticBarriers" instance=ExtResource("6_plastic_barrier")]
+position = Vector3(1.7, 0, -7.8)
+rotation_degrees = Vector3(0, 90, 0)
+
+[node name="EastLaneOuter" parent="Props/Checkpoint/PlasticBarriers" instance=ExtResource("6_plastic_barrier")]
+position = Vector3(3.9, 0, -7.8)
+rotation_degrees = Vector3(0, 90, 0)
+
+[node name="TrafficCones" type="Node3D" parent="Props/Checkpoint"]
+
+[node name="WestOuter" parent="Props/Checkpoint/TrafficCones" instance=ExtResource("7_traffic_cone")]
+position = Vector3(-7.6, 0, -9.6)
+rotation_degrees = Vector3(0, 18, 0)
+
+[node name="EastOuter" parent="Props/Checkpoint/TrafficCones" instance=ExtResource("7_traffic_cone")]
+position = Vector3(7.7, 0, -9.7)
+rotation_degrees = Vector3(0, -12, 0)
+
+[node name="WestBreach" parent="Props/Checkpoint/TrafficCones" instance=ExtResource("7_traffic_cone")]
+position = Vector3(-2.9, 0, -11.9)
+rotation_degrees = Vector3(0, 34, 8)
+
+[node name="EastBreach" parent="Props/Checkpoint/TrafficCones" instance=ExtResource("7_traffic_cone")]
+position = Vector3(2.9, 0, -11.8)
+rotation_degrees = Vector3(0, -26, -10)
+
+[node name="CenterFall" parent="Props/Checkpoint/TrafficCones" instance=ExtResource("7_traffic_cone")]
+position = Vector3(-0.1, 0, -8.8)
+rotation_degrees = Vector3(72, 8, 14)
+
+[node name="FarWest" parent="Props/Checkpoint/TrafficCones" instance=ExtResource("7_traffic_cone")]
+position = Vector3(-8.7, 0, -12.2)
+rotation_degrees = Vector3(0, -20, 0)
+
+[node name="WarningSign" type="Node3D" parent="Props/Checkpoint"]
+position = Vector3(0, 0, -12.2)
+
+[node name="PostLeft" type="MeshInstance3D" parent="Props/Checkpoint/WarningSign"]
+position = Vector3(-2, 1.2, 0)
+mesh = SubResource("BoxMesh_sign_post")
+
+[node name="PostRight" type="MeshInstance3D" parent="Props/Checkpoint/WarningSign"]
+position = Vector3(2, 1.2, 0)
+mesh = SubResource("BoxMesh_sign_post")
+
+[node name="Board" type="MeshInstance3D" parent="Props/Checkpoint/WarningSign"]
+position = Vector3(0, 2.4, 0)
+mesh = SubResource("BoxMesh_sign_board")
+
+[node name="Label3D" type="Label3D" parent="Props/Checkpoint/WarningSign"]
+position = Vector3(0, 2.4, 0.09)
+texture_filter = 1
+font = ExtResource("3_cjk_font")
+font_size = 44
+text = "检疫封锁区\nQUARANTINE"
+modulate = Color(1, 0.88, 0.68, 1)
+outline_size = 8
+
+[node name="Beacon" type="MeshInstance3D" parent="Props/Checkpoint/WarningSign"]
+position = Vector3(0, 3.15, 0)
+mesh = SubResource("SphereMesh_beacon")
+
+[node name="WarningLight" type="OmniLight3D" parent="Props/Checkpoint/WarningSign"]
+position = Vector3(0, 3.15, 0)
+light_color = Color(1, 0.08, 0.03, 1)
+light_energy = 1.35
+omni_range = 5.5
+shadow_enabled = false
+
+[node name="Incident" type="Node3D" parent="Props"]
+
+[node name="PickupVisual" parent="Props/Incident" instance=ExtResource("1_pickup")]
+position = Vector3(5, 0, -1.5)
+rotation_degrees = Vector3(0, 25, 0)
+
+[node name="PickupCollision" type="StaticBody3D" parent="Props/Incident" groups=["place_item_obstacle"]]
+position = Vector3(5, 0.9, -1.5)
+rotation_degrees = Vector3(0, 25, 0)
+collision_layer = 1
+collision_mask = 0
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Props/Incident/PickupCollision"]
+shape = SubResource("BoxShape3D_pickup")
+
+[node name="TrafficCones" type="Node3D" parent="Props/Incident"]
+
+[node name="CrashA" parent="Props/Incident/TrafficCones" instance=ExtResource("7_traffic_cone")]
+position = Vector3(2.8, 0, -3)
+rotation_degrees = Vector3(0, 12, 0)
+
+[node name="CrashB" parent="Props/Incident/TrafficCones" instance=ExtResource("7_traffic_cone")]
+position = Vector3(6.7, 0, -3)
+rotation_degrees = Vector3(0, -18, 0)
+
+[node name="CrashC" parent="Props/Incident/TrafficCones" instance=ExtResource("7_traffic_cone")]
+position = Vector3(2.5, 0, 0)
+rotation_degrees = Vector3(68, 25, -12)
+
+[node name="CrashD" parent="Props/Incident/TrafficCones" instance=ExtResource("7_traffic_cone")]
+position = Vector3(7, 0, 0.3)
+rotation_degrees = Vector3(0, 32, 0)
+
+[node name="StoryBlood" type="Node3D" parent="Props/Incident"]
+
+[node name="BreachA" parent="Props/Incident/StoryBlood" instance=ExtResource("9_story_blood")]
+position = Vector3(-2.8, 0.035, -11.4)
+rotation_degrees = Vector3(-90, 18, 0)
+scale = Vector3(0.8, 0.8, 0.8)
+
+[node name="BreachB" parent="Props/Incident/StoryBlood" instance=ExtResource("9_story_blood")]
+position = Vector3(-1.7, 0.035, -9.6)
+rotation_degrees = Vector3(-90, -24, 0)
+scale = Vector3(0.65, 0.9, 0.65)
+
+[node name="TrailA" parent="Props/Incident/StoryBlood" instance=ExtResource("9_story_blood")]
+position = Vector3(-0.4, 0.035, -7.8)
+rotation_degrees = Vector3(-90, 12, 0)
+scale = Vector3(0.7, 1, 0.7)
+
+[node name="TrailB" parent="Props/Incident/StoryBlood" instance=ExtResource("9_story_blood")]
+position = Vector3(1, 0.035, -6)
+rotation_degrees = Vector3(-90, -15, 0)
+scale = Vector3(0.6, 0.85, 0.6)
+
+[node name="TrailC" parent="Props/Incident/StoryBlood" instance=ExtResource("9_story_blood")]
+position = Vector3(2.8, 0.035, -4.1)
+rotation_degrees = Vector3(-90, 22, 0)
+scale = Vector3(0.75, 0.75, 0.75)
+
+[node name="Crash" parent="Props/Incident/StoryBlood" instance=ExtResource("9_story_blood")]
+position = Vector3(4.3, 0.035, -2.5)
+rotation_degrees = Vector3(-90, -8, 0)
+scale = Vector3(1.15, 1.15, 1.15)
+
+[node name="HazardZone" type="Node3D" parent="Props"]
+
+[node name="ContainerAVisual" parent="Props/HazardZone" instance=ExtResource("2_container")]
+position = Vector3(-9, 0, -2.5)
+rotation_degrees = Vector3(0, 90, 0)
+
+[node name="ContainerACollision" type="StaticBody3D" parent="Props/HazardZone" groups=["place_item_obstacle"]]
+position = Vector3(-9, 1.4, -2.5)
+rotation_degrees = Vector3(0, 90, 0)
+collision_layer = 1
+collision_mask = 0
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Props/HazardZone/ContainerACollision"]
+shape = SubResource("BoxShape3D_container")
+
+[node name="ExplosiveBarrels" type="Node3D" parent="Props/HazardZone"]
+
+[node name="ChainA" parent="Props/HazardZone/ExplosiveBarrels" instance=ExtResource("4_explosive_barrel")]
+position = Vector3(-14, 0, -3.5)
+
+[node name="ChainB" parent="Props/HazardZone/ExplosiveBarrels" instance=ExtResource("4_explosive_barrel")]
+position = Vector3(-11, 0, -3.5)
+
+[node name="Solo" parent="Props/HazardZone/ExplosiveBarrels" instance=ExtResource("4_explosive_barrel")]
+position = Vector3(-15, 0, 4)
+
+[node name="SupplyPoint" type="Node3D" parent="Props"]
+
+[node name="PerimeterProps" type="Node3D" parent="Props/SupplyPoint"]
+
+[node name="North" parent="Props/SupplyPoint/PerimeterProps" instance=ExtResource("6_plastic_barrier")]
+position = Vector3(11.5, 0, -2.5)
+
+[node name="South" parent="Props/SupplyPoint/PerimeterProps" instance=ExtResource("6_plastic_barrier")]
+position = Vector3(11.5, 0, 2)
+
+[node name="West" parent="Props/SupplyPoint/PerimeterProps" instance=ExtResource("6_plastic_barrier")]
+position = Vector3(9.5, 0, -0.25)
+rotation_degrees = Vector3(0, 90, 0)
+
+[node name="East" parent="Props/SupplyPoint/PerimeterProps" instance=ExtResource("6_plastic_barrier")]
+position = Vector3(13.5, 0, -0.25)
+rotation_degrees = Vector3(0, 90, 0)
+
+[node name="Chests" type="Node3D" parent="Props/SupplyPoint"]
+
+[node name="ChestA" parent="Props/SupplyPoint/Chests" instance=ExtResource("8_supply_chest")]
+position = Vector3(10.6, 0, -1.5)
+rotation_degrees = Vector3(0, -8, 0)
+
+[node name="ChestB" parent="Props/SupplyPoint/Chests" instance=ExtResource("8_supply_chest")]
+position = Vector3(12, 0, -1.5)
+rotation_degrees = Vector3(0, 6, 0)
+
+[node name="ChestC" parent="Props/SupplyPoint/Chests" instance=ExtResource("8_supply_chest")]
+position = Vector3(10.6, 0, 0)
+rotation_degrees = Vector3(0, 4, 0)
+
+[node name="ChestD" parent="Props/SupplyPoint/Chests" instance=ExtResource("8_supply_chest")]
+position = Vector3(12, 0, 0)
+rotation_degrees = Vector3(0, -5, 0)
+
+[node name="RoadDetails" type="Node3D" parent="Props"]
+
+[node name="RoadSurface" type="MeshInstance3D" parent="Props/RoadDetails"]
+position = Vector3(0, 0.01, 0)
+mesh = SubResource("BoxMesh_road")
+
+[node name="LaneMarkings" type="Node3D" parent="Props/RoadDetails"]
+
+[node name="DashNorth" type="MeshInstance3D" parent="Props/RoadDetails/LaneMarkings"]
+position = Vector3(0, 0.025, -15)
+mesh = SubResource("BoxMesh_lane_dash")
+
+[node name="DashCheckpoint" type="MeshInstance3D" parent="Props/RoadDetails/LaneMarkings"]
+position = Vector3(0, 0.025, -8)
+mesh = SubResource("BoxMesh_lane_dash")
+
+[node name="DashIncident" type="MeshInstance3D" parent="Props/RoadDetails/LaneMarkings"]
+position = Vector3(0, 0.025, -1)
+mesh = SubResource("BoxMesh_lane_dash")
+
+[node name="DashSpawn" type="MeshInstance3D" parent="Props/RoadDetails/LaneMarkings"]
+position = Vector3(0, 0.025, 6)
+mesh = SubResource("BoxMesh_lane_dash")
+
+[node name="DashSouth" type="MeshInstance3D" parent="Props/RoadDetails/LaneMarkings"]
+position = Vector3(0, 0.025, 13)
+mesh = SubResource("BoxMesh_lane_dash")
+
+[node name="StopLine" type="MeshInstance3D" parent="Props/RoadDetails/LaneMarkings"]
+position = Vector3(0, 0.025, -8.9)
+mesh = SubResource("BoxMesh_stop_line")
+
+[node name="HazardMarkings" type="Node3D" parent="Props/RoadDetails"]
+
+[node name="North" type="MeshInstance3D" parent="Props/RoadDetails/HazardMarkings"]
+position = Vector3(-12.5, 0.025, -6)
+scale = Vector3(2, 1, 1)
+mesh = SubResource("BoxMesh_hazard_line")
+
+[node name="South" type="MeshInstance3D" parent="Props/RoadDetails/HazardMarkings"]
+position = Vector3(-12.5, 0.025, 6)
+scale = Vector3(2, 1, 1)
+mesh = SubResource("BoxMesh_hazard_line")
+
+[node name="West" type="MeshInstance3D" parent="Props/RoadDetails/HazardMarkings"]
+position = Vector3(-16.5, 0.025, 0)
+rotation_degrees = Vector3(0, 90, 0)
+scale = Vector3(3, 1, 1)
+mesh = SubResource("BoxMesh_hazard_line")
+
+[node name="East" type="MeshInstance3D" parent="Props/RoadDetails/HazardMarkings"]
+position = Vector3(-8.5, 0.025, 0)
+rotation_degrees = Vector3(0, 90, 0)
+scale = Vector3(3, 1, 1)
+mesh = SubResource("BoxMesh_hazard_line")
+
+[node name="SouthCones" type="Node3D" parent="Props/RoadDetails"]
+
+[node name="West" parent="Props/RoadDetails/SouthCones" instance=ExtResource("7_traffic_cone")]
+position = Vector3(-5, 0, 10)
+rotation_degrees = Vector3(0, -9, 0)
+
+[node name="East" parent="Props/RoadDetails/SouthCones" instance=ExtResource("7_traffic_cone")]
+position = Vector3(5, 0, 10)
+rotation_degrees = Vector3(0, 11, 0)

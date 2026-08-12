@@ -17,7 +17,7 @@ func _run() -> void:
 		single_arena.get_node("Players").get_child_count() > 0
 	):
 		var single_player = single_arena.get_node("Players").get_child(0)
-		_expect(single_player.get_input_source() == single_arena.single_player_input, "single-player spawn must reuse DemoArena composite input", failures)
+		_expect(single_player.get_input_source() == single_arena.single_player_input, "single-player spawn must reuse GameplayArena composite input", failures)
 	await _free_arena(single_arena)
 
 	session.configure_local([
@@ -58,7 +58,7 @@ func _run() -> void:
 	_finish(failures)
 
 func _spawn_arena():
-	var scene := load("res://scenes/gameplay/DemoArena.tscn") as PackedScene
+	var scene := load("res://scenes/maps/demo/DemoMap.tscn") as PackedScene
 	if scene == null:
 		return null
 	var arena = scene.instantiate()
@@ -78,14 +78,18 @@ func _descriptor(source_kind: int, device_id: int = -1):
 	return descriptor
 
 func _validate_players(arena, expected_count: int, failures: Array[String]) -> void:
-	_expect(arena != null, "DemoArena scene must load", failures)
+	_expect(arena != null, "DemoMap scene must load", failures)
 	if arena == null:
 		return
 	var container: Node = arena.get_node_or_null("Players")
-	_expect(container != null, "DemoArena must contain Players container", failures)
+	_expect(container != null, "GameplayArena must contain Players container", failures)
 	if container == null:
 		return
-	_expect(container.get_child_count() == expected_count, "DemoArena must spawn %d player(s)" % expected_count, failures)
+	_expect(
+		container.get_child_count() == expected_count,
+		"GameplayArena must spawn %d player(s)" % expected_count,
+		failures
+	)
 	for index in range(container.get_child_count()):
 		var player = container.get_child(index)
 		_expect(player.player_index == index, "spawned player must retain sequential player index", failures)

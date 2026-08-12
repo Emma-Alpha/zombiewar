@@ -24,12 +24,11 @@ import type { BoardId, LeaderboardEntry } from '../types.js';
 export const MAX_TEAM_WAVE = 200;
 
 /**
- * Kill ceiling per wave. Derived from the client's wave spawner, not invented:
- * scripts/gameplay/demo_arena.gd grants at most `maximum_zombies_per_corner`
- * (18) at each of 4 corners per wave, so a wave can produce at most 72 zombies.
- * The headroom above that absorbs future difficulty tuning; anything higher is
- * a forged report. If demo_arena.gd's spawn config changes, this MUST change
- * with it.
+ * Kill ceiling per wave. Derived from the default map data, not invented:
+ * resources/maps/demo/demo_map.tres authors 60 zombies per wave. The headroom
+ * above that absorbs future map tuning; anything higher is a forged report.
+ * If the ranked map's MapDefinition wave count changes, this MUST change with
+ * it.
  */
 export const MAX_ZOMBIES_PER_WAVE = 96;
 

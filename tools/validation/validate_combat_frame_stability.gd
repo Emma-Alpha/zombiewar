@@ -3,7 +3,7 @@ extends SceneTree
 const FireGate = preload("res://scripts/combat/fire_gate.gd")
 const GroundBloodSplatScene = preload("res://scenes/fx/GroundBloodSplat.tscn")
 const GroundBloodManagerScript = preload("res://scripts/fx/ground_blood_manager.gd")
-const DemoArenaScene = preload("res://scenes/gameplay/DemoArena.tscn")
+const DemoMapScene = preload("res://scenes/maps/demo/DemoMap.tscn")
 
 func _init() -> void:
 	call_deferred("_run")
@@ -14,7 +14,7 @@ func _run() -> void:
 	_test_reused_ground_splat_keeps_its_material(failures)
 	_test_ground_blood_queue_respects_frame_budget(failures)
 	await _test_blood_impact_pool_reuses_bounded_nodes(failures)
-	await _test_demo_arena_queues_ground_blood_requests(failures)
+	await _test_demo_map_queues_ground_blood_requests(failures)
 	if failures.is_empty():
 		print("validate_combat_frame_stability: PASS")
 		quit(0)
@@ -161,10 +161,10 @@ func _test_blood_impact_pool_reuses_bounded_nodes(
 	manager.queue_free()
 	await process_frame
 
-func _test_demo_arena_queues_ground_blood_requests(
+func _test_demo_map_queues_ground_blood_requests(
 	failures: Array[String]
 ) -> void:
-	var arena := DemoArenaScene.instantiate()
+	var arena := DemoMapScene.instantiate()
 	root.add_child(arena)
 	await process_frame
 	var manager := arena.get_node("GroundBloodManager") as GroundBloodManager
@@ -184,7 +184,7 @@ func _test_demo_arena_queues_ground_blood_requests(
 	# 断言的是「排队」而不是「立即生成」——立即生成会在尸潮里把一帧顶爆。
 	_expect(
 		manager.get_pending_request_count() == pending_requests_before + 3,
-		"DemoArena must queue hit and death blood work for later frames",
+		"GameplayArena must queue hit and death blood work for later frames",
 		failures
 	)
 	arena.queue_free()

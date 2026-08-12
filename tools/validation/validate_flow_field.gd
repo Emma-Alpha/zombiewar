@@ -10,6 +10,7 @@ func _run() -> void:
 	var failures: Array[String] = []
 	_check_grid_mapping(failures)
 	_check_world_rect_blocking(failures)
+	_check_runtime_source_reference_counts(failures)
 	_check_single_source_matches_reference(failures)
 	_check_multi_source_is_minimum(failures)
 	_check_walls_and_unreachable(failures)
@@ -42,7 +43,7 @@ func _check_grid_mapping(failures: Array[String]) -> void:
 	_expect(grid.cell_index(Vector2i(49, 0)) == -1, "outside cells must have no index", failures)
 
 ## 世界矩形 -> cell 的覆盖必须是半开区间：落在 cell 边界上的最大角属于下一个 cell，
-## 而矩形并没有盖住它。DemoArena 的原点让 cell 边界落在半整数世界坐标上，正是轴对齐墙体
+## 而矩形并没有盖住它。DemoMap 的原点让 cell 边界落在半整数世界坐标上，正是轴对齐墙体
 ## 范围的落点，所以边界处多阻挡一行会影响几乎每一面墙，这里逐格对齐地锁死覆盖集合。
 func _check_world_rect_blocking(failures: Array[String]) -> void:
 	var grid = FlowFieldGridScript.new()
@@ -132,6 +133,44 @@ func _check_world_rect_blocking(failures: Array[String]) -> void:
 		"blocking a world rect must leave the grid dirty",
 		failures
 	)
+
+func _check_runtime_source_reference_counts(failures: Array[String]) -> void:
+	var grid = FlowFieldGridScript.new()
+	grid.configure(Vector2(-0.5, -0.5), 1.0, 3, 3)
+	for method_name in [&"add_entity_blocker_world_rect", &"remove_entity_blocker_world_rect"]:
+		if not grid.has_method(method_name):
+			failures.append("FlowFieldGrid must expose %s" % method_name)
+			return
+	var min_xz := Vector2(-0.5, -0.5)
+	var max_xz := Vector2(0.5, 0.5)
+	var cell := Vector2i.ZERO
+	grid.consume_dirty()
+	grid.set_entity_blocked(cell, true)
+	_expect(grid.is_blocked(cell), "base entity blocker must block passability", failures)
+	_expect(not grid.is_static_blocked(cell), "base entity blocker must stay out of static mask", failures)
+	grid.consume_dirty()
+	grid.add_static_blocker_world_rect(min_xz, max_xz)
+	_expect(grid.is_static_blocked(cell), "runtime static source must enter static mask", failures)
+	_expect(not grid.consume_dirty(), "static overlay must not dirty already-blocked passability", failures)
+	grid.remove_static_blocker_world_rect(min_xz, max_xz)
+	_expect(grid.is_blocked(cell), "clearing static source must preserve base entity blocker", failures)
+	_expect(not grid.is_static_blocked(cell), "clearing static source must restore static mask", failures)
+	_expect(not grid.consume_dirty(), "static removal must not dirty still-blocked passability", failures)
+	grid.set_entity_blocked(cell, false)
+	_expect(not grid.is_blocked(cell), "clearing base entity blocker must restore passability", failures)
+	grid.consume_dirty()
+	grid.call(&"add_entity_blocker_world_rect", min_xz, max_xz)
+	_expect(grid.is_blocked(cell), "first runtime entity source must block passability", failures)
+	_expect(not grid.is_static_blocked(cell), "runtime entity source must stay out of static mask", failures)
+	_expect(grid.consume_dirty(), "first runtime entity source must dirty passability", failures)
+	grid.call(&"add_entity_blocker_world_rect", min_xz, max_xz)
+	_expect(not grid.consume_dirty(), "overlapping entity source must not dirty passability", failures)
+	grid.call(&"remove_entity_blocker_world_rect", min_xz, max_xz)
+	_expect(grid.is_blocked(cell), "removing one entity source must preserve overlap", failures)
+	_expect(not grid.consume_dirty(), "partial entity removal must not dirty passability", failures)
+	grid.call(&"remove_entity_blocker_world_rect", min_xz, max_xz)
+	_expect(not grid.is_blocked(cell), "last entity source removal must restore passability", failures)
+	_expect(grid.consume_dirty(), "last entity source removal must dirty passability", failures)
 
 func _blocked_cells(grid) -> Array[Vector2i]:
 	var cells: Array[Vector2i] = []
