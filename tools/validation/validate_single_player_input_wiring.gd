@@ -43,7 +43,12 @@ func _run() -> void:
 	var place_service := FakePlaceItemService.new()
 	player.set_place_item_service(place_service)
 	equipment.grant_item(&"oil_barrel", 1)
-	equipment.equip_slot(3)
+	# 按 item_id 取槽位而不是写死索引：loadout 每加一把枪，油桶的槽号就会后移，
+	# 写死索引时脚本会拿到旁边那件装备并在属性访问上直接崩掉——崩在这里还不会
+	# 走到 quit()，进程挂住，整批验证跟着一起超时。
+	var oil_slot: int = equipment.get_slot_for_item(&"oil_barrel")
+	_expect(oil_slot >= 0, "oil barrel must exist in the loadout", failures)
+	equipment.equip_slot(oil_slot)
 	var placeable = equipment.get_current_item()
 	_expect(placeable.place_item_service == place_service, "place item service must reach placeable equipment", failures)
 

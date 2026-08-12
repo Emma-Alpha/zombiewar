@@ -4,15 +4,21 @@
 
 [resource]
 script = ExtResource("1_definition")
+attack_range = 22.0
+tracer_pool_size = 16
 uses_ammo = true
 max_ammo = 360
+base_spread_degrees = 1.2
+max_spread_degrees = 7.0
+spread_increase_per_shot_degrees = 0.5
+spread_recovery_degrees_per_second = 5.0
 weapon_id = &"smg"
 display_name = "冲锋枪"
 visual_node_name = &"SMG"
 trigger_mode = 1
-attacks_per_second = 4.0
-damage = 25.0
+attacks_per_second = 10.0
+damage = 14.0
 idle_animation = &"Idle_Gun"
 run_animation = &"Run_Gun"
-visual_recoil_kick = 0.08
-camera_impulse_strength = 0.06
+visual_recoil_kick = 0.05
+camera_impulse_strength = 0.035

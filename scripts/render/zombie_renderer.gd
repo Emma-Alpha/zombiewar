@@ -67,6 +67,22 @@ func clear() -> void:
 		if multi_mesh != null:
 			multi_mesh.visible_instance_count = 0
 
+## 把顿帧状态广播给当前所有近景视图，包括正在播死亡动画的那些。
+##
+## 每帧无条件调用，而不是只在冻结状态翻转的那一帧调用：LOD 归属每 tick 都在换人，
+## 顿帧期间新进入近景的视图必须立刻跟上，否则同一画面里会有一部分僵尸还在动。
+## 远景 MultiMesh 不需要单独处理——顿帧期间 render_frame() 整个不跑，
+## 它自然停在上一帧的实例变换上。
+func set_visual_frozen(frozen: bool) -> void:
+	for view in near_views.values():
+		var near_view := view as ZombieTarget
+		if near_view != null and is_instance_valid(near_view):
+			near_view.set_visual_frozen(frozen)
+	for record in dying_view_records.values():
+		var dying_view := record["view"] as ZombieTarget
+		if dying_view != null and is_instance_valid(dying_view):
+			dying_view.set_visual_frozen(frozen)
+
 ## 每 tick 重算 LOD 归属。距离取共享镜头锚点到僵尸的 XZ 平面平方距离，
 ## 同距按实体 id 升序决定，避免抖动。
 ## 准入条件是「在 BLOCKER_RADIUS 之内」且「名额未超过 NEAR_LOD_COUNT」，

@@ -23,6 +23,8 @@ const DEFAULT_SIM_SEED := 20260807
 const PING_HUD_INTERVAL_SECONDS := 0.5
 const PISTOL_DEFINITION := preload("res://resources/weapons/pistol.tres")
 const SMG_DEFINITION := preload("res://resources/weapons/smg.tres")
+const SHOTGUN_DEFINITION := preload("res://resources/weapons/shotgun.tres")
+const HitStopStateScript = preload("res://scripts/fx/hit_stop_state.gd")
 
 @export var map_definition: MapDefinition
 @export var zombie_difficulty: ZombieDifficultyProfile
@@ -34,6 +36,8 @@ var hit_confirm_tween: Tween
 var damage_flash_tween: Tween
 var sim_clock = SimClockScript.new()
 var sim_world = SimWorldScript.new()
+## 表现层顿帧。只影响画面，模拟层照常按 tick 推进（见 HitStopState 的说明）。
+var hit_stop = HitStopStateScript.new()
 var map_runtime := GameMapRuntime.new()
 var zombie_renderer: ZombieRenderer
 var weapon_profile_indices: Dictionary = {}
@@ -121,12 +125,19 @@ func _process(delta: float) -> void:
 	):
 		request_restart()
 	_update_ping_hud(delta)
+	hit_stop.advance(delta)
 	if zombie_renderer != null:
-		zombie_renderer.render_frame(
-			sim_world,
-			_interpolation_alpha(),
-			delta
-		)
+		var frozen := hit_stop.is_frozen()
+		zombie_renderer.set_visual_frozen(frozen)
+		# 顿帧期间整个跳过 render_frame：僵尸的插值位置、远景 MultiMesh 变换与
+		# 淡入淡出都停在触发的那一帧。模拟层不受影响——它在 _physics_process 里
+		# 照常推进，顿帧结束后画面直接对齐到那时的真实状态。
+		if not frozen:
+			zombie_renderer.render_frame(
+				sim_world,
+				_interpolation_alpha(),
+				delta
+			)
 
 func _physics_process(delta: float) -> void:
 	if startup_pending or zombie_renderer == null:
@@ -380,6 +391,8 @@ func _setup_simulation() -> PackedStringArray:
 	)
 	register_weapon_profiles()
 	sim_clock.reset()
+	# 上一局若正好在顿帧里结束，残留的冻结会让新一局开场僵尸静止不动。
+	hit_stop.reset()
 	return PackedStringArray()
 
 func _setup_map_renderer() -> bool:
@@ -406,9 +419,18 @@ func _register_map_entities() -> void:
 ## 模拟层只认档案下标；这里把 weapon_id 映射到下标，顺序即注册顺序。
 func register_weapon_profiles() -> void:
 	weapon_profile_indices = {}
+	# 新武器一律**追加在末尾**，不要插进中间：下标就是模拟层认的武器档案号，
+	# 重排会让同一发子弹在不同版本的客户端上打出不同的伤害档案。
+	#
+	# 这份清单必须覆盖 Player.tscn 的 loadout 里每一把远程武器。漏一把不会报错，
+	# 只会让 get_weapon_profile_index() 返回 -1，_on_sim_request() 把那把枪的每一次
+	# 开火**静默丢弃**——枪口火光与射击音仍然照常播放（它们是表现层直接做的），
+	# 于是现象是「枪能举起来、有声有光、就是打不死任何东西」。
+	# validate_weapon_assembly.gd 会逐把枪核对这份清单。
 	var definitions: Array[RangedWeaponDefinition] = [
 		PISTOL_DEFINITION,
 		SMG_DEFINITION,
+		SHOTGUN_DEFINITION,
 	]
 	for profile_index in range(definitions.size()):
 		var definition := definitions[profile_index]
@@ -422,7 +444,8 @@ func register_weapon_profiles() -> void:
 			definition.spread_increase_per_shot_degrees,
 			definition.spread_recovery_degrees_per_second,
 			definition.max_penetration_count,
-			definition.penetration_damage_coefficient
+			definition.penetration_damage_coefficient,
+			definition.pellet_count
 		)
 
 func get_weapon_profile_index(weapon_id: StringName) -> int:
@@ -605,6 +628,9 @@ func _on_sim_barrel_event(event: Dictionary) -> void:
 	if kind == &"barrel_exploded":
 		var planar: Vector2 = event["position"]
 		barrel_views.erase(barrel_id_value)
+		# 爆炸绕过静默期：它通常紧跟在一串击杀之后，被静默期吃掉的话，
+		# 整场最该被看见的一次清场反而是唯一没有顿帧的那次。
+		hit_stop.request(HitStopStateScript.EXPLOSION_SECONDS, true)
 		barrel.play_explosion(
 			Vector3(planar.x, float(event["height"]), planar.y)
 		)
@@ -752,6 +778,11 @@ func _on_sim_hit_event(event: Dictionary) -> void:
 			hit_position,
 			direction * SimWorldScript.ZOMBIE_KNOCKBACK_IMPULSE
 		)
+	# 只在击杀时顿帧，不是每发命中都顿：冲锋枪 10 发/秒逐发顿帧会让画面接近
+	# 一半时间静止，那时顿帧读起来是掉帧而不是打击感。HitStopState 自带静默期，
+	# 一 tick 内打死一片僵尸也只会顿一次。
+	if bool(event["killed"]):
+		hit_stop.request(HitStopStateScript.KILL_SECONDS)
 	var manager := get_node_or_null("GroundBloodManager") as GroundBloodManager
 	if manager == null:
 		_spawn_blood_impact(hit_position, direction)

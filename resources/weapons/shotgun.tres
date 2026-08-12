@@ -1,0 +1,24 @@
+[gd_resource type="Resource" script_class="RangedWeaponDefinition" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/combat/weapons/ranged_weapon_definition.gd" id="1_definition"]
+
+[resource]
+script = ExtResource("1_definition")
+attack_range = 12.0
+tracer_pool_size = 18
+uses_ammo = true
+max_ammo = 40
+pellet_count = 6
+base_spread_degrees = 9.0
+max_spread_degrees = 13.0
+spread_increase_per_shot_degrees = 2.0
+spread_recovery_degrees_per_second = 6.0
+weapon_id = &"shotgun"
+display_name = "散弹枪"
+visual_node_name = &"Shotgun"
+attacks_per_second = 1.2
+damage = 16.0
+idle_animation = &"Idle_Gun"
+run_animation = &"Run_Gun"
+visual_recoil_kick = 0.22
+camera_impulse_strength = 0.14

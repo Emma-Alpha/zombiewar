@@ -44,6 +44,7 @@ var visual_rest_rotation := Vector3.ZERO
 var reaction_rotation := Vector3.ZERO
 var reaction_angular_velocity := Vector3.ZERO
 var bound_zombie_id := 0
+var visual_frozen := false
 var hit_reaction_remaining := 0.0
 var attack_animation_remaining := 0.0
 var death_remaining := 0.0
@@ -96,6 +97,9 @@ func bind_zombie(
 	_ensure_initialized()
 	bound_zombie_id = zombie_id_value
 	dying = false
+	# 视图是池化复用的：上一具尸体是在顿帧里被回收的话，speed_scale 还停在 0，
+	# 新绑定的僵尸会顶着静止姿势滑行，直到下一次顿帧结束才恢复。
+	set_visual_frozen(false)
 	death_remaining = 0.0
 	hit_reaction_remaining = 0.0
 	attack_animation_remaining = 0.0
@@ -221,8 +225,20 @@ func set_health_text(current_points: int, maximum_points: int) -> void:
 		ceili(float(maximum_points) / 100.0),
 	]
 
+## 顿帧期间把这只僵尸的表现整体冻住：动画停在当前姿势，受击摆动、缩放回弹、
+## 尸体留场倒计时一并暂停。只作用于表现——僵尸的模拟状态由 SimWorld 推进，
+## 这里冻的是「看到的那一帧」，所以各客户端顿帧时机不同也不会影响一致性。
+func set_visual_frozen(value: bool) -> void:
+	if visual_frozen == value:
+		return
+	visual_frozen = value
+	if animation_player != null:
+		animation_player.speed_scale = 0.0 if value else 1.0
+
 func _process(delta: float) -> void:
 	if not initialized:
+		return
+	if visual_frozen:
 		return
 	hit_reaction_remaining = maxf(hit_reaction_remaining - delta, 0.0)
 	attack_animation_remaining = maxf(attack_animation_remaining - delta, 0.0)

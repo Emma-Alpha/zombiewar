@@ -1,4 +1,4 @@
-[gd_scene load_steps=16 format=3]
+[gd_scene load_steps=17 format=3]
 
 [ext_resource type="Script" path="res://scripts/player/player_controller.gd" id="1_controller"]
 [ext_resource type="PackedScene" path="res://assets/characters/Characters_Lis_SingleWeapon.gltf" id="2_model"]
@@ -6,6 +6,7 @@
 [ext_resource type="PackedScene" path="res://scenes/weapons/Pistol.tscn" id="7_pistol"]
 [ext_resource type="PackedScene" path="res://scenes/weapons/Smg.tscn" id="8_smg"]
 [ext_resource type="PackedScene" path="res://scenes/weapons/Knife.tscn" id="9_knife"]
+[ext_resource type="PackedScene" path="res://scenes/weapons/Shotgun.tscn" id="15_shotgun"]
 [ext_resource type="Script" path="res://scripts/player/weapon_clearance_controller.gd" id="10_weapon_clearance"]
 [ext_resource type="PackedScene" path="res://scenes/ui/HealthBar3D.tscn" id="11_health_bar"]
 [ext_resource type="PackedScene" path="res://scenes/player/equipment/OilBarrelEquipment.tscn" id="12_oil_barrel"]
@@ -81,5 +82,5 @@ anchor_offset = Vector3(0, 2.35, 0)
 
 [node name="EquipmentController" type="Node" parent="."]
 script = ExtResource("6_equipment")
-loadout = Array[PackedScene]([ExtResource("7_pistol"), ExtResource("8_smg"), ExtResource("9_knife"), ExtResource("12_oil_barrel")])
+loadout = Array[PackedScene]([ExtResource("7_pistol"), ExtResource("8_smg"), ExtResource("15_shotgun"), ExtResource("9_knife"), ExtResource("12_oil_barrel")])
 starting_slot = 0

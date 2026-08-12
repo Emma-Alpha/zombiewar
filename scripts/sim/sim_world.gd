@@ -1422,7 +1422,8 @@ func configure_weapon_profile(
 	spread_increase_degrees: float,
 	spread_recovery_degrees_per_second: float,
 	max_penetration_count: int,
-	penetration_damage_coefficient: float
+	penetration_damage_coefficient: float,
+	pellet_count: int = 1
 ) -> void:
 	if profile_index < 0:
 		return
@@ -1437,6 +1438,7 @@ func configure_weapon_profile(
 		"spread_recovery_degrees_per_second": maxf(spread_recovery_degrees_per_second, 0.0),
 		"max_penetration_count": clampi(max_penetration_count, 0, 16),
 		"penetration_damage_coefficient": clampf(penetration_damage_coefficient, 0.0, 1.0),
+		"pellet_count": clampi(pellet_count, 1, 32),
 	}
 
 ## 开火事件只携带玩家的瞄准方向，不携带散布后的方向。
@@ -1575,18 +1577,53 @@ func _resolve_shot_event(event: Dictionary) -> void:
 	aim = aim.normalized()
 
 	var spread_degrees := player_spread_degrees[slot]
-	var offset := rng.next_range(
-		DeterministicRngScript.Stream.WEAPON_SPREAD, -1.0, 1.0
-	)
-	var direction := WeaponSpreadStateScript.spread_direction(
-		aim, spread_degrees, offset
-	)
+	var pellet_count := maxi(int(profile["pellet_count"]), 1)
+	for pellet_index in range(pellet_count):
+		var pellet_direction := WeaponSpreadStateScript.spread_direction(
+			aim,
+			spread_degrees,
+			_pellet_spread_offset(pellet_index, pellet_count)
+		)
+		_resolve_pellet(slot, profile, origin, origin_height, pellet_direction)
+	# 散布按「扣一次扳机」增长一次，不按弹丸数增长：
+	# 否则一发霰弹就把散布顶到上限，第二枪起等于在盲射。
 	player_spread_degrees[slot] = WeaponSpreadStateScript.increased_degrees(
 		spread_degrees,
 		float(profile["spread_increase_degrees"]),
 		float(profile["max_spread_degrees"])
 	)
 
+## 一颗弹丸在散布锥内的归一化偏角（-1..1）。
+##
+## 单弹丸武器走原来的路径：整发取一次随机。rng 的调用序列必须与引入多弹丸之前
+## 逐次一致，否则手枪与冲锋枪的每一发都会偏到别处，既有的帧哈希与回放全部分叉。
+##
+## 多弹丸把散布锥**均分**给每颗弹丸、每颗再在自己那一份里抖动，而不是每颗独立
+## 取整锥随机：独立随机会让弹丸扎堆，还会时不时整簇挤到一侧，看起来像这一枪打偏了，
+## 而不像一把霰弹枪。
+func _pellet_spread_offset(pellet_index: int, pellet_count: int) -> float:
+	if pellet_count <= 1:
+		return rng.next_range(
+			DeterministicRngScript.Stream.WEAPON_SPREAD, -1.0, 1.0
+		)
+	var slice := 2.0 / float(pellet_count)
+	var slice_center := -1.0 + slice * (float(pellet_index) + 0.5)
+	var jitter := rng.next_range(
+		DeterministicRngScript.Stream.WEAPON_SPREAD,
+		-slice * 0.5,
+		slice * 0.5
+	)
+	return clampf(slice_center + jitter, -1.0, 1.0)
+
+## 解算一颗弹丸：截断射程、按穿透逐个结算伤害、并抬出一条曳光事件。
+## 多弹丸武器一次扣扳机会走这里 pellet_count 次，每颗各自命中、各自画线。
+func _resolve_pellet(
+	slot: int,
+	profile: Dictionary,
+	origin: Vector2,
+	origin_height: float,
+	direction: Vector2
+) -> void:
 	# 射程被第一堵墙截断：基线的物理射线命中层 1 静态体就 break，
 	# 未命中僵尸时曳光终点也停在墙上而不是穿墙飞满射程。
 	# 注：Step 8 的物理闸门按被禁 API 的字面名 grep 整个 scripts/sim 且不区分代码与注释，

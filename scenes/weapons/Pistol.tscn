@@ -19,3 +19,4 @@ stream = ExtResource("4_shot_audio")
 volume_db = -8.0
 unit_size = 6.0
 max_distance = 32.0
+max_polyphony = 2
