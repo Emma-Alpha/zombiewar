@@ -13,6 +13,7 @@
 [ext_resource type="Script" path="res://scripts/gameplay/place_item_grid.gd" id="16_place_grid"]
 [ext_resource type="Script" path="res://scripts/gameplay/place_item_service.gd" id="17_place_service"]
 [ext_resource type="PackedScene" path="res://scenes/ui/ShopPanel.tscn" id="18_shop_panel"]
+[ext_resource type="PackedScene" path="res://scenes/ui/InventoryPanel.tscn" id="31_inventory_panel"]
 [ext_resource type="Script" path="res://scripts/gameplay/player_registry.gd" id="23_player_registry"]
 [ext_resource type="Script" path="res://scripts/render/zombie_renderer.gd" id="28_zombie_renderer"]
 [ext_resource type="Script" path="res://scripts/fx/spatial_sfx_pool.gd" id="29_spatial_sfx_pool"]
@@ -314,3 +315,5 @@ horizontal_alignment = 1
 vertical_alignment = 1
 
 [node name="ShopPanel" parent="HUD" instance=ExtResource("18_shop_panel")]
+
+[node name="InventoryPanel" parent="HUD" instance=ExtResource("31_inventory_panel")]

@@ -1091,6 +1091,22 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed(&"restart_demo"):
 		request_restart()
 		get_viewport().set_input_as_handled()
+		return
+	if event.is_action_pressed(&"toggle_inventory"):
+		_toggle_inventory_panel()
+		get_viewport().set_input_as_handled()
+
+## Tab 打开/关闭背包。数据从模拟层读（确定性），表现层只显示。
+func _toggle_inventory_panel() -> void:
+	var panel := get_node_or_null("HUD/InventoryPanel") as InventoryPanel
+	if panel == null:
+		return
+	if panel.visible:
+		panel.hide()
+		return
+	# 打开时 setup 当前数据：模拟层 + 本机座位 + 背包物品目录。
+	panel.setup(sim_world, _local_slot(), map_runtime.inventory_profiles())
+	panel.show()
 
 ## 离线休整可被跳过时返回 1；其余情况（含联机仅上行请求）返回 0。
 func request_spawn_wave() -> int:
