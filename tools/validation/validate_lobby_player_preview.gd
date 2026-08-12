@@ -33,9 +33,28 @@ func _run() -> void:
 	preview.set_player_index(1)
 	_expect((preview.get_node("PlayerLabel") as Label3D).text == "P2", "preview must display its player number", failures)
 	var light := preview.get_node("PlayerLight") as OmniLight3D
+	var label := preview.get_node("PlayerLabel") as Label3D
+	# 配色是四个人唯一的区分手段，它必须真的落到灯光和名牌上。
+	var accent := Color(0.243, 0.553, 0.925, 1.0)
+	preview.set_accent_color(accent)
+	_expect(light.light_color.is_equal_approx(accent), "accent color must reach the preview light", failures)
+	_expect(
+		label.outline_modulate.is_equal_approx(accent),
+		"accent color must reach the label outline",
+		failures
+	)
 	var online_energy := light.light_energy
 	preview.set_online(false)
 	_expect(light.light_energy < online_energy, "offline preview must be visibly dimmer", failures)
+	# 变暗走的是 energy 与 modulate，不能把配色一起洗掉。
+	_expect(
+		light.light_color.is_equal_approx(accent),
+		"going offline must not discard the accent color",
+		failures
+	)
+	preview.set_label_visible(false)
+	_expect(not label.visible, "preview label must be hideable for card layouts", failures)
+	preview.set_label_visible(true)
 	preview.queue_free()
 	await process_frame
 
