@@ -140,6 +140,62 @@ func _run() -> void:
 		failures
 	)
 
+	# 新房间的 map_id 是空串——服务端不认识内容，给不出默认值。房主必须把它
+	# 补成一个具体 id，否则 _missing_content() 会拿空串去查目录、查不到，
+	# 于是「开始对局」被本机自己的检查挡下来：整个功能不可用，而且报的是
+	# 「本机缺少内容 地图」这种指向完全错误的信息。
+	var net_session = root.get_node_or_null("/root/NetSession")
+	_expect(net_session != null, "NetSession autoload 必须存在", failures)
+	if net_session == null:
+		lobby.queue_free()
+		await process_frame
+		_finish(failures)
+		return
+	var room_client = net_session.room
+	room_client.slot = 0
+	room_client.host_slot = 0
+	room_client.room_map_id = ""
+	_expect(
+		lobby._publish_default_map_if_host() == default_map,
+		"房主入房后必须把默认地图 id 补上去",
+		failures
+	)
+	# 已经有图了就不该再发——否则每来一次 roster 就覆盖房主刚选的图。
+	room_client.room_map_id = "some_other_map"
+	_expect(
+		lobby._publish_default_map_if_host() == &"",
+		"房间已有地图时房主不得再覆盖它",
+		failures
+	)
+	# 非房主永远不发。
+	room_client.host_slot = 1
+	room_client.room_map_id = ""
+	_expect(
+		lobby._publish_default_map_if_host() == &"",
+		"非房主不得设置地图",
+		failures
+	)
+	room_client.slot = -1
+	room_client.host_slot = -1
+	room_client.room_map_id = ""
+
+	# 空 map_id 必须被开局前的内容检查拦下来——这就是上面那条补齐的理由。
+	_expect(
+		lobby._missing_content(&"", []) != "",
+		"空的 map_id 必须被 _missing_content 判为缺内容",
+		failures
+	)
+	_expect(
+		lobby._missing_content(default_map, [{"character_id": "survivor_red"}]) == "",
+		"目录里有的内容不该被判为缺失",
+		failures
+	)
+	_expect(
+		lobby._missing_content(default_map, [{"character_id": "no_such_hero"}]) != "",
+		"目录里没有的角色必须被判为缺失",
+		failures
+	)
+
 	lobby.queue_free()
 	await process_frame
 	_finish(failures)

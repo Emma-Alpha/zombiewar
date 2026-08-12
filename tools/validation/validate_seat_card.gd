@@ -74,11 +74,39 @@ func _run() -> void:
 		"卡片的 SubViewport 里必须正好有一个相机",
 		failures
 	)
+
 	_expect(viewport_a.own_world_3d, "每张卡必须有自己的 3D 世界，否则四个角色互相照亮", failures)
 
 	# 配色必须真的传到卡里那个角色预览上。
 	var preview_a = viewport_a.find_child("LobbyPlayerPreview", true, false)
 	var preview_b = viewport_b.find_child("LobbyPlayerPreview", true, false)
+
+	# 取景必须由代码按模型包围盒算出来，不是场景里写死的矩阵。
+	# 断言角色真的落在相机视野内且占满大半个画面——写死的相机换个模型就错位，
+	# 而错位只在人眼前现形，这里把它变成一条能失败的断言。
+	var camera_a := card_a.get_node("%CharacterCamera") as Camera3D
+	var bounds: AABB = preview_a.get_visual_aabb()
+	_expect(bounds.size.y > 0.0, "角色必须有可见网格，否则卡片是空的", failures)
+	if bounds.size.y > 0.0:
+		var half_fov := deg_to_rad(camera_a.fov * 0.5)
+		var distance: float = camera_a.position.z - bounds.end.z
+		_expect(distance > 0.0, "相机必须在角色前方", failures)
+		var visible_height := 2.0 * distance * tan(half_fov)
+		var fill := bounds.size.y / visible_height
+		_expect(
+			fill > 0.7 and fill <= 1.0,
+			"角色应占卡片可视高度的 70%%-100%%，实际 %.0f%%" % (fill * 100.0),
+			failures
+		)
+		# 相机要瞄在角色身上，不能瞄到脚底或头顶外面去。
+		var aim_y := camera_a.position.y + distance * tan(camera_a.rotation.x)
+		_expect(
+			aim_y > bounds.position.y and aim_y < bounds.end.y,
+			"相机的视线必须落在角色包围盒内，实际 y=%.2f 盒 %.2f..%.2f" % [
+				aim_y, bounds.position.y, bounds.end.y
+			],
+			failures
+		)
 	_expect(
 		preview_a.accent_color.is_equal_approx(red.accent_color),
 		"卡片必须把角色配色传给预览",

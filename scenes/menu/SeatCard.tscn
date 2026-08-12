@@ -1,4 +1,4 @@
-[gd_scene load_steps=5 format=3]
+[gd_scene load_steps=6 format=3]
 
 [ext_resource type="Script" path="res://scripts/menu/seat_card.gd" id="1_seat_card"]
 [ext_resource type="PackedScene" path="res://scenes/menu/LobbyPlayerPreview.tscn" id="2_preview"]
@@ -9,9 +9,26 @@ ambient_light_source = 2
 ambient_light_color = Color(0.55, 0.57, 0.62, 1)
 ambient_light_energy = 1.4
 
+[sub_resource type="StyleBoxFlat" id="StyleBox_card"]
+bg_color = Color(0.055, 0.065, 0.07, 1)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.2, 0.22, 0.24, 1)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+content_margin_left = 8.0
+content_margin_top = 8.0
+content_margin_right = 8.0
+content_margin_bottom = 8.0
+
 [node name="SeatCard" type="PanelContainer"]
 custom_minimum_size = Vector2(196, 268)
 size_flags_horizontal = 3
+theme_override_styles/panel = SubResource("StyleBox_card")
 script = ExtResource("1_seat_card")
 
 [node name="Body" type="VBoxContainer" parent="."]
@@ -66,8 +83,8 @@ render_target_update_mode = 2
 [node name="WorldEnvironment" type="WorldEnvironment" parent="Body/Stage/CharacterViewportContainer/CharacterViewport"]
 environment = SubResource("Environment_card")
 
-[node name="Camera3D" type="Camera3D" parent="Body/Stage/CharacterViewportContainer/CharacterViewport"]
-transform = Transform3D(1, 0, 0, 0, 0.9903, -0.1392, 0, 0.1392, 0.9903, 0, 1.35, 2.9)
+[node name="CharacterCamera" type="Camera3D" parent="Body/Stage/CharacterViewportContainer/CharacterViewport"]
+unique_name_in_owner = true
 fov = 38.0
 
 [node name="KeyLight" type="DirectionalLight3D" parent="Body/Stage/CharacterViewportContainer/CharacterViewport"]

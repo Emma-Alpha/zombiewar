@@ -212,6 +212,7 @@ func _on_room_disconnected(code: int, reason: String) -> void:
 	_sync_panels()
 
 func _on_roster_changed(players: Array, host_slot: int, state: String) -> void:
+	_publish_default_map_if_host()
 	room_panel.apply_roster(
 		players,
 		host_slot,
@@ -236,6 +237,23 @@ func _on_character_step_requested(step: int) -> void:
 
 func _on_map_selected(map_id: StringName) -> void:
 	NetSession.room.select_map(map_id)
+
+## 新房间的 map_id 是空串——服务端不认识内容，给不出默认值。
+## 由房主把目录默认值写成一个**具体的 id** 发上去，而不是让各端各自把空串
+## 解析成"自己目录里的第一张图"：后者在两端目录不一致时会静默跑成两张图，
+## 而这正是 _missing_content() 想当场拦下的那种分叉。
+##
+## 顺带这也是开局的前提：空 map_id 过不了 _missing_content()，房主不发这一条，
+## 谁都开不了局。
+## 返回实际发出去的 id；没发则返回空串（便于校验断言）。
+func _publish_default_map_if_host() -> StringName:
+	if not NetSession.room.is_host():
+		return &""
+	if NetSession.room.room_map_id != "":
+		return &""
+	var default_map: StringName = ContentCatalogsScript.maps().default_id()
+	NetSession.room.select_map(default_map)
+	return default_map
 
 ## 开局：把服务端压实后的座位表翻译成玩家描述符，本机那一个标成 is_local。
 ##

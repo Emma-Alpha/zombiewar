@@ -50,6 +50,39 @@ func set_label_visible(value: bool) -> void:
 	if label != null:
 		label.visible = value
 
+## 角色可见网格的合并包围盒（本节点局部坐标）。
+##
+## 座位卡靠它反算相机距离，而不是把一个手调好的相机矩阵写死在场景里：
+## 手调的值只对"当前这个模型 + 当前这个卡片尺寸"成立，换任何一个都会错位，
+## 而错位在 headless 校验里看不出来——它只在人眼前现形。
+func get_visual_aabb() -> AABB:
+	var result := AABB()
+	var found := false
+	for node in find_children("*", "MeshInstance3D", true, false):
+		var mesh_instance := node as MeshInstance3D
+		# 只看自己那一位不够：收起来的武器是把父 Node3D 关掉的，网格自身仍是
+		# visible。但也不能用 is_visible_in_tree()——空位卡会把整张卡藏起来，
+		# 那样算出来的是个空盒。所以只向上走到本节点为止。
+		if mesh_instance == null or not _visible_within_preview(mesh_instance):
+			continue
+		var box: AABB = mesh_instance.get_aabb()
+		if box.size == Vector3.ZERO:
+			continue
+		# 转到本节点的局部坐标：模型挂在 ModelAnchor 下且被旋转过 180°，
+		# 直接用网格自己的 AABB 会把那次旋转丢掉。
+		box = (global_transform.affine_inverse() * mesh_instance.global_transform) * box
+		result = box if not found else result.merge(box)
+		found = true
+	return result
+
+func _visible_within_preview(node: Node3D) -> bool:
+	var cursor: Node = node
+	while cursor != null and cursor != self:
+		if cursor is Node3D and not (cursor as Node3D).visible:
+			return false
+		cursor = cursor.get_parent()
+	return true
+
 func _instantiate_character() -> void:
 	if character_scene == null:
 		_warn_missing_resource()

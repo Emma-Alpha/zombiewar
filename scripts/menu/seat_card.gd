@@ -11,6 +11,11 @@ signal character_step_requested(step: int)
 const EMPTY_TEXT := "等待玩家加入"
 const EMPTY_RULE_COLOR := Color(0.28, 0.30, 0.32, 1.0)
 const EMPTY_NAME_COLOR := Color(0.62, 0.65, 0.68, 1.0)
+## 角色应当占卡片可视高度的比例。留一点余量，免得头顶和脚尖贴着边。
+const CHARACTER_FILL_RATIO := 0.86
+## 相机相对角色中心抬高多少（按取景距离的比例）。纯平视显得呆，
+## 微微俯一点和本地多人大厅那个远景相机的观感一致。
+const CAMERA_ELEVATION_RATIO := 0.16
 
 @onready var viewport_container: SubViewportContainer = %CharacterViewportContainer
 @onready var preview = %LobbyPlayerPreview
@@ -20,12 +25,47 @@ const EMPTY_NAME_COLOR := Color(0.62, 0.65, 0.68, 1.0)
 @onready var previous_button: Button = %PreviousButton
 @onready var next_button: Button = %NextButton
 @onready var accent_rule: ColorRect = %AccentRule
+@onready var camera: Camera3D = %CharacterCamera
 
 func _ready() -> void:
 	previous_button.pressed.connect(func(): character_step_requested.emit(-1))
 	next_button.pressed.connect(func(): character_step_requested.emit(1))
 	preview.set_label_visible(false)
+	viewport_container.resized.connect(_on_stage_resized)
+	_frame_character()
 	set_empty()
+
+## 按模型自己的包围盒摆相机，而不是在场景里写死一个手调过的矩阵。
+##
+## 写死的值只对「当前这个模型 + 当前这个卡片尺寸」成立：换个角色模型、
+## 或者卡片在窄屏上被压扁，角色就会缩到角落里去——而这种错位 headless 校验
+## 看不出来，只在人眼前现形。让代码去算，就不存在「忘了重新调相机」这件事。
+func _frame_character() -> void:
+	if camera == null or preview == null:
+		return
+	var bounds: AABB = preview.get_visual_aabb()
+	if bounds.size.y <= 0.0:
+		return
+	var center := bounds.get_center()
+	# 只按高度反算距离（Camera3D 默认 KEEP_HEIGHT，竖直视野与宽高比无关）。
+	#
+	# 刻意不按宽度适配：蒙皮网格报的是**绑定姿势**的包围盒，而这个模型的绑定
+	# 姿势是张开双臂的 T-pose，宽 2.04 比高还大——按它适配会把相机推远一截，
+	# 角色反而缩成一小团。高度不受绑定姿势影响，是这里唯一可信的那一维。
+	var half_fov := deg_to_rad(camera.fov * 0.5)
+	var distance := (bounds.size.y / CHARACTER_FILL_RATIO) * 0.5 / tan(half_fov)
+	var eye := Vector3(
+		center.x,
+		center.y + distance * CAMERA_ELEVATION_RATIO,
+		bounds.end.z + distance
+	)
+	camera.position = eye
+	camera.look_at(center, Vector3.UP)
+
+## 卡片被重新布局（窗口缩放、竖屏）后重新取景。
+## 竖直视野与宽高比无关，所以这里其实只是在换过角色模型后兜底刷新一次。
+func _on_stage_resized() -> void:
+	_frame_character()
 
 func set_empty() -> void:
 	viewport_container.visible = false
