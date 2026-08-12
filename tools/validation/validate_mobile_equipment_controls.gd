@@ -5,6 +5,16 @@ func _init() -> void:
 
 func _run() -> void:
 	var failures: Array[String] = []
+	var virtual_joystick_script := load("res://scripts/ui/virtual_joystick.gd") as Script
+	_expect(virtual_joystick_script != null, "VirtualJoystick project script must load", failures)
+	if virtual_joystick_script != null:
+		_expect(virtual_joystick_script.can_instantiate(), "VirtualJoystick project script must be instantiable", failures)
+		if virtual_joystick_script.can_instantiate():
+			var virtual_joystick = virtual_joystick_script.new()
+			_expect(virtual_joystick != null, "VirtualJoystick project script must create an instance", failures)
+			if virtual_joystick != null:
+				virtual_joystick.free()
+
 	var scene := load("res://scenes/ui/MobileControls.tscn") as PackedScene
 	_expect(scene != null, "MobileControls scene must load", failures)
 	if scene == null:
@@ -14,6 +24,14 @@ func _run() -> void:
 	controls.force_visible = true
 	root.add_child(controls)
 	await process_frame
+	var virtual_joystick_node := controls.get_node_or_null("Layout/VirtualJoystick")
+	_expect(virtual_joystick_node != null, "MobileControls VirtualJoystick node must exist", failures)
+	if virtual_joystick_node != null and virtual_joystick_script != null:
+		_expect(
+			virtual_joystick_node.get_script() == virtual_joystick_script,
+			"MobileControls VirtualJoystick node must use the project joystick script",
+			failures
+		)
 	for legacy_action in [
 		&"move_left",
 		&"move_right",

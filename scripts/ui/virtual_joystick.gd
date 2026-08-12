@@ -1,11 +1,9 @@
 extends Control
-class_name VirtualJoystick
 ## Virtual touch joystick (mobile). Outputs to the touch_move_* input actions.
-## Minimal re-implementation restoring a reference that was missing from the
-## repo (MobileControls.tscn referenced this type but the script was absent),
-## which blocked DemoArena compilation entirely.
+## Loaded directly by MobileControls so its type is resolved from this project
+## script instead of a global class name.
 
-# Anonymous enum so members are accessible as VirtualJoystick.JOYSTICK_FIXED.
+# Keep this enum anonymous: MobileControls uses the fixed-mode value directly.
 enum {
 	JOYSTICK_FIXED,
 	JOYSTICK_FLOATING,
