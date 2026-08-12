@@ -9,9 +9,11 @@ class_name ContentCatalogs
 
 const CHARACTER_CATALOG_PATH := "res://resources/characters/character_catalog.tres"
 const MAP_CATALOG_PATH := "res://resources/maps/map_catalog.tres"
+const SHOP_CATALOG_PATH := "res://resources/shop/shop_catalog.tres"
 
 static var _characters: CharacterCatalog = null
 static var _maps: MapDefinitionCatalog = null
+static var _shop: ShopCatalog = null
 
 static func characters() -> CharacterCatalog:
 	if _characters == null:
@@ -22,3 +24,8 @@ static func maps() -> MapDefinitionCatalog:
 	if _maps == null:
 		_maps = load(MAP_CATALOG_PATH) as MapDefinitionCatalog
 	return _maps
+
+static func shop() -> ShopCatalog:
+	if _shop == null:
+		_shop = load(SHOP_CATALOG_PATH) as ShopCatalog
+	return _shop
