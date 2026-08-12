@@ -1093,8 +1093,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 		return
 	# B 键打开背包：直接检测物理键码（和 WASD 同路径，不依赖 action 系统）。
-	# action 系统的 is_action_pressed 在某些键盘布局/输入法下可能失效，
-	# 物理键检测是兜底，和 WASD/攻击键的读取方式一致。
+	# 注意：project.godot 里**不要**给 toggle_inventory 配 action 绑定——
+	# 绑定会抢走按下事件（action 被触发但没人处理），导致只有松开事件漏到这里。
 	if event is InputEventKey and (event as InputEventKey).pressed \
 			and (event as InputEventKey).keycode == KEY_B:
 		_toggle_inventory_panel()
