@@ -7,6 +7,7 @@ const PICKUP_DEFINITION_PATH := "res://scripts/gameplay/pickup_definition.gd"
 const MAP_RUNTIME_PATH := "res://scripts/gameplay/map/game_map_runtime.gd"
 const FAKE_OWNER_PATH := "res://tools/validation/support/fake_inventory_owner.gd"
 const WEAPON_MOD_TABLE_PATH := "res://scripts/sim/weapon_mod_table.gd"
+const SIM_WORLD_PATH := "res://scripts/sim/sim_world.gd"
 const PICKUP_DIRECTORY := "res://resources/pickups"
 const MOD_DIRECTORY := "res://resources/mods"
 const WEAPON_DIRECTORY := "res://resources/weapons"
@@ -27,6 +28,7 @@ func _run() -> void:
 		MAP_RUNTIME_PATH,
 		FAKE_OWNER_PATH,
 		WEAPON_MOD_TABLE_PATH,
+		SIM_WORLD_PATH,
 	]:
 		_check("required inventory path must exist: %s" % path, ResourceLoader.exists(path))
 	if not failures.is_empty():
@@ -39,6 +41,7 @@ func _run() -> void:
 	var map_runtime_script := load(MAP_RUNTIME_PATH) as Script
 	var fake_owner_script := load(FAKE_OWNER_PATH) as Script
 	var mod_table_script := load(WEAPON_MOD_TABLE_PATH) as Script
+	var sim_world_script := load(SIM_WORLD_PATH) as Script
 	var catalog := load(INVENTORY_PROFILES_PATH)
 	_check("InventorySlot script must load", inventory_slot_script != null)
 	_check("InventoryProfile script must load", inventory_profile_script != null)
@@ -46,6 +49,7 @@ func _run() -> void:
 	_check("GameMapRuntime script must load", map_runtime_script != null)
 	_check("fake inventory owner script must load", fake_owner_script != null)
 	_check("WeaponModTable script must load", mod_table_script != null)
+	_check("SimWorld script must load", sim_world_script != null)
 	_check("inventory profile catalog must load", catalog != null)
 	if not failures.is_empty():
 		_finish()
@@ -55,6 +59,7 @@ func _run() -> void:
 	_test_profile_catalog(catalog, inventory_profile_script, mod_table_script)
 	_test_pickup_metadata(catalog, pickup_definition_script, inventory_profile_script, mod_table_script)
 	_test_map_runtime_contract(map_runtime_script, catalog)
+	_test_sim_inventory_acceptance(sim_world_script)
 	_finish()
 
 
@@ -243,6 +248,94 @@ func _test_map_runtime_contract(map_runtime_script: Script, catalog: InventoryPr
 	_assert_map_compile_rejects_catalog_field(
 		runtime, catalog, &"mod_damage", &"max_stack", 1,
 		"inventory weapon mod max stack must match WeaponModTable"
+	)
+	var compiled: Dictionary = runtime._compile_inventory_profiles(no_rewards, catalog_errors)
+	runtime._inventory_profiles = compiled["profiles"]
+	_check(
+		"GameMapRuntime must expose stable simulation inventory dictionaries",
+		runtime.has_method(&"inventory_profile_dictionaries")
+	)
+	if runtime.has_method(&"inventory_profile_dictionaries"):
+		var dictionaries: Array[Dictionary] = runtime.inventory_profile_dictionaries()
+		_check(
+			"simulation dictionaries must preserve the stable compiled profile count",
+			dictionaries.size() == (compiled["profiles"] as Array).size()
+		)
+		if not dictionaries.is_empty():
+			_check(
+				"simulation dictionaries must carry category, capacity, weapon, and mod identities",
+				dictionaries[0].has("category")
+				and dictionaries[0].has("max_stack")
+				and dictionaries[0].has("weapon_id")
+				and dictionaries[0].has("mod_id")
+			)
+
+
+## Catches capacity checks that mutate a slot, select a later empty slot, or let a
+## chest disappear before the simulation has accepted its reward.
+func _test_sim_inventory_acceptance(sim_world_script: Script) -> void:
+	var world = sim_world_script.new()
+	world.configure(Vector2(-4.5, -4.5), 1.0, 9, 9)
+	var profiles: Array[Dictionary] = [
+		{"category": 0, "max_stack": 1, "weapon_id": &"smg", "mod_id": -1},
+		{"category": 1, "max_stack": 10, "weapon_id": &"smg", "mod_id": -1},
+		{"category": 2, "max_stack": 3, "weapon_id": &"", "mod_id": -1},
+		{"category": 3, "max_stack": 2, "weapon_id": &"", "mod_id": 0},
+	]
+	# reward 0=SMG weapon, 1=SMG ammo, 2=oil, 3=damage mod.
+	world.configure_inventory_profiles(profiles, PackedInt32Array([0, 1, 2, 3]))
+	world.reset(1)
+	_check("empty inventory must accept a weapon reward", world.can_accept_reward(0, 0, 4))
+	var weapon_result: Dictionary = world.accept_reward(0, 0, 4)
+	_check("first weapon reward must be accepted", bool(weapon_result.get("accepted", false)))
+	_check("first weapon must use the lowest empty slot", world.get_inventory_slot_profile(0, 0) == 0)
+	_check("weapon slots must store one owned weapon", world.get_inventory_slot_amount(0, 0) == 1)
+	_check("first weapon must create matching finite ammo", world.get_inventory_slot_profile(0, 1) == 1)
+	_check("first weapon must store its starting ammo", world.get_inventory_slot_amount(0, 1) == 4)
+	var duplicate_weapon: Dictionary = world.accept_reward(0, 0, 6)
+	_check("duplicate weapon must become matching finite ammo", bool(duplicate_weapon.get("accepted", false)))
+	_check("duplicate weapon must merge into the existing ammo slot", world.get_inventory_slot_profile(0, 1) == 1)
+	_check("duplicate weapon must add its reward amount to ammo", world.get_inventory_slot_amount(0, 1) == 10)
+	world.accept_reward(0, 1, 4)
+	_check("ammo must merge before selecting a new slot", world.get_inventory_slot_amount(0, 1) == 10)
+	_check("full finite ammo must reject further rewards", not world.can_accept_reward(0, 1, 1))
+	var oil_result: Dictionary = world.accept_reward(0, 2, 2)
+	_check("oil must be accepted into its own stack", bool(oil_result.get("accepted", false)))
+	world.accept_reward(0, 2, 2)
+	_check("oil must clamp at its finite stack limit", world.get_inventory_slot_amount(0, 2) == 3)
+	var mod_result: Dictionary = world.accept_reward(0, 3, 1)
+	_check("weapon mod must be accepted", bool(mod_result.get("accepted", false)))
+	_check("weapon mod must update its simulation level", world.get_weapon_mod_level(0, 0) == 1)
+	_check("weapon mod inventory amount must mirror its level", world.get_inventory_slot_amount(0, 3) == 1)
+	world.accept_reward(0, 3, 1)
+	_check("weapon mod must clamp at its configured level", world.get_weapon_mod_level(0, 0) == 2)
+	_check("full weapon mod must reject further rewards", not world.can_accept_reward(0, 3, 1))
+
+	var rejected_world = sim_world_script.new()
+	rejected_world.configure(Vector2(-4.5, -4.5), 1.0, 9, 9)
+	rejected_world.configure_inventory_profiles(profiles, PackedInt32Array([0, 1, 2, 3]))
+	rejected_world.reset(2)
+	for inventory_slot in range(12):
+		rejected_world.inventory_slot_profile[inventory_slot] = 0
+		rejected_world.inventory_slot_amount[inventory_slot] = 1
+	var chest_position := Vector2.ZERO
+	var chest_id: int = rejected_world.spawn_chest(
+		chest_position, 2, 1, -1,
+		chest_position - Vector2(0.24, 0.18),
+		chest_position + Vector2(0.24, 0.18),
+		1.15
+	)
+	var chest_cell: Vector2i = rejected_world.get_grid().world_to_cell(chest_position)
+	rejected_world.set_player_snapshot(0, chest_position, true, true)
+	rejected_world.step_tick()
+	_check(
+		"rejected chest reward must keep the chest active",
+		rejected_world.get_chest_state(rejected_world.index_of_chest(chest_id)) == 0
+	)
+	_check("rejected chest reward must keep its blocker", rejected_world.get_grid().is_blocked(chest_cell))
+	_check(
+		"rejected chest must emit deterministic inventory feedback",
+		not rejected_world.tick_inventory_feedback.is_empty()
 	)
 
 

@@ -278,6 +278,21 @@ func inventory_profiles() -> Array[InventoryProfile]:
 	result.append_array(_inventory_profiles)
 	return result
 
+## 交给 SimWorld 的只有稳定 gameplay 身份；图标、文本和 Resource 引用不进模拟。
+func inventory_profile_dictionaries() -> Array[Dictionary]:
+	var result: Array[Dictionary] = []
+	for profile in _inventory_profiles:
+		result.append({
+			"category": int(profile.category),
+			"max_stack": profile.max_stack,
+			"weapon_id": profile.weapon_id,
+			"mod_id": WeaponModTableScript.mod_index_from_id(profile.mod_id),
+		})
+	return result
+
+func reward_inventory_profile_indices() -> PackedInt32Array:
+	return _inventory_profile_indices_by_reward.duplicate()
+
 func inventory_profile_index_for(reward_profile_index: int) -> int:
 	if reward_profile_index < 0 or reward_profile_index >= _inventory_profile_indices_by_reward.size():
 		return -1

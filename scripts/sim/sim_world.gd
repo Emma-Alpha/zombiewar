@@ -22,6 +22,10 @@ const SimWaveDirectorScript = preload("res://scripts/sim/sim_wave_director.gd")
 
 const MAX_PLAYER_SLOTS := 4
 const INVENTORY_SLOT_COUNT := 12
+const INVENTORY_CATEGORY_WEAPON := 0
+const INVENTORY_CATEGORY_AMMO := 1
+const INVENTORY_CATEGORY_OIL := 2
+const INVENTORY_CATEGORY_WEAPON_MOD := 3
 const NO_TARGET_SLOT := 255
 const STATE_DEAD := 3
 const HEALTH_SCALE := 100
@@ -195,6 +199,9 @@ var tick_player_heal_events: Array = []
 var tick_shot_events: Array = []
 var tick_barrel_events: Array = []
 var tick_chest_events: Array = []
+## 背包事件是纯模拟结果，表现层只能消费它们，不能用来反写容量或箱子状态。
+var tick_inventory_events: Array[Dictionary] = []
+var tick_inventory_feedback: Array[Dictionary] = []
 var tick_wave_events: Array[Dictionary] = []
 var tick_death_rule_events: Array[Dictionary] = []
 
@@ -267,6 +274,8 @@ var player_material := PackedInt32Array()
 ## 展平为 [slot * INVENTORY_SLOT_COUNT + inventory_slot]。
 ## profile 为稳定的 inventory profile 下标，空槽为 -1；amount 为数量或等级。
 var inventory_profiles: Array[Dictionary] = []
+## reward_profile_index -> inventory_profiles 下标。两边都由地图运行时的稳定目录排序产生。
+var reward_inventory_profile := PackedInt32Array()
 var inventory_slot_profile := PackedInt32Array()
 var inventory_slot_amount := PackedInt32Array()
 
@@ -419,10 +428,221 @@ func get_room_seed() -> int:
 	return _room_seed
 
 ## 装配层按稳定顺序注入背包 profile；模拟层只保存轻量字典，不读取 Resource。
-func configure_inventory_profiles(profiles: Array[Dictionary]) -> void:
+func configure_inventory_profiles(
+	profiles: Array[Dictionary],
+	reward_profile_indices: PackedInt32Array
+) -> void:
 	inventory_profiles.clear()
 	for profile in profiles:
 		inventory_profiles.append(profile.duplicate(true))
+	reward_inventory_profile = reward_profile_indices.duplicate()
+
+func can_accept_reward(slot: int, reward_profile_index: int, amount: int) -> bool:
+	return bool(_plan_reward_acceptance(slot, reward_profile_index, amount).get("accepted", false))
+
+## 只在模拟层兑现奖励。返回值既给 chest 领取流程做原子提交依据，也让未来的
+## InventoryComponent 能镜像同一结果；失败绝不写槽位、改装层数或 chest 状态。
+func accept_reward(slot: int, reward_profile_index: int, amount: int) -> Dictionary:
+	var plan: Dictionary = _plan_reward_acceptance(slot, reward_profile_index, amount)
+	if not bool(plan.get("accepted", false)):
+		var rejected := {
+			"kind": &"inventory_rejected",
+			"slot": slot,
+			"reward_profile_index": reward_profile_index,
+			"reason": plan.get("reason", &"rejected"),
+		}
+		tick_inventory_feedback.append(rejected)
+		return rejected
+	_apply_reward_acceptance(slot, plan)
+	var accepted := {
+		"kind": &"inventory_accepted",
+		"accepted": true,
+		"slot": slot,
+		"reward_profile_index": reward_profile_index,
+		"inventory_profile_index": int(plan["inventory_profile_index"]),
+		"inventory_slot": int(plan["inventory_slot"]),
+		"amount": int(plan["accepted_amount"]),
+		"weapon_mod_id": int(plan.get("weapon_mod_id", -1)),
+	}
+	tick_inventory_events.append(accepted)
+	return accepted
+
+func _plan_reward_acceptance(slot: int, reward_profile_index: int, amount: int) -> Dictionary:
+	if slot < 0 or slot >= MAX_PLAYER_SLOTS:
+		return {"accepted": false, "reason": &"invalid_slot"}
+	if amount <= 0:
+		return {"accepted": false, "reason": &"invalid_amount"}
+	var inventory_profile_index := _inventory_profile_index_for_reward(reward_profile_index)
+	if inventory_profile_index < 0:
+		return {"accepted": false, "reason": &"unknown_reward"}
+	var profile := _inventory_profile(inventory_profile_index)
+	if profile.is_empty():
+		return {"accepted": false, "reason": &"unknown_profile"}
+	match int(profile.get("category", -1)):
+		INVENTORY_CATEGORY_WEAPON:
+			return _plan_weapon_reward(slot, inventory_profile_index, profile, amount)
+		INVENTORY_CATEGORY_AMMO, INVENTORY_CATEGORY_OIL:
+			return _plan_finite_stack(slot, inventory_profile_index, amount)
+		INVENTORY_CATEGORY_WEAPON_MOD:
+			return _plan_weapon_mod_reward(slot, inventory_profile_index, profile, amount)
+	return {"accepted": false, "reason": &"invalid_category"}
+
+func _plan_weapon_reward(
+	slot: int,
+	weapon_profile_index: int,
+	weapon_profile: Dictionary,
+	amount: int
+) -> Dictionary:
+	var weapon_slot := _find_inventory_slot(slot, weapon_profile_index)
+	var ammo_profile_index := _find_ammo_profile_for_weapon(
+		weapon_profile.get("weapon_id", StringName())
+	)
+	if weapon_slot >= 0:
+		if ammo_profile_index < 0:
+			return {"accepted": false, "reason": &"duplicate_weapon"}
+		return _plan_finite_stack(slot, ammo_profile_index, amount)
+	weapon_slot = _find_empty_inventory_slot(slot)
+	if weapon_slot < 0:
+		return {"accepted": false, "reason": &"inventory_full"}
+	var plan := {
+		"accepted": true,
+		"inventory_profile_index": weapon_profile_index,
+		"inventory_slot": weapon_slot,
+		"accepted_amount": 1,
+		"weapon_slot": weapon_slot,
+		"weapon_profile_index": weapon_profile_index,
+	}
+	if ammo_profile_index < 0:
+		return plan
+	var ammo_profile := _inventory_profile(ammo_profile_index)
+	if int(ammo_profile.get("max_stack", 0)) <= 0:
+		return plan
+	var ammo_plan := _plan_finite_stack(slot, ammo_profile_index, amount, weapon_slot)
+	if not bool(ammo_plan.get("accepted", false)):
+		return ammo_plan
+	plan["ammo_slot"] = int(ammo_plan["inventory_slot"])
+	plan["ammo_profile_index"] = ammo_profile_index
+	plan["ammo_amount"] = int(ammo_plan["accepted_amount"])
+	return plan
+
+func _plan_finite_stack(
+	slot: int,
+	profile_index: int,
+	amount: int,
+	excluded_slot: int = -1
+) -> Dictionary:
+	var profile := _inventory_profile(profile_index)
+	var capacity := int(profile.get("max_stack", 0))
+	if capacity <= 0:
+		return {"accepted": false, "reason": &"full"}
+	var inventory_slot := _find_inventory_slot(slot, profile_index)
+	if inventory_slot < 0:
+		inventory_slot = _find_empty_inventory_slot(slot, excluded_slot)
+		if inventory_slot < 0:
+			return {"accepted": false, "reason": &"inventory_full"}
+	var current := get_inventory_slot_amount(slot, inventory_slot)
+	var accepted_amount := mini(amount, capacity - current)
+	if accepted_amount <= 0:
+		return {"accepted": false, "reason": &"full"}
+	return {
+		"accepted": true,
+		"inventory_profile_index": profile_index,
+		"inventory_slot": inventory_slot,
+		"accepted_amount": accepted_amount,
+	}
+
+func _plan_weapon_mod_reward(
+	slot: int,
+	profile_index: int,
+	profile: Dictionary,
+	amount: int
+) -> Dictionary:
+	var mod_id := int(profile.get("mod_id", -1))
+	if mod_id < 0 or mod_id >= WeaponModTableScript.COUNT:
+		return {"accepted": false, "reason": &"invalid_mod"}
+	var inventory_slot := _find_inventory_slot(slot, profile_index)
+	if inventory_slot < 0:
+		inventory_slot = _find_empty_inventory_slot(slot)
+		if inventory_slot < 0:
+			return {"accepted": false, "reason": &"inventory_full"}
+	var current := get_weapon_mod_level(slot, mod_id)
+	var capacity := mini(int(profile.get("max_stack", 0)), WeaponModTableScript.MAX_STACKS[mod_id])
+	var accepted_amount := mini(amount, capacity - current)
+	if accepted_amount <= 0:
+		return {"accepted": false, "reason": &"full"}
+	return {
+		"accepted": true,
+		"inventory_profile_index": profile_index,
+		"inventory_slot": inventory_slot,
+		"accepted_amount": accepted_amount,
+		"weapon_mod_id": mod_id,
+	}
+
+func _apply_reward_acceptance(slot: int, plan: Dictionary) -> void:
+	var profile_index := int(plan["inventory_profile_index"])
+	var inventory_slot := int(plan["inventory_slot"])
+	var profile := _inventory_profile(profile_index)
+	match int(profile.get("category", -1)):
+		INVENTORY_CATEGORY_WEAPON:
+			_set_inventory_slot(slot, inventory_slot, profile_index, 1)
+			if plan.has("ammo_slot"):
+				var ammo_slot := int(plan["ammo_slot"])
+				var ammo_profile_index := int(plan["ammo_profile_index"])
+				var ammo_amount := int(plan["ammo_amount"])
+				_set_inventory_slot(
+					slot,
+					ammo_slot,
+					ammo_profile_index,
+					get_inventory_slot_amount(slot, ammo_slot) + ammo_amount
+				)
+		INVENTORY_CATEGORY_AMMO, INVENTORY_CATEGORY_OIL:
+			_set_inventory_slot(
+				slot,
+				inventory_slot,
+				profile_index,
+				get_inventory_slot_amount(slot, inventory_slot) + int(plan["accepted_amount"])
+			)
+		INVENTORY_CATEGORY_WEAPON_MOD:
+			var mod_id := int(plan["weapon_mod_id"])
+			grant_weapon_mod(slot, mod_id, int(plan["accepted_amount"]))
+			_set_inventory_slot(slot, inventory_slot, profile_index, get_weapon_mod_level(slot, mod_id))
+
+func _inventory_profile_index_for_reward(reward_profile_index: int) -> int:
+	if reward_profile_index < 0 or reward_profile_index >= reward_inventory_profile.size():
+		return -1
+	return reward_inventory_profile[reward_profile_index]
+
+func _inventory_profile(profile_index: int) -> Dictionary:
+	if profile_index < 0 or profile_index >= inventory_profiles.size():
+		return {}
+	return inventory_profiles[profile_index]
+
+func _find_inventory_slot(slot: int, profile_index: int) -> int:
+	for inventory_slot in range(INVENTORY_SLOT_COUNT):
+		if get_inventory_slot_profile(slot, inventory_slot) == profile_index:
+			return inventory_slot
+	return -1
+
+func _find_empty_inventory_slot(slot: int, excluded_slot: int = -1) -> int:
+	for inventory_slot in range(INVENTORY_SLOT_COUNT):
+		if inventory_slot != excluded_slot and get_inventory_slot_profile(slot, inventory_slot) < 0:
+			return inventory_slot
+	return -1
+
+func _find_ammo_profile_for_weapon(weapon_id: StringName) -> int:
+	for profile_index in range(inventory_profiles.size()):
+		var profile := _inventory_profile(profile_index)
+		if (
+			int(profile.get("category", -1)) == INVENTORY_CATEGORY_AMMO
+			and profile.get("weapon_id", StringName()) == weapon_id
+		):
+			return profile_index
+	return -1
+
+func _set_inventory_slot(slot: int, inventory_slot: int, profile_index: int, amount: int) -> void:
+	var index := slot * INVENTORY_SLOT_COUNT + inventory_slot
+	inventory_slot_profile[index] = profile_index
+	inventory_slot_amount[index] = amount
 
 func get_inventory_slot_profile(slot: int, inventory_slot: int) -> int:
 	if (
@@ -647,18 +867,14 @@ func _resolve_chest_claims() -> void:
 			var offset := get_player_position(slot) - chest_position[index]
 			if offset.length_squared() > claim_range_squared:
 				continue
+			var accepted_reward := accept_reward(
+				slot, chest_reward_profile[index], chest_amount[index]
+			)
+			if not bool(accepted_reward.get("accepted", false)):
+				continue
 			if chest_blocks_movement[index] == 1:
 				set_blocker_world_rect(
 					chest_blocker_min[index], chest_blocker_max[index], false
-				)
-			# 改装件在模拟层当场生效，不经过表现层兑现。
-			# 走这条路的理由：拾取判定本身已经是确定性的（各端同 tick 判给同一个座位），
-			# 所以改装层数也就天然各端一致；而表现层兑现是「可能失败且模拟层不知情」的
-			# （SimWorld 刻意不提供 release_chest），把 gameplay 效果挂在那里必然分叉。
-			var granted_mod := reward_mod_for(chest_reward_profile[index])
-			if granted_mod >= 0:
-				grant_weapon_mod(
-					slot, granted_mod, reward_mod_stacks[chest_reward_profile[index]]
 				)
 			tick_chest_events.append({
 				"kind": &"chest_claimed",
@@ -667,7 +883,7 @@ func _resolve_chest_claims() -> void:
 				"position": chest_position[index],
 				"reward_profile_index": chest_reward_profile[index],
 				"amount": chest_amount[index],
-				"weapon_mod_id": granted_mod,
+				"weapon_mod_id": int(accepted_reward.get("weapon_mod_id", -1)),
 			})
 			if chest_respawn_delay_ticks[index] >= 0:
 				chest_state[index] = CHEST_STATE_WAITING_RESPAWN
@@ -1126,6 +1342,8 @@ func _clear_tick_events() -> void:
 	tick_shot_events = []
 	tick_barrel_events = []
 	tick_chest_events = []
+	tick_inventory_events = []
+	tick_inventory_feedback = []
 	tick_wave_events = []
 	tick_death_rule_events = []
 

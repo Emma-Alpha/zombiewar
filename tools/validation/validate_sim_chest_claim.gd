@@ -50,6 +50,10 @@ func _run() -> void:
 func _make_world():
 	var world = SimWorldScript.new()
 	world.configure(GRID_ORIGIN, GRID_CELL_SIZE, GRID_WIDTH, GRID_HEIGHT)
+	world.configure_inventory_profiles(
+		[{"category": 2, "max_stack": 999, "weapon_id": &"", "mod_id": -1}],
+		PackedInt32Array([0, 0, 0, 0])
+	)
 	world.reset(ROOM_SEED)
 	return world
 

@@ -399,6 +399,10 @@ func _setup_simulation() -> PackedStringArray:
 	)
 	if not errors.is_empty():
 		return errors
+	sim_world.configure_inventory_profiles(
+		map_runtime.inventory_profile_dictionaries(),
+		map_runtime.reward_inventory_profile_indices()
+	)
 	var place_grid := get_node_or_null(
 		"World/Placement/PlaceItemGrid"
 	) as PlaceItemGrid

@@ -282,6 +282,10 @@ func _check_hasher_covers_chest_lifecycle_fields(failures: Array[String]) -> voi
 func _new_world() -> SimWorld:
 	var world: SimWorld = SimWorldScript.new()
 	world.configure(Vector2(-12.5, -12.5), 1.0, 25, 25)
+	world.configure_inventory_profiles(
+		[{"category": 2, "max_stack": 999, "weapon_id": &"", "mod_id": -1}],
+		PackedInt32Array([0, 0, 0, 0, 0, 0])
+	)
 	world.reset(ROOM_SEED)
 	return world
 
