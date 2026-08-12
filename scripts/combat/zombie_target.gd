@@ -16,6 +16,8 @@ const HIT_REACTION_SECONDS := 0.2
 const ATTACK_ANIMATION_SECONDS := 0.7
 const DEATH_LINGER_SECONDS := 1.2
 const RUN_ANIMATION_SPEED := 0.2
+## 命中白闪时长（秒）。太短看不见，太长会闪眼，0.08 左右刚好是「啪」的一下。
+const HIT_FLASH_SECONDS := 0.08
 
 const AMBIENT_SOUNDS := [
 	preload("res://assets/sfx/boxhead/zombie_ambience_1.mp3"),
@@ -49,6 +51,9 @@ var hit_reaction_remaining := 0.0
 var attack_animation_remaining := 0.0
 var death_remaining := 0.0
 var dying := false
+## 命中白闪剩余时间。受击瞬间把所有 mesh 调成白色，几帧内淡回原色——
+## 这是「打中了」最直接的视觉确认，比 1.08 的缩放显眼得多。纯表现，不进模拟。
+var hit_flash_remaining := 0.0
 ## 音效随机是纯表现，不进模拟层：它不改变任何判定，各端听到的音高不同
 ## 也不会让任何一颗子弹打到不同的地方。
 var audio_rng := RandomNumberGenerator.new()
@@ -155,6 +160,7 @@ func play_hit_reaction(hit_position: Vector3, impulse: Vector3) -> void:
 	if dying:
 		return
 	visual_root.scale = Vector3.ONE * 1.08
+	hit_flash_remaining = HIT_FLASH_SECONDS
 	var local_hit := hit_position - global_position
 	var local_impulse := global_basis.inverse() * impulse
 	var torque := local_hit.cross(local_impulse) * 0.075
@@ -183,6 +189,9 @@ func begin_death() -> void:
 	death_remaining = DEATH_LINGER_SECONDS
 	set_blocker_enabled(false)
 	health_label.visible = false
+	# 击杀瞬间轻微放大再消散：1.15 的脉冲比受击的 1.08 更「爆」，
+	# _process 里的 move_toward(Vector3.ONE) 会把它在死亡动画里慢慢收回来。
+	visual_root.scale = Vector3.ONE * 1.15
 	if voice_audio != null:
 		voice_audio.stop()
 	if attack_audio != null:
@@ -243,6 +252,7 @@ func _process(delta: float) -> void:
 	hit_reaction_remaining = maxf(hit_reaction_remaining - delta, 0.0)
 	attack_animation_remaining = maxf(attack_animation_remaining - delta, 0.0)
 	hit_audio_cooldown = maxf(hit_audio_cooldown - delta, 0.0)
+	_update_hit_flash(delta)
 	_update_ambient_audio(delta)
 	visual_root.scale = visual_root.scale.move_toward(Vector3.ONE, delta * 1.5)
 	_update_visual_reaction(delta)
@@ -283,6 +293,37 @@ func _play_hit_sound() -> void:
 	voice_audio.pitch_scale = audio_rng.randf_range(0.96, 1.04)
 	voice_audio.play()
 	hit_audio_cooldown = HIT_AUDIO_COOLDOWN_SECONDS
+
+## 命中白闪：把每个 mesh 的 material_override 设成共享的纯白无光材质，
+## 几帧后清空 override 回到原始材质。共享一份材质避免每次受击都 new。
+static var _hit_flash_material: StandardMaterial3D = null
+
+static func _flash_material() -> StandardMaterial3D:
+	if _hit_flash_material == null:
+		_hit_flash_material = StandardMaterial3D.new()
+		_hit_flash_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		_hit_flash_material.albedo_color = Color.WHITE
+	return _hit_flash_material
+
+func _apply_hit_flash() -> void:
+	var mat := _flash_material()
+	for mesh_instance in mesh_instances:
+		if mesh_instance != null:
+			mesh_instance.material_override = mat
+
+func _clear_hit_flash() -> void:
+	for mesh_instance in mesh_instances:
+		if mesh_instance != null:
+			mesh_instance.material_override = null
+
+func _update_hit_flash(delta: float) -> void:
+	if hit_flash_remaining <= 0.0:
+		return
+	hit_flash_remaining = maxf(hit_flash_remaining - delta, 0.0)
+	if hit_flash_remaining > 0.0:
+		_apply_hit_flash()
+	else:
+		_clear_hit_flash()
 
 func _update_ambient_audio(delta: float) -> void:
 	if dying or voice_audio == null:
